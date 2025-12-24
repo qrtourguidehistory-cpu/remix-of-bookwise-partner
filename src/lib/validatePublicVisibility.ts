@@ -75,20 +75,29 @@ export async function validatePublicVisibilityRequirements(
        (biz.location_details as any).googleMapsUrl : null);
 
     if (googleMapsUrl && googleMapsUrl.trim().length > 0) {
-      // Validate it's a valid Google Maps URL (supports various formats)
+      // Validate it's a valid Google Maps URL (supports various formats including short URLs)
       const isValidGoogleMapsUrl = (url: string): boolean => {
         try {
-          const urlObj = new URL(url);
-          // Accept any of these Google Maps URL formats
-          const validHosts = [
+          const trimmedUrl = url.trim();
+          const urlObj = new URL(trimmedUrl);
+          const hostname = urlObj.hostname.toLowerCase();
+          
+          // Accept various Google Maps URL formats
+          const validPatterns = [
             'maps.google.com',
             'www.maps.google.com',
             'google.com',
             'www.google.com',
-            'maps.app.goo.gl',
-            'goo.gl'
+            'maps.app.goo.gl',  // Short URL format: https://maps.app.goo.gl/xxxxx
+            'goo.gl',
           ];
-          return validHosts.some(host => urlObj.hostname === host || urlObj.hostname.endsWith('.google.com'));
+          
+          // Check if hostname matches any valid pattern
+          return validPatterns.some(pattern => 
+            hostname === pattern || 
+            hostname.endsWith('.' + pattern) ||
+            hostname.endsWith('.google.com')
+          );
         } catch {
           return false;
         }
