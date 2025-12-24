@@ -438,11 +438,11 @@ export function DayView({ date, filters, appointmentToOpen, onAppointmentOpened 
       onDragEnd={handleDragEnd}
       onDragCancel={handleDragCancel}
     >
-      <div className="p-4">
+      <div className="p-2">
         {/* Timeline View - Continuous timeline instead of fixed slots */}
-        <div className="flex gap-4">
+        <div className="flex gap-1">
           {/* Time labels column */}
-          <div className="w-20 flex-shrink-0">
+          <div className="w-12 flex-shrink-0">
             {generateTimelineMinutes(
               Math.floor(timelineStartMinutes / 60),
               Math.ceil(timelineEndMinutes / 60),

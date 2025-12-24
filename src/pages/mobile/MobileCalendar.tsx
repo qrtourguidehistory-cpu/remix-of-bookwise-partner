@@ -144,7 +144,7 @@ export default function MobileCalendar() {
           markTipAsSeen("complete_public_profile");
         }}
         actionLabel="Ir a Configuración"
-        onAction={() => navigate("/admin/settings/profile")}
+        onAction={() => navigate("/admin/business-profile")}
         position="bottom"
         delay={1000}
       />

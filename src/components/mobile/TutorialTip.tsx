@@ -65,35 +65,35 @@ export function TutorialTip({
           transition={{ type: "spring", damping: 25, stiffness: 300 }}
           className={`fixed ${positionClasses[position]} z-50`}
         >
-          <div className="bg-primary text-primary-foreground rounded-xl shadow-2xl p-4 relative overflow-hidden">
+          <div className="bg-primary text-primary-foreground rounded-lg shadow-xl p-3 relative overflow-hidden">
             {/* Background decoration */}
-            <div className="absolute top-0 right-0 w-24 h-24 bg-white/10 rounded-full -translate-y-1/2 translate-x-1/2" />
+            <div className="absolute top-0 right-0 w-16 h-16 bg-white/10 rounded-full -translate-y-1/2 translate-x-1/2" />
             
             {/* Close button */}
             <button
               onClick={handleDismiss}
-              className="absolute top-2 right-2 p-1 hover:bg-white/20 rounded-full transition-colors"
+              className="absolute top-1.5 right-1.5 p-0.5 hover:bg-white/20 rounded-full transition-colors"
             >
-              <X className="w-4 h-4" />
+              <X className="w-3 h-3" />
             </button>
 
-            <div className="flex gap-3 relative">
+            <div className="flex gap-2 relative">
               <div className="flex-shrink-0">
-                <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center">
-                  <Lightbulb className="w-5 h-5" />
+                <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center">
+                  <Lightbulb className="w-4 h-4" />
                 </div>
               </div>
               
-              <div className="flex-1 pr-6">
-                <h4 className="font-semibold text-sm mb-1">{title}</h4>
-                <p className="text-sm opacity-90 leading-relaxed">{message}</p>
+              <div className="flex-1 pr-4">
+                <h4 className="font-semibold text-xs mb-0.5">{title}</h4>
+                <p className="text-xs opacity-90 leading-snug">{message}</p>
                 
                 {actionLabel && onAction && (
                   <Button
                     onClick={handleAction}
                     variant="secondary"
                     size="sm"
-                    className="mt-3 bg-white/20 hover:bg-white/30 text-white border-0"
+                    className="mt-2 h-7 text-xs bg-white/20 hover:bg-white/30 text-white border-0"
                   >
                     {actionLabel}
                   </Button>
