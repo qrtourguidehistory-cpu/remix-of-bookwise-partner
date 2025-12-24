@@ -75,24 +75,9 @@ export default function DailySalesSummary() {
 
       if (appointmentsError) throw appointmentsError;
 
-      // Load appointment_services for service add-ons
-      const appointmentIds = (appointments as any[])?.map((a: any) => a.id) || [];
-      const { data: appointmentServices, error: appointmentServicesError } = appointmentIds.length > 0
-        ? await supabase
-            .from("appointment_services")
-            .select("appointment_id, service_id, price, quantity")
-            .in("appointment_id", appointmentIds)
-        : { data: [], error: null };
-
-      if (appointmentServicesError) throw appointmentServicesError;
-
-      // Get main service IDs from appointments
-      const mainServiceIds = (appointments as any[])?.map((a: any) => a.service_id).filter(Boolean) || [];
-      
-      // Service add-ons: services in appointment_services that are NOT the main service
-      const addonServices = appointmentServices?.filter(
-        (as: any) => as.service_id && !mainServiceIds.includes(as.service_id)
-      ) || [];
+      // Note: appointment_services table doesn't exist yet
+      // When implemented, this would load add-on services for appointments
+      const addonServices: any[] = [];
 
       // Calculate Services (completed appointments)
       const servicesQty = (appointments as any[])?.length || 0;

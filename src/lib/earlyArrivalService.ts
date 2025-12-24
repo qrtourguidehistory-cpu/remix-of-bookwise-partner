@@ -10,6 +10,12 @@ interface RespondToRequestParams {
   response: 'accepted' | 'rejected';
 }
 
+interface RpcResult {
+  success: boolean;
+  error?: string;
+  message?: string;
+}
+
 /**
  * Respond to an early arrival request (accept or reject)
  * Only when accepted, the appointment times are moved
@@ -32,8 +38,9 @@ export async function respondToEarlyArrivalRequest({
       return { success: false, error: functionError.message };
     }
 
-    // The function returns an array with one object
-    const result = Array.isArray(functionResult) ? functionResult[0] : functionResult;
+    // The function returns an array with one object or a single object
+    const rawResult = Array.isArray(functionResult) ? functionResult[0] : functionResult;
+    const result = rawResult as unknown as RpcResult | null;
     
     if (!result || !result.success) {
       const errorMsg = result?.error || 'Unknown error';
@@ -46,4 +53,3 @@ export async function respondToEarlyArrivalRequest({
     return { success: false, error: error.message || 'Unknown error' };
   }
 }
-

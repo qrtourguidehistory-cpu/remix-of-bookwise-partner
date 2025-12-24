@@ -3,18 +3,22 @@ import { supabase } from "./supabaseClient";
 interface InviteClientEarlyParams {
   appointmentId: string;
   businessId: string;
-  staffId: string | null; // staffId can be null
+  staffId: string | null;
 }
 
+/**
+ * Invite client to arrive early
+ * Note: This uses the create_early_arrival_request function instead of invite_client_early
+ */
 export async function inviteClientEarly({
   appointmentId,
   businessId,
   staffId,
 }: InviteClientEarlyParams): Promise<{ success: boolean; error?: string }> {
   try {
-    // First, call the PostgreSQL function to validate and update
+    // Use the existing create_early_arrival_request function
     const { data: functionResult, error: functionError } = await supabase.rpc(
-      "invite_client_early",
+      "create_early_arrival_request",
       {
         p_appointment_id: appointmentId,
         p_business_id: businessId,
@@ -23,7 +27,7 @@ export async function inviteClientEarly({
     );
 
     if (functionError) {
-      console.error("Error calling invite_client_early function:", functionError);
+      console.error("Error calling create_early_arrival_request function:", functionError);
       return { success: false, error: functionError.message };
     }
 
@@ -34,7 +38,6 @@ export async function inviteClientEarly({
     }
 
     // Then, call the Edge Function to send notification
-    // Use supabase.functions.invoke instead of direct fetch
     const { data: edgeFunctionResult, error: edgeFunctionError } = await supabase.functions.invoke(
       "invite-client-early",
       {
@@ -64,4 +67,3 @@ export async function inviteClientEarly({
     return { success: false, error: error.message || "Unknown error" };
   }
 }
-
