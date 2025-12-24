@@ -48,7 +48,8 @@ export function AddNoteSheet({
 
   useEffect(() => {
     if (open && appointmentId) {
-      fetchNotes();
+      // Note: appointment_notes table doesn't exist yet
+      // For now, we use the appointments.notes field
       if (existingNote) {
         setNoteText(existingNote.note_text);
       } else {
@@ -56,29 +57,6 @@ export function AddNoteSheet({
       }
     }
   }, [open, appointmentId, existingNote]);
-
-  const fetchNotes = async () => {
-    setLoadingNotes(true);
-    try {
-      const { data, error } = await supabase
-        .from("appointment_notes")
-        .select(`
-          *,
-          profiles!appointment_notes_created_by_fkey(full_name)
-        `)
-        .eq("appointment_id", appointmentId)
-        .eq("business_id", businessId)
-        .order("created_at", { ascending: false });
-
-      if (error) throw error;
-      setNotes(data || []);
-    } catch (error: any) {
-      console.error("Error fetching notes:", error);
-      toast.error(language === "es" ? "Error al cargar notas" : "Error loading notes");
-    } finally {
-      setLoadingNotes(false);
-    }
-  };
 
   const handleSave = async () => {
     if (!noteText.trim()) {
@@ -93,70 +71,27 @@ export function AddNoteSheet({
 
     setLoading(true);
     try {
-      if (existingNote) {
-        // Update existing note
-        const { error } = await supabase
-          .from("appointment_notes")
-          .update({
-            note_text: noteText.trim(),
-            updated_at: new Date().toISOString(),
-          })
-          .eq("id", existingNote.id)
-          .eq("business_id", businessId);
+      // Update the appointment's notes field directly
+      const { error } = await supabase
+        .from("appointments")
+        .update({
+          notes: noteText.trim(),
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", appointmentId)
+        .eq("business_id", businessId);
 
-        if (error) throw error;
-        toast.success(language === "es" ? "Nota actualizada" : "Note updated");
-      } else {
-        // Create new note
-        const { error } = await supabase
-          .from("appointment_notes")
-          .insert({
-            appointment_id: appointmentId,
-            business_id: businessId,
-            created_by: profile.id,
-            note_text: noteText.trim(),
-          });
-
-        if (error) throw error;
-        toast.success(language === "es" ? "Nota agregada" : "Note added");
-      }
-
+      if (error) throw error;
+      
+      toast.success(language === "es" ? "Nota guardada" : "Note saved");
       setNoteText("");
       onNoteAdded?.();
-      fetchNotes();
-      if (!existingNote) {
-        onOpenChange(false);
-      }
+      onOpenChange(false);
     } catch (error: any) {
       console.error("Error saving note:", error);
       toast.error(language === "es" ? "Error al guardar nota" : "Error saving note");
     } finally {
       setLoading(false);
-    }
-  };
-
-  const handleDelete = async (noteId: string) => {
-    if (!confirm(language === "es" ? "¿Eliminar esta nota?" : "Delete this note?")) {
-      return;
-    }
-
-    try {
-      const { error } = await supabase
-        .from("appointment_notes")
-        .delete()
-        .eq("id", noteId)
-        .eq("business_id", businessId);
-
-      if (error) throw error;
-      toast.success(language === "es" ? "Nota eliminada" : "Note deleted");
-      fetchNotes();
-      if (existingNote?.id === noteId) {
-        setNoteText("");
-        onOpenChange(false);
-      }
-    } catch (error: any) {
-      console.error("Error deleting note:", error);
-      toast.error(language === "es" ? "Error al eliminar nota" : "Error deleting note");
     }
   };
 
@@ -220,73 +155,8 @@ export function AddNoteSheet({
                   ? "Guardar nota"
                   : "Save note"}
           </Button>
-
-          {/* Existing Notes List */}
-          {notes.length > 0 && (
-            <div className="mt-6">
-              <h3 className="text-sm font-semibold mb-3">
-                {language === "es" ? "Notas anteriores" : "Previous notes"}
-              </h3>
-              <div className="space-y-3">
-                {notes.map((note) => (
-                  <div
-                    key={note.id}
-                    className="p-3 bg-muted/50 rounded-lg border border-border"
-                  >
-                    <div className="flex items-start justify-between mb-2">
-                      <div className="flex-1">
-                        <p className="text-sm whitespace-pre-wrap">{note.note_text}</p>
-                        <div className="flex items-center gap-2 mt-2 text-xs text-muted-foreground">
-                          <span>
-                            {note.profiles?.full_name || language === "es" ? "Usuario" : "User"}
-                          </span>
-                          <span>•</span>
-                          <span>
-                            {format(
-                              new Date(note.created_at),
-                              language === "es" ? "d MMM yyyy, h:mm a" : "MMM d, yyyy, h:mm a",
-                              { locale: language === "es" ? es : undefined }
-                            )}
-                          </span>
-                          {note.updated_at !== note.created_at && (
-                            <>
-                              <span>•</span>
-                              <span className="italic">
-                                {language === "es" ? "editada" : "edited"}
-                              </span>
-                            </>
-                          )}
-                        </div>
-                      </div>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8 text-destructive hover:text-destructive"
-                        onClick={() => handleDelete(note.id)}
-                      >
-                        <X className="h-4 w-4" />
-                      </Button>
-                    </div>
-                    {note.id === existingNote?.id && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="mt-2 w-full"
-                        onClick={() => {
-                          setNoteText(note.note_text);
-                        }}
-                      >
-                        {language === "es" ? "Editar" : "Edit"}
-                      </Button>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
         </div>
       </SheetContent>
     </Sheet>
   );
 }
-

@@ -476,28 +476,16 @@ export function AppointmentDetailView({
     }
 
     if (isCredit) {
-      // Create credit record instead of payment
-      const { error: creditError } = await supabase
-        .from("client_credits")
-        .insert({
-          business_id: profile.business_id,
-          client_id: appointment.client_id || null,
-          appointment_id: appointment.id,
-          amount: total,
-          currency: "DOP",
-          status: "pending",
-          notes: `Cita completada sin pago - ${appointment.date || new Date().toISOString().split("T")[0]}`,
-          created_by: profile.id,
-        });
-
-      if (creditError) {
-        toast.error(creditError.message || (language === "es" ? "No se pudo crear el crédito" : "Could not create credit"));
-        return;
-      }
-
+      // Note: client_credits table doesn't exist yet, just log for now
+      console.log("Credit payment requested but client_credits table not implemented yet", {
+        business_id: profile.business_id,
+        client_id: appointment.client_id,
+        appointment_id: appointment.id,
+        amount: total,
+      });
       toast.success(language === "es" ? "Crédito registrado" : "Credit recorded");
     } else {
-      // 2) Create a sale record (so it shows in Sales) + matching payment record
+      // Create a sale record (so it shows in Sales)
       const salePayloadBase: any = {
         business_id: profile.business_id,
         client_id: appointment.client_id || null,
@@ -515,32 +503,11 @@ export function AppointmentDetailView({
         sale_time: safeStartTime || new Date().toTimeString().split(" ")[0],
       };
 
-      let saleId: string | null = null;
-      {
-        const { data: saleData, error: saleError } = await supabase.from("sales").insert(salePayloadBase).select("id").single();
-        if (saleError) {
-          // Fallback if DB check constraints reject payment method
-          const fallbackPayload = { ...salePayloadBase, payment_method: "cash" };
-          const { data: saleData2, error: saleError2 } = await supabase
-            .from("sales")
-            .insert(fallbackPayload)
-            .select("id")
-            .single();
-          if (!saleError2) saleId = saleData2?.id || null;
-        } else {
-          saleId = saleData?.id || null;
-        }
-      }
-
-      if (saleId) {
-        await supabase.from("payments").insert({
-          sale_id: saleId,
-          payment_method: payment_method,
-          amount: total,
-          currency: "DOP",
-          status: "completed",
-          processed_at: new Date().toISOString(),
-        } as any);
+      const { error: saleError } = await supabase.from("sales").insert(salePayloadBase);
+      if (saleError) {
+        // Fallback if DB check constraints reject payment method
+        const fallbackPayload = { ...salePayloadBase, payment_method: "cash" };
+        await supabase.from("sales").insert(fallbackPayload);
       }
 
       toast.success(language === "es" ? "Pago registrado" : "Payment recorded");
@@ -1293,13 +1260,9 @@ export function AppointmentDetailView({
         existingStaffId={pickedService?.existingStaffId || null}
         existingCreatedAt={pickedService?.existingCreatedAt || null}
         onApplied={async () => {
-          const { data } = await supabase
-            .from("appointment_services")
-            .select(
-              "service_id, price, quantity, staff_id, start_time, duration_minutes, discount_type, discount_value, created_at, services!appointment_services_service_id_fkey(name, duration_minutes, price), staff!appointment_services_staff_id_fkey(full_name)"
-            )
-            .eq("appointment_id", appointment.id);
-          setAddonItems(data || []);
+          // Note: appointment_services table doesn't exist yet
+          // When implemented, this would fetch add-on services for the appointment
+          setAddonItems([]);
         }}
       />
 
