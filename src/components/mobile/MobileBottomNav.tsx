@@ -6,15 +6,20 @@ import { cn } from "@/lib/utils";
 import { AddActionSheet } from "./AddActionSheet";
 import { ClientActionSheet } from "./ClientActionSheet";
 import { SettingsSheet } from "./SettingsSheet";
+import { TutorialTip } from "./TutorialTip";
+import { useTutorialTips } from "@/hooks/useTutorialTips";
 import { useLanguage } from "@/contexts/LanguageContext";
 
 export function MobileBottomNav() {
   const location = useLocation();
   const navigate = useNavigate();
   const { t } = useLanguage();
+  const { shouldShowTip, markTipAsSeen } = useTutorialTips();
   const [addSheetOpen, setAddSheetOpen] = useState(false);
   const [clientSheetOpen, setClientSheetOpen] = useState(false);
   const [settingsSheetOpen, setSettingsSheetOpen] = useState(false);
+  const [showAddTip, setShowAddTip] = useState(false);
+  const [showClientsTip, setShowClientsTip] = useState(false);
   const [showFooterText, setShowFooterText] = useState(() => {
     return localStorage.getItem("show-footer-text") !== "false";
   });
@@ -41,6 +46,27 @@ export function MobileBottomNav() {
     };
   }, [showFooterText]);
 
+  // Show tutorial tips on first visit
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (shouldShowTip("add_button_tip")) {
+        setShowAddTip(true);
+      }
+    }, 2000);
+
+    return () => clearTimeout(timer);
+  }, [shouldShowTip]);
+
+  // Show clients tip after add tip is dismissed
+  useEffect(() => {
+    if (!showAddTip && shouldShowTip("clients_button_tip")) {
+      const timer = setTimeout(() => {
+        setShowClientsTip(true);
+      }, 500);
+      return () => clearTimeout(timer);
+    }
+  }, [showAddTip, shouldShowTip]);
+
   const navItems = [
     { icon: Calendar, label: t("calendar"), path: "/", onClick: () => navigate("/") },
     { icon: DollarSign, label: t("sales"), path: "/admin/sales", onClick: () => navigate("/admin/sales") },
@@ -52,7 +78,7 @@ export function MobileBottomNav() {
   return (
     <>
       <nav className="fixed bottom-0 left-0 right-0 bg-card border-t border-border pb-safe z-50 shadow-lg">
-        <div className="flex items-center justify-around px-2 py-2 max-w-2xl mx-auto">
+        <div className="flex items-center justify-around px-1 py-1 max-w-2xl mx-auto">
           {navItems.map((item, index) => {
             const Icon = item.icon;
             const isActive = item.path && location.pathname === item.path;
@@ -71,15 +97,15 @@ export function MobileBottomNav() {
                       : "text-muted-foreground hover:text-foreground",
                   showFooterText 
                     ? item.isSpecial 
-                      ? "gap-0 h-12 w-12 -mt-8" 
-                      : "gap-1 h-auto py-2 px-3"
-                    : "gap-0 h-12 w-12"
+                      ? "gap-0 h-10 w-10 -mt-6" 
+                      : "gap-0.5 h-auto py-1 px-2"
+                    : "gap-0 h-10 w-10"
                 )}
                 title={!showFooterText ? item.label : undefined}
               >
                 <Icon className={cn(
                   "transition-all duration-200 flex-shrink-0 !pointer-events-none",
-                  showFooterText ? "!h-6 !w-6" : "!h-8 !w-8"
+                  showFooterText ? "!h-5 !w-5" : "!h-6 !w-6"
                 )} />
                 {showFooterText && !item.isSpecial && (
                   <span className="text-xs font-medium">{item.label}</span>
@@ -93,6 +119,32 @@ export function MobileBottomNav() {
       <AddActionSheet open={addSheetOpen} onOpenChange={setAddSheetOpen} />
       <ClientActionSheet open={clientSheetOpen} onOpenChange={setClientSheetOpen} />
       <SettingsSheet open={settingsSheetOpen} onOpenChange={setSettingsSheetOpen} />
+
+      {/* Tutorial tip for add button */}
+      <TutorialTip
+        isVisible={showAddTip}
+        title="Botón de Agregar"
+        message="Usa este botón para agregar citas, ventas, servicios y más."
+        onDismiss={() => {
+          setShowAddTip(false);
+          markTipAsSeen("add_button_tip");
+        }}
+        position="bottom"
+        delay={300}
+      />
+
+      {/* Tutorial tip for clients button */}
+      <TutorialTip
+        isVisible={showClientsTip}
+        title="Gestión de Clientes"
+        message="Administra tus clientes, ve su historial y añade nuevos desde aquí."
+        onDismiss={() => {
+          setShowClientsTip(false);
+          markTipAsSeen("clients_button_tip");
+        }}
+        position="bottom"
+        delay={300}
+      />
     </>
   );
 }

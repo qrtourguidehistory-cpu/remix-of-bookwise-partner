@@ -8,7 +8,10 @@ export type TutorialTipId =
   | "client_management"
   | "staff_schedule"
   | "sales_tracking"
-  | "complete_public_profile";
+  | "complete_public_profile"
+  | "add_button_tip"
+  | "filter_button_tip"
+  | "clients_button_tip";
 
 interface UseTutorialTipsReturn {
   shouldShowTip: (tipId: TutorialTipId) => boolean;

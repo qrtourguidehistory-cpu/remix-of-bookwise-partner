@@ -19,6 +19,8 @@ import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/lib/supabaseClient";
 import { Checkbox } from "@/components/ui/checkbox";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { TutorialTip } from "./TutorialTip";
+import { useTutorialTips } from "@/hooks/useTutorialTips";
 
 export interface FilterState {
   searchQuery: string;
@@ -39,9 +41,21 @@ interface CalendarHeaderProps {
 export function CalendarHeader({ currentDate, onDateChange, view, onViewChange, filters, onFiltersChange }: CalendarHeaderProps) {
   const { t } = useLanguage();
   const { profile } = useAuth();
+  const { shouldShowTip, markTipAsSeen } = useTutorialTips();
   const [filterOpen, setFilterOpen] = useState(false);
   const [staff, setStaff] = useState<any[]>([]);
   const [services, setServices] = useState<any[]>([]);
+  const [showFilterTip, setShowFilterTip] = useState(false);
+
+  useEffect(() => {
+    // Show filter tip after a delay
+    const timer = setTimeout(() => {
+      if (shouldShowTip("filter_button_tip")) {
+        setShowFilterTip(true);
+      }
+    }, 3000);
+    return () => clearTimeout(timer);
+  }, [shouldShowTip]);
 
   useEffect(() => {
     if (profile?.business_id) {
@@ -328,6 +342,19 @@ export function CalendarHeader({ currentDate, onDateChange, view, onViewChange, 
           </div>
         </SheetContent>
       </Sheet>
+
+      {/* Tutorial tip for filter button */}
+      <TutorialTip
+        isVisible={showFilterTip}
+        title="Filtros del Calendario"
+        message="Filtra las citas por estado, personal o servicio para encontrar lo que buscas rápidamente."
+        onDismiss={() => {
+          setShowFilterTip(false);
+          markTipAsSeen("filter_button_tip");
+        }}
+        position="top"
+        delay={300}
+      />
     </>
   );
 }

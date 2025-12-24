@@ -91,6 +91,15 @@ export default function PhysicalLocationDetails({
     window.open("https://maps.google.com", "_blank");
   };
 
+  // Phone validation function
+  const validatePhoneFormat = (phone: string): boolean => {
+    if (!phone.trim()) return false;
+    // Allow formats: +52 555 123 4567, (555) 123-4567, 5551234567, +1-555-123-4567
+    const phoneRegex = /^[\+]?[(]?[0-9]{1,4}[)]?[-\s\.]?[0-9]{1,4}[-\s\.]?[0-9]{1,9}$/;
+    const cleanPhone = phone.replace(/[\s\-\(\)\.]/g, '');
+    return cleanPhone.length >= 10 && cleanPhone.length <= 15 && phoneRegex.test(phone.replace(/[\s]/g, ''));
+  };
+
   const validateForm = () => {
     const newErrors: Record<string, string> = {};
 
@@ -108,6 +117,12 @@ export default function PhysicalLocationDetails({
 
     if (!formData.businessPhone.trim()) {
       newErrors.businessPhone = "El teléfono del negocio es requerido";
+    } else if (!validatePhoneFormat(formData.businessPhone)) {
+      newErrors.businessPhone = "Formato de teléfono inválido (mínimo 10 dígitos)";
+    }
+
+    if (formData.ownerPhone.trim() && !validatePhoneFormat(formData.ownerPhone)) {
+      newErrors.ownerPhone = "Formato de teléfono inválido (mínimo 10 dígitos)";
     }
 
     if (formData.googleMapsUrl && !formData.googleMapsUrl.match(/^https?:\/\/.+/)) {
@@ -292,7 +307,11 @@ export default function PhysicalLocationDetails({
               value={formData.ownerPhone}
               onChange={(e) => setFormData({ ...formData, ownerPhone: e.target.value })}
               placeholder="+52 (555) 987-6543"
+              className={errors.ownerPhone ? "border-destructive" : ""}
             />
+            {errors.ownerPhone && (
+              <p className="text-sm text-destructive">{errors.ownerPhone}</p>
+            )}
             <p className="text-xs text-muted-foreground flex items-center gap-1">
               <CheckCircle2 className="w-3 h-3" />
               Este número NO será publicado

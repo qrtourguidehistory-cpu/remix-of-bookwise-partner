@@ -104,7 +104,14 @@ export default function BusinessProfileSettings() {
 
       if (error) throw error;
       if (data) {
-        setBusiness(data as unknown as BusinessProfile);
+        // Extract google_maps_url from location_details if not set directly
+        const locationDetails = data.location_details as any;
+        const googleMapsUrl = locationDetails?.googleMapsUrl || null;
+        
+        setBusiness({
+          ...data,
+          google_maps_url: googleMapsUrl,
+        } as unknown as BusinessProfile);
         setTempBusinessName((data as any).business_name || "");
         setTempPrimaryCategory((data as any).primary_category || "");
         setTempSecondaryCategories((data as any).secondary_categories || []);
