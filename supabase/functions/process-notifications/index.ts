@@ -1,26 +1,23 @@
-import "jsr:@supabase/functions-js/edge-runtime.d.ts";
-import { createClient } from 'jsr:@supabase/supabase-js@2';
+import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-Deno.serve(async (req) => {
-  // Handle CORS preflight requests
+serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
   }
 
   try {
-    // Create Supabase client
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     const now = new Date();
     
-    // Find all scheduled notifications that are due
     const { data: scheduledNotifications, error } = await supabase
       .from('appointment_notifications')
       .select('*')
@@ -45,20 +42,14 @@ Deno.serve(async (req) => {
     let processed = 0;
     let failed = 0;
 
-    // Process each scheduled notification
     for (const notification of scheduledNotifications) {
       try {
-        // Get appointment details
         const { data: appointment, error: appointmentError } = await supabase
           .from('appointments')
           .select(`
             id,
             client_id,
-            client_email,
-            client_phone,
-            client_name,
             appointment_date,
-            date,
             start_time,
             business_id,
             status,
@@ -68,7 +59,6 @@ Deno.serve(async (req) => {
           .single();
 
         if (appointmentError || !appointment) {
-          // Mark notification as cancelled if appointment doesn't exist
           await supabase
             .from('appointment_notifications')
             .update({ status: 'cancelled' })
@@ -76,9 +66,10 @@ Deno.serve(async (req) => {
           continue;
         }
 
-        // Skip if appointment is cancelled or completed (for reminders)
+        const apt = appointment as any;
+        
         if (notification.meta?.type === 'reminder' && 
-            (appointment.status === 'cancelled' || appointment.status === 'completed')) {
+            (apt.status === 'cancelled' || apt.status === 'completed')) {
           await supabase
             .from('appointment_notifications')
             .update({ status: 'cancelled' })
@@ -86,11 +77,10 @@ Deno.serve(async (req) => {
           continue;
         }
 
-        // Get notification settings
         const { data: settings } = await supabase
           .from('notification_settings')
           .select('*')
-          .eq('business_id', appointment.business_id)
+          .eq('business_id', apt.business_id)
           .single();
 
         if (!settings) {
@@ -102,16 +92,16 @@ Deno.serve(async (req) => {
           continue;
         }
 
-        // Get client info
-        let clientEmail = appointment.client_email || appointment.clients?.email;
-        let clientPhone = appointment.client_phone || appointment.clients?.phone;
-        let clientName = appointment.client_name || appointment.clients?.full_name;
+        const clientData = apt.clients as any;
+        let clientEmail = clientData?.email;
+        let clientPhone = clientData?.phone;
+        let clientName = clientData?.full_name;
 
-        if (appointment.client_id && !clientEmail && !clientPhone) {
+        if (apt.client_id && !clientEmail && !clientPhone) {
           const { data: client } = await supabase
             .from('clients')
             .select('email, phone, full_name')
-            .eq('id', appointment.client_id)
+            .eq('id', apt.client_id)
             .single();
 
           if (client) {
@@ -121,19 +111,16 @@ Deno.serve(async (req) => {
           }
         }
 
-        // Generate message
-        const appointmentDate = appointment.appointment_date || appointment.date;
+        const appointmentDate = apt.appointment_date;
         const message = generateNotificationMessage(
           notification.meta?.type || 'reminder',
           {
             clientName: clientName || 'Cliente',
             appointmentDate: appointmentDate ? new Date(appointmentDate).toLocaleDateString('es-ES') : undefined,
-            appointmentTime: appointment.start_time,
+            appointmentTime: apt.start_time,
           }
         );
 
-        // TODO: Integrate with actual email/SMS/push notification services
-        // For now, we just log to the database
         console.log('Sending notification:', {
           type: notification.meta?.type,
           clientEmail,
@@ -141,7 +128,6 @@ Deno.serve(async (req) => {
           message,
         });
 
-        // Update notification status to sent
         await supabase
           .from('appointment_notifications')
           .update({ 
@@ -159,14 +145,13 @@ Deno.serve(async (req) => {
 
         processed++;
 
-      } catch (err) {
+      } catch (err: any) {
         console.error(`Error processing notification ${notification.id}:`, err);
-        // Mark as failed
         await supabase
           .from('appointment_notifications')
           .update({ 
             status: 'failed',
-            meta: { ...notification.meta, error: err.message }
+            meta: { ...notification.meta, error: err?.message || 'Unknown error' }
           })
           .eq('id', notification.id);
         failed++;
@@ -183,10 +168,10 @@ Deno.serve(async (req) => {
       { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
 
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error processing notifications:', error);
     return new Response(
-      JSON.stringify({ error: error.message }),
+      JSON.stringify({ error: error?.message || 'Unknown error' }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }
@@ -219,4 +204,3 @@ function generateNotificationMessage(
       return `Hola ${clientName}, tienes una actualización sobre tu cita.`;
   }
 }
-
