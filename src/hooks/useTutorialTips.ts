@@ -18,12 +18,16 @@ interface UseTutorialTipsReturn {
   markTipAsSeen: (tipId: TutorialTipId) => Promise<void>;
   seenTips: string[];
   isLoading: boolean;
+  activeTip: TutorialTipId | null;
+  setActiveTip: (tipId: TutorialTipId | null) => void;
+  canShowTip: (tipId: TutorialTipId) => boolean;
 }
 
 export function useTutorialTips(): UseTutorialTipsReturn {
   const { user } = useAuth();
   const [seenTips, setSeenTips] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [activeTip, setActiveTip] = useState<TutorialTipId | null>(null);
 
   useEffect(() => {
     if (user?.id) {
@@ -49,16 +53,26 @@ export function useTutorialTips(): UseTutorialTipsReturn {
     }
   };
 
+  // Check if tip has been seen (used for one-time tips)
   const shouldShowTip = useCallback((tipId: TutorialTipId): boolean => {
     if (isLoading) return false;
     return !seenTips.includes(tipId);
   }, [seenTips, isLoading]);
+
+  // Check if a tip can be shown (not seen AND no other tip is active)
+  const canShowTip = useCallback((tipId: TutorialTipId): boolean => {
+    if (isLoading) return false;
+    if (seenTips.includes(tipId)) return false;
+    if (activeTip !== null && activeTip !== tipId) return false;
+    return true;
+  }, [seenTips, isLoading, activeTip]);
 
   const markTipAsSeen = useCallback(async (tipId: TutorialTipId) => {
     if (!user?.id || seenTips.includes(tipId)) return;
 
     const newSeenTips = [...seenTips, tipId];
     setSeenTips(newSeenTips);
+    setActiveTip(null);
 
     // Save to localStorage
     localStorage.setItem(`seen_tips_${user.id}`, JSON.stringify(newSeenTips));
@@ -69,5 +83,8 @@ export function useTutorialTips(): UseTutorialTipsReturn {
     markTipAsSeen,
     seenTips,
     isLoading,
+    activeTip,
+    setActiveTip,
+    canShowTip,
   };
 }
