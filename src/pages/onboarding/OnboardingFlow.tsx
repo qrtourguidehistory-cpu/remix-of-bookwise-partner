@@ -19,6 +19,8 @@ export default function OnboardingFlow() {
   const [data, setData] = useState({
     businessName: "",
     website: "",
+    ownerFirstName: "",
+    ownerLastName: "",
     phone: "",
     address: "",
     description: "",
@@ -116,16 +118,15 @@ export default function OnboardingFlow() {
     if (!user) return;
 
     try {
-      // Extract latitude and longitude from location details
-      const latitude = finalData.locationDetails?.latitude ?? null;
-      const longitude = finalData.locationDetails?.longitude ?? null;
+      // Extract google_maps_url from location details
+      const googleMapsUrl = finalData.locationDetails?.googleMapsUrl ?? null;
 
       // Prepare business data with defaults for required fields
       const businessData = {
         owner_id: user.id,
         business_name: finalData.businessName,
         website: finalData.website || null,
-        phone: finalData.phone || null,
+        phone: finalData.phone || finalData.locationDetails?.businessPhone || null,
         address: finalData.address || null,
         description: finalData.description || null,
         primary_category: finalData.primaryCategory || "general",
@@ -134,8 +135,6 @@ export default function OnboardingFlow() {
         team_size: finalData.teamSize || "1",
         account_type: finalData.accountType || "independent",
         location_details: finalData.locationDetails || null,
-        latitude: latitude,
-        longitude: longitude,
         onboarding_completed: true,
         is_public: false, // New businesses start with public visibility disabled
       };
@@ -180,10 +179,18 @@ export default function OnboardingFlow() {
           .eq("id", user.id);
       }
 
-      // Update profile with business_id
+      // Update profile with business_id and owner name
+      const ownerFullName = [finalData.ownerFirstName, finalData.ownerLastName]
+        .filter(Boolean)
+        .join(" ");
+      
       const { error: profileError } = await supabase
         .from("profiles")
-        .update({ business_id: business.id, onboarding_step: steps.length } as any)
+        .update({ 
+          business_id: business.id, 
+          onboarding_step: steps.length,
+          full_name: ownerFullName || null,
+        } as any)
         .eq("id", user.id);
 
       if (profileError) throw profileError;

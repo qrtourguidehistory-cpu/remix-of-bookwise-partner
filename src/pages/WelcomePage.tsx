@@ -19,18 +19,6 @@ export default function WelcomePage() {
   const imageScale = useTransform(scrollYProgress, [0, 1], [1, 1.2]);
   const overlayOpacity = useTransform(scrollYProgress, [0, 0.5], [0.3, 0.7]);
 
-  // Bounce float animation for title
-  const bounceFloatVariants: Variants = {
-    animate: {
-      y: [0, -15, 0],
-      transition: {
-        duration: 2,
-        repeat: Infinity,
-        ease: "easeInOut",
-        times: [0, 0.5, 1]
-      }
-    }
-  };
   const staggerContainer: Variants = {
     hidden: {
       opacity: 0
@@ -111,23 +99,18 @@ export default function WelcomePage() {
         }} />)}
         </div>
 
-        {/* Logo y nombre - Con animación de rebote */}
+        {/* Logo y nombre - Estático */}
         <motion.div className="absolute top-8 left-6 z-30" variants={staggerContainer} initial="hidden" animate="show">
-          <motion.div
-            variants={bounceFloatVariants}
-            animate="animate"
-          >
-            <motion.h1 className="text-5xl md:text-6xl font-black text-white tracking-tight" variants={fadeInUp} style={{
-              textShadow: "0 4px 20px rgba(0,0,0,0.5)"
-            }}>
-              BookWise
-            </motion.h1>
-            <motion.h2 className="text-4xl md:text-5xl font-black text-white/90 -mt-1 tracking-tight" variants={fadeInUp} style={{
-              textShadow: "0 4px 20px rgba(0,0,0,0.5)"
-            }}>
-              Partner
-            </motion.h2>
-          </motion.div>
+          <motion.h1 className="text-5xl md:text-6xl font-black text-white tracking-tight" variants={fadeInUp} style={{
+            textShadow: "0 4px 20px rgba(0,0,0,0.5)"
+          }}>
+            BookWise
+          </motion.h1>
+          <motion.h2 className="text-4xl md:text-5xl font-black text-white/90 -mt-1 tracking-tight" variants={fadeInUp} style={{
+            textShadow: "0 4px 20px rgba(0,0,0,0.5)"
+          }}>
+            Partner
+          </motion.h2>
           <motion.p className="text-white/70 text-sm mt-3 font-medium tracking-wide" variants={fadeInUp}>
             Gestión inteligente de citas
           </motion.p>

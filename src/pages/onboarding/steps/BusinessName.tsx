@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Building2, ArrowLeft } from "lucide-react";
+import { Building2, ArrowLeft, User } from "lucide-react";
 
 interface BusinessNameProps {
   data: any;
@@ -13,10 +13,14 @@ interface BusinessNameProps {
 export default function BusinessName({ data, onNext, onBack }: BusinessNameProps) {
   const [businessName, setBusinessName] = useState(data.businessName || "");
   const [website, setWebsite] = useState(data.website || "");
+  const [ownerFirstName, setOwnerFirstName] = useState(data.ownerFirstName || "");
+  const [ownerLastName, setOwnerLastName] = useState(data.ownerLastName || "");
 
   const handleContinue = () => {
-    onNext({ businessName, website });
+    onNext({ businessName, website, ownerFirstName, ownerLastName });
   };
+
+  const isValid = businessName.trim() && ownerFirstName.trim() && ownerLastName.trim();
 
   return (
     <div className="space-y-6">
@@ -27,31 +31,69 @@ export default function BusinessName({ data, onNext, onBack }: BusinessNameProps
       </div>
 
       <p className="text-center text-muted-foreground">
-        This is the brand name your clients will see
+        Información de tu negocio y propietario
       </p>
 
       <div className="space-y-4">
+        {/* Owner Information Section */}
+        <div className="p-4 bg-muted/30 rounded-lg space-y-4">
+          <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
+            <User className="w-4 h-4" />
+            <span>Información del propietario</span>
+          </div>
+          
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-2">
+              <Label htmlFor="ownerFirstName" className="text-base">
+                Nombre *
+              </Label>
+              <Input
+                id="ownerFirstName"
+                placeholder="Juan"
+                value={ownerFirstName}
+                onChange={(e) => setOwnerFirstName(e.target.value)}
+                className="h-12"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="ownerLastName" className="text-base">
+                Apellido *
+              </Label>
+              <Input
+                id="ownerLastName"
+                placeholder="Pérez"
+                value={ownerLastName}
+                onChange={(e) => setOwnerLastName(e.target.value)}
+                className="h-12"
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Business Information Section */}
         <div className="space-y-2">
           <Label htmlFor="businessName" className="text-base">
-            Business Name *
+            Nombre del negocio *
           </Label>
           <Input
             id="businessName"
-            placeholder="e.g., Studio Elite Salon"
+            placeholder="ej., Studio Elite Salon"
             value={businessName}
             onChange={(e) => setBusinessName(e.target.value)}
             className="h-12 text-lg"
-            autoFocus
           />
+          <p className="text-xs text-muted-foreground">
+            Este es el nombre que verán tus clientes
+          </p>
         </div>
 
         <div className="space-y-2">
           <Label htmlFor="website" className="text-base">
-            Website (optional)
+            Sitio web (opcional)
           </Label>
           <Input
             id="website"
-            placeholder="https://yourbusiness.com"
+            placeholder="https://tunegocio.com"
             value={website}
             onChange={(e) => setWebsite(e.target.value)}
             className="h-12"
@@ -63,7 +105,7 @@ export default function BusinessName({ data, onNext, onBack }: BusinessNameProps
       <div className="space-y-3">
         <Button
           onClick={handleContinue}
-          disabled={!businessName.trim()}
+          disabled={!isValid}
           className="w-full h-12 text-base"
           size="lg"
         >

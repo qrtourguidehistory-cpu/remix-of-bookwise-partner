@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { ArrowLeft, MapPin, Loader2, CheckCircle2 } from "lucide-react";
+import { ArrowLeft, MapPin, Loader2, CheckCircle2, Phone, User, Building2, ExternalLink } from "lucide-react";
 import { toast } from "sonner";
 
 interface PhysicalLocationDetailsProps {
@@ -18,103 +18,100 @@ export default function PhysicalLocationDetails({
   onBack 
 }: PhysicalLocationDetailsProps) {
   const [formData, setFormData] = useState({
-    address: data.locationDetails?.address || "",
+    country: data.locationDetails?.country || "",
+    state: data.locationDetails?.state || "",
+    city: data.locationDetails?.city || "",
     googleMapsUrl: data.locationDetails?.googleMapsUrl || "",
-    phone: data.locationDetails?.phone || "",
+    businessPhone: data.locationDetails?.businessPhone || data.locationDetails?.phone || "",
+    ownerPhone: data.locationDetails?.ownerPhone || "",
     reference: data.locationDetails?.reference || "",
-    latitude: data.locationDetails?.latitude || null,
-    longitude: data.locationDetails?.longitude || null,
   });
 
   const [errors, setErrors] = useState<Record<string, string>>({});
-  const [isGeocoding, setIsGeocoding] = useState(false);
-  const [geocodeSuccess, setGeocodeSuccess] = useState(false);
+  const [isExtracting, setIsExtracting] = useState(false);
 
-  const geocodeAddress = useCallback(async (address: string) => {
-    if (!address.trim()) return;
+  const extractLocationFromUrl = useCallback(async () => {
+    if (!formData.googleMapsUrl.trim()) {
+      toast.error("Por favor ingresa un enlace de Google Maps");
+      return;
+    }
     
-    setIsGeocoding(true);
-    setGeocodeSuccess(false);
+    setIsExtracting(true);
     
     try {
-      // Try to extract coordinates from Google Maps URL first
-      if (formData.googleMapsUrl) {
-        const urlMatch = formData.googleMapsUrl.match(/@(-?\d+\.\d+),(-?\d+\.\d+)/);
-        if (urlMatch) {
-          const lat = parseFloat(urlMatch[1]);
-          const lng = parseFloat(urlMatch[2]);
+      // Extract place name from various Google Maps URL formats
+      let placeName = "";
+      
+      // Format: /place/Place+Name/
+      const placeMatch = formData.googleMapsUrl.match(/\/place\/([^/]+)\//);
+      if (placeMatch) {
+        placeName = decodeURIComponent(placeMatch[1].replace(/\+/g, " "));
+      }
+      
+      // Format: /maps/search/Place+Name/
+      const searchMatch = formData.googleMapsUrl.match(/\/maps\/search\/([^/]+)/);
+      if (!placeName && searchMatch) {
+        placeName = decodeURIComponent(searchMatch[1].replace(/\+/g, " "));
+      }
+
+      if (placeName) {
+        // Try to extract city, state, country from the place name
+        const parts = placeName.split(",").map(p => p.trim());
+        
+        if (parts.length >= 3) {
           setFormData(prev => ({
             ...prev,
-            latitude: lat,
-            longitude: lng
+            city: parts[0] || prev.city,
+            state: parts[1] || prev.state,
+            country: parts[parts.length - 1] || prev.country,
           }));
-          setGeocodeSuccess(true);
-          toast.success("Coordenadas extraídas del enlace de Google Maps");
-          setIsGeocoding(false);
-          return;
+          toast.success("Ubicación extraída del enlace");
+        } else if (parts.length === 2) {
+          setFormData(prev => ({
+            ...prev,
+            city: parts[0] || prev.city,
+            state: parts[1] || prev.state,
+          }));
+          toast.success("Ubicación parcialmente extraída");
+        } else {
+          toast.info("Ingresa manualmente el país, estado y ciudad");
         }
-      }
-
-      // Use Nominatim (OpenStreetMap) for geocoding - free and no API key required
-      const encodedAddress = encodeURIComponent(address);
-      const response = await fetch(
-        `https://nominatim.openstreetmap.org/search?format=json&q=${encodedAddress}&limit=1`,
-        {
-          headers: {
-            'User-Agent': 'BookWisePartner/1.0'
-          }
-        }
-      );
-      
-      if (!response.ok) {
-        throw new Error('Geocoding failed');
-      }
-
-      const results = await response.json();
-      
-      if (results.length > 0) {
-        const { lat, lon } = results[0];
-        setFormData(prev => ({
-          ...prev,
-          latitude: parseFloat(lat),
-          longitude: parseFloat(lon)
-        }));
-        setGeocodeSuccess(true);
-        toast.success("Ubicación encontrada correctamente");
       } else {
-        toast.warning("No se encontraron coordenadas para esta dirección. Puedes ingresarlas manualmente.");
+        toast.info("No se pudo extraer la ubicación automáticamente. Ingresa los datos manualmente.");
       }
     } catch (error) {
-      console.error('Geocoding error:', error);
-      toast.error("Error al buscar coordenadas. Puedes ingresarlas manualmente.");
+      console.error('Error extracting location:', error);
+      toast.error("Error al procesar el enlace");
     } finally {
-      setIsGeocoding(false);
+      setIsExtracting(false);
     }
   }, [formData.googleMapsUrl]);
+
+  const openGoogleMaps = () => {
+    window.open("https://maps.google.com", "_blank");
+  };
 
   const validateForm = () => {
     const newErrors: Record<string, string> = {};
 
-    if (!formData.address.trim()) {
-      newErrors.address = "Address is required";
+    if (!formData.country.trim()) {
+      newErrors.country = "El país es requerido";
     }
 
-    if (!formData.phone.trim()) {
-      newErrors.phone = "Phone number is required";
+    if (!formData.state.trim()) {
+      newErrors.state = "El estado es requerido";
+    }
+
+    if (!formData.city.trim()) {
+      newErrors.city = "La ciudad es requerida";
+    }
+
+    if (!formData.businessPhone.trim()) {
+      newErrors.businessPhone = "El teléfono del negocio es requerido";
     }
 
     if (formData.googleMapsUrl && !formData.googleMapsUrl.match(/^https?:\/\/.+/)) {
-      newErrors.googleMapsUrl = "Please enter a valid URL";
-    }
-
-    // Validate latitude range
-    if (formData.latitude !== null && (formData.latitude < -90 || formData.latitude > 90)) {
-      newErrors.latitude = "Latitude must be between -90 and 90";
-    }
-
-    // Validate longitude range
-    if (formData.longitude !== null && (formData.longitude < -180 || formData.longitude > 180)) {
-      newErrors.longitude = "Longitude must be between -180 and 180";
+      newErrors.googleMapsUrl = "Por favor ingresa una URL válida";
     }
 
     setErrors(newErrors);
@@ -123,14 +120,22 @@ export default function PhysicalLocationDetails({
 
   const handleContinue = () => {
     if (validateForm()) {
+      // Build address from components
+      const address = [formData.city, formData.state, formData.country]
+        .filter(Boolean)
+        .join(", ");
+
       onNext({ 
+        address,
+        phone: formData.businessPhone,
         locationDetails: {
-          address: formData.address,
+          country: formData.country,
+          state: formData.state,
+          city: formData.city,
           googleMapsUrl: formData.googleMapsUrl || null,
-          phone: formData.phone,
+          businessPhone: formData.businessPhone,
+          ownerPhone: formData.ownerPhone || null,
           reference: formData.reference || null,
-          latitude: formData.latitude,
-          longitude: formData.longitude,
         }
       });
     }
@@ -142,154 +147,172 @@ export default function PhysicalLocationDetails({
         <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-primary/10 mb-4">
           <MapPin className="w-8 h-8 text-primary" />
         </div>
-        <h2 className="text-xl font-semibold mb-2">Business Location</h2>
+        <h2 className="text-xl font-semibold mb-2">Ubicación del negocio</h2>
         <p className="text-muted-foreground">
-          Tell us where your clients can find you
+          Indica dónde pueden encontrarte tus clientes
         </p>
       </div>
 
       <div className="space-y-4">
-        <div className="space-y-2">
-          <Label htmlFor="address">
-            Business Address <span className="text-destructive">*</span>
-          </Label>
+        {/* Google Maps URL Section */}
+        <div className="p-4 bg-muted/30 rounded-lg space-y-3">
+          <div className="flex items-center justify-between">
+            <Label htmlFor="googleMapsUrl" className="text-sm font-medium">
+              Enlace de Google Maps
+            </Label>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={openGoogleMaps}
+              className="text-xs h-7"
+            >
+              <ExternalLink className="w-3 h-3 mr-1" />
+              Abrir Maps
+            </Button>
+          </div>
           <div className="flex gap-2">
             <Input
-              id="address"
-              value={formData.address}
-              onChange={(e) => {
-                setFormData({ ...formData, address: e.target.value });
-                setGeocodeSuccess(false);
-              }}
-              placeholder="123 Main Street, City, State ZIP"
-              className={errors.address ? "border-destructive" : ""}
+              id="googleMapsUrl"
+              type="url"
+              value={formData.googleMapsUrl}
+              onChange={(e) => setFormData({ ...formData, googleMapsUrl: e.target.value })}
+              placeholder="https://maps.google.com/..."
+              className={errors.googleMapsUrl ? "border-destructive" : ""}
             />
             <Button 
               type="button" 
               variant="outline" 
               size="icon"
-              onClick={() => geocodeAddress(formData.address)}
-              disabled={isGeocoding || !formData.address.trim()}
-              title="Buscar coordenadas"
+              onClick={extractLocationFromUrl}
+              disabled={isExtracting || !formData.googleMapsUrl.trim()}
+              title="Extraer ubicación"
             >
-              {isGeocoding ? (
+              {isExtracting ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
-              ) : geocodeSuccess ? (
-                <CheckCircle2 className="h-4 w-4 text-green-500" />
               ) : (
                 <MapPin className="h-4 w-4" />
               )}
             </Button>
           </div>
-          {errors.address && (
-            <p className="text-sm text-destructive">{errors.address}</p>
-          )}
-        </div>
-
-        <div className="space-y-2">
-          <Label htmlFor="phone">
-            Contact Phone <span className="text-destructive">*</span>
-          </Label>
-          <Input
-            id="phone"
-            type="tel"
-            value={formData.phone}
-            onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-            placeholder="+1 (555) 123-4567"
-            className={errors.phone ? "border-destructive" : ""}
-          />
-          {errors.phone && (
-            <p className="text-sm text-destructive">{errors.phone}</p>
-          )}
-        </div>
-
-        <div className="space-y-2">
-          <Label htmlFor="googleMapsUrl">
-            Google Maps URL <span className="text-muted-foreground">(optional)</span>
-          </Label>
-          <Input
-            id="googleMapsUrl"
-            type="url"
-            value={formData.googleMapsUrl}
-            onChange={(e) => setFormData({ ...formData, googleMapsUrl: e.target.value })}
-            placeholder="https://maps.google.com/..."
-            className={errors.googleMapsUrl ? "border-destructive" : ""}
-          />
-          {errors.googleMapsUrl && (
-            <p className="text-sm text-destructive">{errors.googleMapsUrl}</p>
-          )}
           <p className="text-xs text-muted-foreground">
-            Share your Google Maps link so clients can find you easily. We'll extract coordinates automatically.
+            Busca tu negocio en Google Maps, copia el enlace y pégalo aquí. Este enlace también aparecerá en tu perfil público.
           </p>
         </div>
 
-        {/* Latitude and Longitude fields */}
-        <div className="grid grid-cols-2 gap-4">
+        {/* Location Fields */}
+        <div className="grid grid-cols-1 gap-4">
           <div className="space-y-2">
-            <Label htmlFor="latitude">
-              Latitude <span className="text-muted-foreground">(optional)</span>
+            <Label htmlFor="country">
+              País <span className="text-destructive">*</span>
             </Label>
             <Input
-              id="latitude"
-              type="number"
-              step="any"
-              value={formData.latitude ?? ""}
-              onChange={(e) => setFormData({ 
-                ...formData, 
-                latitude: e.target.value ? parseFloat(e.target.value) : null 
-              })}
-              placeholder="e.g., 19.4326"
-              className={errors.latitude ? "border-destructive" : ""}
+              id="country"
+              value={formData.country}
+              onChange={(e) => setFormData({ ...formData, country: e.target.value })}
+              placeholder="México"
+              className={errors.country ? "border-destructive" : ""}
             />
-            {errors.latitude && (
-              <p className="text-sm text-destructive">{errors.latitude}</p>
+            {errors.country && (
+              <p className="text-sm text-destructive">{errors.country}</p>
             )}
           </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="longitude">
-              Longitude <span className="text-muted-foreground">(optional)</span>
-            </Label>
-            <Input
-              id="longitude"
-              type="number"
-              step="any"
-              value={formData.longitude ?? ""}
-              onChange={(e) => setFormData({ 
-                ...formData, 
-                longitude: e.target.value ? parseFloat(e.target.value) : null 
-              })}
-              placeholder="e.g., -99.1332"
-              className={errors.longitude ? "border-destructive" : ""}
-            />
-            {errors.longitude && (
-              <p className="text-sm text-destructive">{errors.longitude}</p>
-            )}
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-2">
+              <Label htmlFor="state">
+                Estado <span className="text-destructive">*</span>
+              </Label>
+              <Input
+                id="state"
+                value={formData.state}
+                onChange={(e) => setFormData({ ...formData, state: e.target.value })}
+                placeholder="Jalisco"
+                className={errors.state ? "border-destructive" : ""}
+              />
+              {errors.state && (
+                <p className="text-sm text-destructive">{errors.state}</p>
+              )}
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="city">
+                Ciudad <span className="text-destructive">*</span>
+              </Label>
+              <Input
+                id="city"
+                value={formData.city}
+                onChange={(e) => setFormData({ ...formData, city: e.target.value })}
+                placeholder="Guadalajara"
+                className={errors.city ? "border-destructive" : ""}
+              />
+              {errors.city && (
+                <p className="text-sm text-destructive">{errors.city}</p>
+              )}
+            </div>
           </div>
         </div>
 
-        {formData.latitude && formData.longitude && (
-          <div className="p-3 bg-green-50 dark:bg-green-950/20 rounded-lg border border-green-200 dark:border-green-800">
-            <p className="text-sm text-green-700 dark:text-green-300 flex items-center gap-2">
-              <CheckCircle2 className="h-4 w-4" />
-              Ubicación configurada: {formData.latitude.toFixed(6)}, {formData.longitude.toFixed(6)}
+        {/* Contact Section */}
+        <div className="space-y-4 pt-2">
+          <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
+            <Phone className="w-4 h-4" />
+            <span>Información de contacto</span>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="businessPhone" className="flex items-center gap-2">
+              <Building2 className="w-4 h-4" />
+              Teléfono del negocio <span className="text-destructive">*</span>
+            </Label>
+            <Input
+              id="businessPhone"
+              type="tel"
+              value={formData.businessPhone}
+              onChange={(e) => setFormData({ ...formData, businessPhone: e.target.value })}
+              placeholder="+52 (555) 123-4567"
+              className={errors.businessPhone ? "border-destructive" : ""}
+            />
+            {errors.businessPhone && (
+              <p className="text-sm text-destructive">{errors.businessPhone}</p>
+            )}
+            <p className="text-xs text-muted-foreground">
+              Este número será visible en tu perfil público
             </p>
           </div>
-        )}
+
+          <div className="space-y-2">
+            <Label htmlFor="ownerPhone" className="flex items-center gap-2">
+              <User className="w-4 h-4" />
+              Teléfono del propietario <span className="text-muted-foreground">(opcional)</span>
+            </Label>
+            <Input
+              id="ownerPhone"
+              type="tel"
+              value={formData.ownerPhone}
+              onChange={(e) => setFormData({ ...formData, ownerPhone: e.target.value })}
+              placeholder="+52 (555) 987-6543"
+            />
+            <p className="text-xs text-muted-foreground flex items-center gap-1">
+              <CheckCircle2 className="w-3 h-3" />
+              Este número NO será publicado
+            </p>
+          </div>
+        </div>
 
         <div className="space-y-2">
           <Label htmlFor="reference">
-            Location Reference <span className="text-muted-foreground">(optional)</span>
+            Referencia de ubicación <span className="text-muted-foreground">(opcional)</span>
           </Label>
           <Textarea
             id="reference"
             value={formData.reference}
             onChange={(e) => setFormData({ ...formData, reference: e.target.value })}
-            placeholder="e.g., Blue building next to the pharmacy, second floor"
-            rows={3}
+            placeholder="ej., Edificio azul junto a la farmacia, segundo piso"
+            rows={2}
           />
           <p className="text-xs text-muted-foreground">
-            Any additional details to help clients find your location
+            Detalles adicionales para ayudar a tus clientes a encontrarte
           </p>
         </div>
       </div>
