@@ -75,11 +75,28 @@ export async function validatePublicVisibilityRequirements(
        (biz.location_details as any).googleMapsUrl : null);
 
     if (googleMapsUrl && googleMapsUrl.trim().length > 0) {
-      // Validate it's a valid URL
-      try {
-        new URL(googleMapsUrl);
+      // Validate it's a valid Google Maps URL (supports various formats)
+      const isValidGoogleMapsUrl = (url: string): boolean => {
+        try {
+          const urlObj = new URL(url);
+          // Accept any of these Google Maps URL formats
+          const validHosts = [
+            'maps.google.com',
+            'www.maps.google.com',
+            'google.com',
+            'www.google.com',
+            'maps.app.goo.gl',
+            'goo.gl'
+          ];
+          return validHosts.some(host => urlObj.hostname === host || urlObj.hostname.endsWith('.google.com'));
+        } catch {
+          return false;
+        }
+      };
+
+      if (isValidGoogleMapsUrl(googleMapsUrl)) {
         requirements.googleMapsUrl = true;
-      } catch {
+      } else {
         missingRequirements.push("URL de Google Maps válida");
       }
     } else {

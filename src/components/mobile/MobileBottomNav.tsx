@@ -14,12 +14,14 @@ export function MobileBottomNav() {
   const location = useLocation();
   const navigate = useNavigate();
   const { t } = useLanguage();
-  const { shouldShowTip, markTipAsSeen } = useTutorialTips();
+  const { canShowTip, markTipAsSeen, setActiveTip } = useTutorialTips();
   const [addSheetOpen, setAddSheetOpen] = useState(false);
   const [clientSheetOpen, setClientSheetOpen] = useState(false);
   const [settingsSheetOpen, setSettingsSheetOpen] = useState(false);
   const [showAddTip, setShowAddTip] = useState(false);
   const [showClientsTip, setShowClientsTip] = useState(false);
+  const [addButtonPressed, setAddButtonPressed] = useState(false);
+  const [clientsButtonPressed, setClientsButtonPressed] = useState(false);
   const [showFooterText, setShowFooterText] = useState(() => {
     return localStorage.getItem("show-footer-text") !== "false";
   });
@@ -46,32 +48,31 @@ export function MobileBottomNav() {
     };
   }, [showFooterText]);
 
-  // Show tutorial tips on first visit
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      if (shouldShowTip("add_button_tip")) {
-        setShowAddTip(true);
-      }
-    }, 2000);
-
-    return () => clearTimeout(timer);
-  }, [shouldShowTip]);
-
-  // Show clients tip after add tip is dismissed
-  useEffect(() => {
-    if (!showAddTip && shouldShowTip("clients_button_tip")) {
-      const timer = setTimeout(() => {
-        setShowClientsTip(true);
-      }, 500);
-      return () => clearTimeout(timer);
+  // Show add tip when button is pressed for first time
+  const handleAddButtonClick = () => {
+    if (canShowTip("add_button_tip") && !addButtonPressed) {
+      setAddButtonPressed(true);
+      setShowAddTip(true);
+      setActiveTip("add_button_tip");
     }
-  }, [showAddTip, shouldShowTip]);
+    setAddSheetOpen(true);
+  };
+
+  // Show clients tip when button is pressed for first time
+  const handleClientsButtonClick = () => {
+    if (canShowTip("clients_button_tip") && !clientsButtonPressed) {
+      setClientsButtonPressed(true);
+      setShowClientsTip(true);
+      setActiveTip("clients_button_tip");
+    }
+    setClientSheetOpen(true);
+  };
 
   const navItems = [
     { icon: Calendar, label: t("calendar"), path: "/", onClick: () => navigate("/") },
     { icon: DollarSign, label: t("sales"), path: "/admin/sales", onClick: () => navigate("/admin/sales") },
-    { icon: Plus, label: t("add"), isSpecial: true, onClick: () => setAddSheetOpen(true) },
-    { icon: Users, label: t("clients"), onClick: () => setClientSheetOpen(true) },
+    { icon: Plus, label: t("add"), isSpecial: true, onClick: handleAddButtonClick },
+    { icon: Users, label: t("clients"), onClick: handleClientsButtonClick },
     { icon: Grid3x3, label: t("menu"), onClick: () => setSettingsSheetOpen(true) },
   ];
 

@@ -18,7 +18,7 @@ import { isSameDay, parseISO } from "date-fns";
 export default function MobileCalendar() {
   const navigate = useNavigate();
   const { profile } = useAuth();
-  const { shouldShowTip, markTipAsSeen } = useTutorialTips();
+  const { canShowTip, markTipAsSeen, setActiveTip } = useTutorialTips();
   const [currentDate, setCurrentDate] = useState(new Date());
   const [view, setView] = useState<"day" | "week" | "month" | "staff">("day");
   const [filters, setFilters] = useState<FilterState>({
@@ -45,8 +45,12 @@ export default function MobileCalendar() {
           .maybeSingle();
 
         // Show tip if business exists, onboarding is completed, and is_public is false
-        if (data?.onboarding_completed && !data?.is_public && shouldShowTip("complete_public_profile")) {
-          setShowPublicProfileTip(true);
+        // Only show after a short delay and if no other tip is active
+        if (data?.onboarding_completed && !data?.is_public && canShowTip("complete_public_profile")) {
+          setTimeout(() => {
+            setShowPublicProfileTip(true);
+            setActiveTip("complete_public_profile");
+          }, 2000);
         }
       } catch (error) {
         console.error("Error checking business status:", error);
@@ -54,7 +58,7 @@ export default function MobileCalendar() {
     };
 
     checkBusinessPublicStatus();
-  }, [profile?.business_id, shouldShowTip]);
+  }, [profile?.business_id, canShowTip]);
 
   // Listen for appointment detail open events from notifications
   useEffect(() => {

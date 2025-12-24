@@ -41,21 +41,22 @@ interface CalendarHeaderProps {
 export function CalendarHeader({ currentDate, onDateChange, view, onViewChange, filters, onFiltersChange }: CalendarHeaderProps) {
   const { t } = useLanguage();
   const { profile } = useAuth();
-  const { shouldShowTip, markTipAsSeen } = useTutorialTips();
+  const { canShowTip, markTipAsSeen, setActiveTip, activeTip } = useTutorialTips();
   const [filterOpen, setFilterOpen] = useState(false);
   const [staff, setStaff] = useState<any[]>([]);
   const [services, setServices] = useState<any[]>([]);
   const [showFilterTip, setShowFilterTip] = useState(false);
+  const [filterButtonPressed, setFilterButtonPressed] = useState(false);
 
-  useEffect(() => {
-    // Show filter tip after a delay
-    const timer = setTimeout(() => {
-      if (shouldShowTip("filter_button_tip")) {
-        setShowFilterTip(true);
-      }
-    }, 3000);
-    return () => clearTimeout(timer);
-  }, [shouldShowTip]);
+  // Show filter tip when button is pressed for first time
+  const handleFilterButtonClick = () => {
+    if (canShowTip("filter_button_tip") && !filterButtonPressed) {
+      setFilterButtonPressed(true);
+      setShowFilterTip(true);
+      setActiveTip("filter_button_tip");
+    }
+    setFilterOpen(true);
+  };
 
   useEffect(() => {
     if (profile?.business_id) {
@@ -192,7 +193,7 @@ export function CalendarHeader({ currentDate, onDateChange, view, onViewChange, 
           <Button 
             variant="ghost" 
             size="icon" 
-            onClick={() => setFilterOpen(true)} 
+            onClick={handleFilterButtonClick} 
             className="text-primary relative"
           >
             <Filter className="h-5 w-5" />
