@@ -482,6 +482,12 @@ export default function BusinessProfileSettings() {
 
     setSaving(true);
     try {
+      // Build updated location_details with googleMapsUrl
+      const updatedLocationDetails = {
+        ...(business.location_details || {}),
+        googleMapsUrl: business.google_maps_url || null,
+      };
+
       const { error } = await supabase
         .from("businesses")
         .update({
@@ -492,7 +498,7 @@ export default function BusinessProfileSettings() {
           cover_image_url: business.cover_image_url || null,
           phone: business.phone || null,
           address: business.address || null,
-          google_maps_url: business.google_maps_url || null,
+          location_details: updatedLocationDetails,
         })
         .eq("id", profile.business_id);
 
