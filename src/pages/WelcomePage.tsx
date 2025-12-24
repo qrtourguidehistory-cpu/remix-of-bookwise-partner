@@ -1,6 +1,6 @@
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { ArrowRight, Calendar, Users, Clock } from "lucide-react";
+import { ArrowRight } from "lucide-react";
 import { motion, useScroll, useTransform, Variants } from "framer-motion";
 import { useRef } from "react";
 import welcomeImage from "@/assets/welcome-booking.jpg";
@@ -19,14 +19,15 @@ export default function WelcomePage() {
   const imageScale = useTransform(scrollYProgress, [0, 1], [1, 1.2]);
   const overlayOpacity = useTransform(scrollYProgress, [0, 0.5], [0.3, 0.7]);
 
-  // Floating animation variants
-  const floatingVariants: Variants = {
+  // Bounce float animation for title
+  const bounceFloatVariants: Variants = {
     animate: {
-      y: [0, -10, 0],
+      y: [0, -15, 0],
       transition: {
-        duration: 3,
+        duration: 2,
         repeat: Infinity,
-        ease: "easeInOut"
+        ease: "easeInOut",
+        times: [0, 0.5, 1]
       }
     }
   };
@@ -70,16 +71,6 @@ export default function WelcomePage() {
       }
     }
   };
-  const features = [{
-    icon: Calendar,
-    label: "Agenda inteligente"
-  }, {
-    icon: Users,
-    label: "Gestión de clientes"
-  }, {
-    icon: Clock,
-    label: "Recordatorios automáticos"
-  }];
   return <div ref={containerRef} className="min-h-screen bg-background flex flex-col relative overflow-hidden">
       {/* Background Image with Parallax */}
       <div className="flex-1 relative">
@@ -120,36 +111,23 @@ export default function WelcomePage() {
         }} />)}
         </div>
 
-        {/* Logo y nombre - Con animación elaborada */}
+        {/* Logo y nombre - Con animación de rebote */}
         <motion.div className="absolute top-8 left-6 z-30" variants={staggerContainer} initial="hidden" animate="show">
-          <motion.div className="flex items-center gap-3 mb-3" variants={scaleIn}>
-            <motion.div className="w-14 h-14 bg-white/20 backdrop-blur-md rounded-2xl flex items-center justify-center border border-white/30 shadow-2xl" variants={floatingVariants} animate="animate">
-              <Calendar className="w-7 h-7 text-white" />
-            </motion.div>
-            <motion.div initial={{
-            opacity: 0,
-            x: -20
-          }} animate={{
-            opacity: 1,
-            x: 0
-          }} transition={{
-            delay: 0.5,
-            duration: 0.5
-          }}>
-              
-            </motion.div>
+          <motion.div
+            variants={bounceFloatVariants}
+            animate="animate"
+          >
+            <motion.h1 className="text-5xl md:text-6xl font-black text-white tracking-tight" variants={fadeInUp} style={{
+              textShadow: "0 4px 20px rgba(0,0,0,0.5)"
+            }}>
+              BookWise
+            </motion.h1>
+            <motion.h2 className="text-4xl md:text-5xl font-black text-white/90 -mt-1 tracking-tight" variants={fadeInUp} style={{
+              textShadow: "0 4px 20px rgba(0,0,0,0.5)"
+            }}>
+              Partner
+            </motion.h2>
           </motion.div>
-          
-          <motion.h1 className="text-5xl md:text-6xl font-black text-white tracking-tight" variants={fadeInUp} style={{
-          textShadow: "0 4px 20px rgba(0,0,0,0.5)"
-        }}>
-            BookWise
-          </motion.h1>
-          <motion.h2 className="text-4xl md:text-5xl font-black text-white/90 -mt-1 tracking-tight" variants={fadeInUp} style={{
-          textShadow: "0 4px 20px rgba(0,0,0,0.5)"
-        }}>
-            Partner
-          </motion.h2>
           <motion.p className="text-white/70 text-sm mt-3 font-medium tracking-wide" variants={fadeInUp}>
             Gestión inteligente de citas
           </motion.p>
