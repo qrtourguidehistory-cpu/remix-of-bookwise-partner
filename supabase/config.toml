@@ -1,1 +1,19 @@
 project_id = "kehnrbmsscyaiafmdbwb"
+
+[functions.send-sms-reminder]
+verify_jwt = false
+
+[functions.send-push-notification]
+verify_jwt = false
+
+[functions.process-notifications]
+verify_jwt = false
+
+[functions.notify-next-client]
+verify_jwt = false
+
+[functions.invite-client-early]
+verify_jwt = false
+
+[functions.send-early-arrival-request]
+verify_jwt = false
