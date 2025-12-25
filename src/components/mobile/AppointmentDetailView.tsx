@@ -1088,6 +1088,12 @@ export function AppointmentDetailView({
         userId={profileModalTarget.userId}
         clientId={profileModalTarget.clientId}
         appointmentId={appointment?.id}
+        onClientAdded={async () => {
+          // Refresh client data after adding
+          await refreshAppointmentClient();
+          // Force UI update by toggling the modal
+          setUserProfileModalOpen(false);
+        }}
       />
 
       <AppointmentStatusSheet

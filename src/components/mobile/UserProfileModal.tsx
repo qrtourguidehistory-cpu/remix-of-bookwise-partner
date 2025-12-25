@@ -66,20 +66,15 @@ export function UserProfileModal({
     setClientMode(false);
     
     try {
-      // 1) If we have a clientId, prefer showing the business client profile (editable)
-      if (clientId) {
-        console.log("🔍 Buscando cliente con clientId:", clientId, "business_id:", profile?.business_id);
-        let clientQuery = supabase
+      // PRIORITY 1: If we have a clientId, try to find the business client first
+      if (clientId && profile?.business_id) {
+        console.log("🔍 Buscando cliente con clientId:", clientId, "business_id:", profile.business_id);
+        const { data: clientRow, error: clientErr } = await supabase
           .from("clients")
           .select("full_name, email, phone, business_id, user_id")
-          .eq("id", clientId);
-        
-        // ✅ FIX: Filter by business_id if available to ensure we get the right client
-        if (profile?.business_id) {
-          clientQuery = clientQuery.eq("business_id", profile.business_id);
-        }
-        
-        const { data: clientRow, error: clientErr } = await clientQuery.maybeSingle();
+          .eq("id", clientId)
+          .eq("business_id", profile.business_id)
+          .maybeSingle();
 
         console.log("📊 Resultado de búsqueda cliente:", { clientRow, clientErr });
 
@@ -97,144 +92,150 @@ export function UserProfileModal({
             phone: clientRow.phone || null,
             avatar_url: null,
           });
-        } else {
-          setClientMode(false);
+          
+          // Calculate rating for this client
+          const { data: reviewsData } = await supabase
+            .from("reviews")
+            .select("rating")
+            .eq("client_id", clientId);
+          
+          if (reviewsData && reviewsData.length > 0) {
+            const totalRating = reviewsData.reduce((sum, review) => sum + (review.rating || 0), 0);
+            const avgRating = totalRating / reviewsData.length;
+            setAverageRating(avgRating);
+            setReviewCount(reviewsData.length);
+          }
+          
+          setLoading(false);
+          return; // Found client, stop here
         }
       }
 
-      // 2) If not in client mode, load reservation user profile (read-only + add-as-client)
-      if (!clientId || !clientMode) {
-        if (userId) {
-          // Try profiles table first (partners/staff)
-          console.log("🔍 Buscando en profiles table con userId:", userId);
-          const { data: profileData, error: profileError } = await (supabase
-            .from("profiles")
-            .select("full_name, phone, avatar_url")
+      // PRIORITY 2: Search by userId in various tables
+      if (userId) {
+        // Try profiles table first (partners/staff)
+        console.log("🔍 Buscando en profiles table con userId:", userId);
+        const { data: profileData, error: profileError } = await supabase
+          .from("profiles")
+          .select("full_name, phone, avatar_url")
+          .eq("id", userId)
+          .maybeSingle();
+
+        console.log("📊 Resultado de búsqueda profiles:", { profileData, profileError });
+
+        if (profileData && !profileError) {
+          console.log("✅ Perfil encontrado en profiles table:", profileData);
+          setUserProfile({
+            full_name: profileData.full_name || null,
+            phone: profileData.phone || null,
+            avatar_url: profileData.avatar_url || null,
+          });
+          setEditable({
+            full_name: profileData.full_name || "",
+            email: "",
+            phone: profileData.phone || "",
+            avatar_url: profileData.avatar_url || null,
+          });
+        } else {
+          // Try client_profiles table
+          console.log("🔍 Buscando en client_profiles table con userId:", userId);
+          const { data: clientProfileData, error: clientProfileError } = await (supabase
+            .from("client_profiles" as any)
+            .select("full_name, phone, avatar_url, email")
             .eq("id", userId)
             .maybeSingle() as any);
 
-          console.log("📊 Resultado de búsqueda profiles:", { profileData, profileError });
+          console.log("📊 Resultado de búsqueda client_profiles:", { clientProfileData, clientProfileError });
 
-          if (profileData && !profileError) {
-            console.log("✅ Perfil encontrado en profiles table:", profileData);
+          if (clientProfileData && !clientProfileError) {
+            console.log("✅ Perfil encontrado en client_profiles table:", clientProfileData);
             setUserProfile({
-              full_name: (profileData as any).full_name || null,
-              phone: (profileData as any).phone || null,
-              avatar_url: (profileData as any).avatar_url || null,
+              full_name: (clientProfileData as any).full_name || null,
+              phone: (clientProfileData as any).phone || null,
+              avatar_url: (clientProfileData as any).avatar_url || null,
             });
-            // Si no estamos en clientMode, también establecer editable para mostrar los datos
-            if (!clientMode) {
-              setEditable({
-                full_name: (profileData as any).full_name || "",
-                email: "",
-                phone: (profileData as any).phone || "",
-                avatar_url: (profileData as any).avatar_url || null,
-              });
+            if ((clientProfileData as any).email) {
+              setUserEmail((clientProfileData as any).email);
             }
+            setEditable({
+              full_name: (clientProfileData as any).full_name || "",
+              email: (clientProfileData as any).email || "",
+              phone: (clientProfileData as any).phone || "",
+              avatar_url: (clientProfileData as any).avatar_url || null,
+            });
           } else {
-            console.log("🔍 Buscando en client_profiles table con userId:", userId);
-            const { data: clientProfileData, error: clientProfileError } = await (supabase
-              .from("client_profiles" as any)
-              .select("full_name, phone, avatar_url, email")
-              .eq("id", userId)
-              .maybeSingle() as any);
+            // Try clients table by user_id
+            console.log("🔍 Buscando cliente por user_id:", userId, "business_id:", profile?.business_id);
+            let clientByUserIdQuery = supabase
+              .from("clients")
+              .select("full_name, email, phone, id")
+              .eq("user_id", userId);
+            
+            if (profile?.business_id) {
+              clientByUserIdQuery = clientByUserIdQuery.eq("business_id", profile.business_id);
+            }
+            
+            const { data: clientData, error: clientError } = await clientByUserIdQuery.maybeSingle();
+            
+            console.log("📊 Resultado de búsqueda cliente por user_id:", { clientData, clientError });
 
-            console.log("📊 Resultado de búsqueda client_profiles:", { clientProfileData, clientProfileError });
-
-            if (clientProfileData && !clientProfileError) {
-              console.log("✅ Perfil encontrado en client_profiles table:", clientProfileData);
+            if (clientData && !clientError) {
+              console.log("✅ Perfil encontrado en clients table por user_id:", clientData);
               setUserProfile({
-                full_name: (clientProfileData as any).full_name || null,
-                phone: (clientProfileData as any).phone || null,
-                avatar_url: (clientProfileData as any).avatar_url || null,
+                full_name: clientData.full_name || null,
+                phone: clientData.phone || null,
+                avatar_url: null,
               });
-              if ((clientProfileData as any).email) {
-                setUserEmail((clientProfileData as any).email);
+              if (clientData.email) {
+                setUserEmail(clientData.email);
               }
-              // ✅ FIX: También establecer editable para que se muestren los datos
-              if (!clientMode) {
-                setEditable({
-                  full_name: (clientProfileData as any).full_name || "",
-                  email: (clientProfileData as any).email || "",
-                  phone: (clientProfileData as any).phone || "",
-                  avatar_url: (clientProfileData as any).avatar_url || null,
-                });
-              }
+              setEditable({
+                full_name: clientData.full_name || "",
+                email: clientData.email || "",
+                phone: clientData.phone || "",
+                avatar_url: null,
+              });
             } else {
-              // Try clients table by user_id (business client created from user)
-              console.log("🔍 Buscando cliente por user_id:", userId, "business_id:", profile?.business_id);
-              let clientByUserIdQuery = supabase
-                .from("clients")
-                .select("full_name, email, phone, id")
-                .eq("user_id", userId);
-              
-              // ✅ FIX: Filter by business_id if available
-              if (profile?.business_id) {
-                clientByUserIdQuery = clientByUserIdQuery.eq("business_id", profile.business_id);
-              }
-              
-              const { data: clientData, error: clientError } = await clientByUserIdQuery.maybeSingle();
-              
-              console.log("📊 Resultado de búsqueda cliente por user_id:", { clientData, clientError });
-
-              if (clientData && !clientError) {
-                console.log("✅ Perfil encontrado en clients table por user_id:", clientData);
-                setUserProfile({
-                  full_name: clientData.full_name || null,
-                  phone: clientData.phone || null,
-                  avatar_url: null,
-                });
-                if (clientData.email) {
-                  setUserEmail(clientData.email);
-                }
-                // ✅ FIX: También establecer editable para que se muestren los datos
-                if (!clientMode) {
-                  setEditable({
-                    full_name: clientData.full_name || "",
-                    email: clientData.email || "",
-                    phone: clientData.phone || "",
-                    avatar_url: null,
-                  });
-                }
-              } else {
-                console.log("❌ No se encontró perfil en ninguna tabla");
-                setUserProfile({
-                  full_name: null,
-                  phone: null,
-                  avatar_url: null,
-                });
-              }
+              console.log("❌ No se encontró perfil en ninguna tabla");
+              setUserProfile({
+                full_name: null,
+                phone: null,
+                avatar_url: null,
+              });
             }
           }
         }
       }
 
-      // Calculate average rating from reviews
-      const ratingClientId = clientId
-        ? clientId
-        : userId
-          ? (await supabase.from("clients").select("id").eq("user_id", userId).maybeSingle()).data?.id
-          : null;
-
-      if (ratingClientId) {
-        const { data: reviewsData } = await supabase
-          .from("reviews")
-          .select("rating")
-          .eq("client_id", ratingClientId);
+      // Calculate average rating from reviews (fallback if we didn't have clientId)
+      if (!clientId && userId) {
+        const { data: clientForRating } = await supabase
+          .from("clients")
+          .select("id")
+          .eq("user_id", userId)
+          .maybeSingle();
         
-        if (reviewsData && reviewsData.length > 0) {
-          const totalRating = reviewsData.reduce((sum, review) => sum + (review.rating || 0), 0);
-          const avgRating = totalRating / reviewsData.length;
-          setAverageRating(avgRating);
-          setReviewCount(reviewsData.length);
+        if (clientForRating?.id) {
+          const { data: reviewsData } = await supabase
+            .from("reviews")
+            .select("rating")
+            .eq("client_id", clientForRating.id);
+          
+          if (reviewsData && reviewsData.length > 0) {
+            const totalRating = reviewsData.reduce((sum, review) => sum + (review.rating || 0), 0);
+            const avgRating = totalRating / reviewsData.length;
+            setAverageRating(avgRating);
+            setReviewCount(reviewsData.length);
+          }
         }
       }
     } catch (error) {
+      console.error("Error loading profile:", error);
       toast.error(language === "es" ? "Error al cargar el perfil del usuario" : "Error loading user profile");
     } finally {
       setLoading(false);
     }
-  }, [userId, clientId, language, clientMode]);
+  }, [userId, clientId, language, profile?.business_id]);
 
   useEffect(() => {
     console.log("🔍 UserProfileModal useEffect:", { open, userId, clientId });

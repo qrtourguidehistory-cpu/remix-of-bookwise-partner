@@ -619,16 +619,38 @@ function DraggableAppointment({ appointment, onEdit, isActive, position, layout,
   const endTimeFormatted = appointment.end_time ? formatTime(appointment.end_time, timeFormat) : null;
   const timeRange = endTimeFormatted ? `${startTimeFormatted} - ${endTimeFormatted}` : startTimeFormatted;
 
-  // Determine border color based on payment status for completed appointments
+  // Determine border color based on appointment status and payment
   let borderColor = appointmentColor;
-  if (appointment.status === 'completed') {
-    // Check if there's a credit record (unpaid) - no payment_method and no payment_amount
-    const hasCredit = !appointment.payment_method && !appointment.payment_amount;
-    if (hasCredit) {
-      borderColor = '#f97316'; // Orange for credit
-    } else if (appointment.payment_method && appointment.payment_amount) {
-      borderColor = '#22c55e'; // Green for paid
-    }
+  const status = appointment.status || 'pending';
+  
+  switch (status) {
+    case 'cancelled':
+      borderColor = '#ef4444'; // Red
+      break;
+    case 'no_show':
+      borderColor = '#6b7280'; // Gray
+      break;
+    case 'confirmed':
+      borderColor = '#22c55e'; // Green
+      break;
+    case 'started':
+      borderColor = '#8b5cf6'; // Purple
+      break;
+    case 'completed':
+      // Subcolors for completed based on payment
+      const hasCredit = !appointment.payment_method && !appointment.payment_amount;
+      if (hasCredit) {
+        borderColor = '#38bdf8'; // Light blue for credit
+      } else if (appointment.payment_method === 'cash') {
+        borderColor = '#000000'; // Black for cash
+      } else if (appointment.payment_method && appointment.payment_amount) {
+        borderColor = '#22c55e'; // Green for paid (card/transfer/crypto)
+      }
+      break;
+    case 'pending':
+    default:
+      borderColor = '#f97316'; // Orange for pending/booked
+      break;
   }
 
   const style: React.CSSProperties = {
