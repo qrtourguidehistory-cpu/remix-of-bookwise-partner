@@ -1008,41 +1008,24 @@ export function AppointmentDetailView({
                   <button 
                     className="ml-1 text-primary hover:underline"
                     onClick={() => {
-                      // ✅ DEBUG: Log values to see what we have
-                      console.log("🔍 Click en Reservado por:", {
-                        reserverUserId,
-                        clientId,
-                        appointment_user_id: appointment?.user_id,
-                        appointment_client_id: appointment?.client_id,
-                        clients_user_id: appointment?.clients?.user_id,
-                        clients_id: appointment?.clients?.id,
-                        client_name: appointment?.client_name,
-                        reserverName
-                      });
-
-                      // ✅ FIX: Try to open profile with userId first, then clientId as fallback
-                      if (reserverUserId) {
-                        console.log("✅ Abriendo perfil con userId:", reserverUserId);
-                        setProfileModalTarget({ userId: reserverUserId, clientId: undefined });
-                        setUserProfileModalOpen(true);
-                      } else if (clientId) {
-                        // If no user_id but we have client_id, show the client profile
-                        console.log("✅ Abriendo perfil con clientId:", clientId);
-                        setProfileModalTarget({ userId: undefined, clientId: clientId });
-                        setUserProfileModalOpen(true);
-                      } else if (appointment?.clients?.user_id) {
-                        // Try to get user_id from clients relation
-                        console.log("✅ Abriendo perfil con clients.user_id:", appointment.clients.user_id);
-                        setProfileModalTarget({ userId: appointment.clients.user_id, clientId: undefined });
+                      // PRIORITY 1: Use clientId if available (most reliable for manually added clients)
+                      if (clientId) {
+                        setProfileModalTarget({ clientId: clientId, userId: undefined });
                         setUserProfileModalOpen(true);
                       } else if (appointment?.clients?.id) {
-                        // Try to get client_id from clients relation
-                        console.log("✅ Abriendo perfil con clients.id:", appointment.clients.id);
-                        setProfileModalTarget({ userId: undefined, clientId: appointment.clients.id });
+                        // PRIORITY 2: Use clients relation id
+                        setProfileModalTarget({ clientId: appointment.clients.id, userId: undefined });
+                        setUserProfileModalOpen(true);
+                      } else if (reserverUserId) {
+                        // PRIORITY 3: Fallback to userId for app-registered users
+                        setProfileModalTarget({ userId: reserverUserId, clientId: undefined });
+                        setUserProfileModalOpen(true);
+                      } else if (appointment?.clients?.user_id) {
+                        // PRIORITY 4: Try clients.user_id
+                        setProfileModalTarget({ userId: appointment.clients.user_id, clientId: undefined });
                         setUserProfileModalOpen(true);
                       } else {
-                        console.error("❌ No se encontró userId ni clientId para abrir el perfil");
-                        toast.error(language === "es" ? "No hay usuario o cliente asociado a esta reserva" : "No user or client linked to this booking");
+                        toast.error(language === "es" ? "No hay cliente asociado a esta reserva" : "No client linked to this booking");
                       }
                     }}
                   >
@@ -1091,7 +1074,20 @@ export function AppointmentDetailView({
         onClientAdded={async () => {
           // Refresh client data after adding
           await refreshAppointmentClient();
-          // Force UI update by toggling the modal
+          // Re-fetch appointment to get updated client_id
+          if (appointment?.id && profile?.business_id) {
+            const { data: updatedApt } = await supabase
+              .from("appointments")
+              .select("client_id, clients!appointments_client_id_fkey(id, user_id, full_name, email, phone)")
+              .eq("id", appointment.id)
+              .eq("business_id", profile.business_id)
+              .single();
+            
+            if (updatedApt?.client_id) {
+              // Update profile modal target with new client_id
+              setProfileModalTarget({ clientId: updatedApt.client_id, userId: undefined });
+            }
+          }
           setUserProfileModalOpen(false);
         }}
       />

@@ -339,9 +339,10 @@ export function UserProfileModal({
         }
       }
 
-      // Create client record
+      // Create client record with a known ID
+      const newClientId = crypto.randomUUID();
       const { error: insertError } = await supabase.from("clients").insert({
-        id: crypto.randomUUID(),
+        id: newClientId,
         user_id: userId,
         business_id: profile.business_id,
         full_name: fullName || null,
@@ -353,23 +354,16 @@ export function UserProfileModal({
 
       // If there's an appointment, update it to link to the new client
       if (appointmentId) {
-        const { data: clientData } = await supabase
-          .from("clients")
-          .select("id")
-          .eq("user_id", userId)
-          .eq("business_id", profile.business_id)
-          .single();
-
-        if (clientData) {
-          await supabase
-            .from("appointments")
-            .update({ client_id: clientData.id })
-            .eq("id", appointmentId);
-        }
+        await supabase
+          .from("appointments")
+          .update({ client_id: newClientId })
+          .eq("id", appointmentId)
+          .eq("business_id", profile.business_id);
       }
 
       toast.success(language === "es" ? "Cliente agregado exitosamente" : "Client added successfully");
 
+      // Call onClientAdded and close modal
       onClientAdded?.();
       onOpenChange(false);
     } catch (error: any) {

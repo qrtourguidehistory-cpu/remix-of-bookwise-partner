@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Calendar, DollarSign, Plus, Users, Grid3x3 } from "lucide-react";
+import { CalendarDays, Tag, Plus, Smile, LayoutGrid } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useLocation, useNavigate } from "react-router-dom";
 import { cn } from "@/lib/utils";
@@ -69,11 +69,11 @@ export function MobileBottomNav() {
   };
 
   const navItems = [
-    { icon: Calendar, label: t("calendar"), path: "/", onClick: () => navigate("/") },
-    { icon: DollarSign, label: t("sales"), path: "/admin/sales", onClick: () => navigate("/admin/sales") },
+    { icon: CalendarDays, label: t("calendar"), path: "/", onClick: () => navigate("/") },
+    { icon: Tag, label: t("sales"), path: "/admin/sales", onClick: () => navigate("/admin/sales") },
     { icon: Plus, label: t("add"), isSpecial: true, onClick: handleAddButtonClick },
-    { icon: Users, label: t("clients"), onClick: handleClientsButtonClick },
-    { icon: Grid3x3, label: t("menu"), onClick: () => setSettingsSheetOpen(true) },
+    { icon: Smile, label: t("clients"), onClick: handleClientsButtonClick },
+    { icon: LayoutGrid, label: t("menu"), onClick: () => setSettingsSheetOpen(true) },
   ];
 
   return (
