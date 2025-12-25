@@ -66,7 +66,39 @@ export function ClientActivityView({
   const fetchActivity = async () => {
     setLoading(true);
     try {
-      let query = (supabase
+      // Determine the actual client_id to filter by
+      let filterClientId = clientId;
+      
+      // If no clientId but we have userId, try to find the client record
+      if (!filterClientId && userId && businessId) {
+        const { data: clientData } = await supabase
+          .from("clients")
+          .select("id")
+          .eq("user_id", userId)
+          .eq("business_id", businessId)
+          .maybeSingle();
+
+        if (clientData) {
+          filterClientId = clientData.id;
+        }
+      }
+
+      // If still no client ID found, show empty state
+      if (!filterClientId) {
+        console.log("No client_id found for activity query");
+        setActivities([]);
+        setStats({
+          totalAppointments: 0,
+          completedAppointments: 0,
+          totalSpent: 0,
+          averageSpent: 0,
+          lastAppointment: null,
+        });
+        setLoading(false);
+        return;
+      }
+
+      const { data, error } = await supabase
         .from("appointments")
         .select(`
           id,
@@ -80,30 +112,9 @@ export function ClientActivityView({
           staff!appointments_staff_id_fkey(full_name)
         `)
         .eq("business_id", businessId)
+        .eq("client_id", filterClientId)
         .order("created_at", { ascending: false })
-        .limit(50) as any);
-
-      // Filter by client_id or user_id
-      if (clientId) {
-        query = query.eq("client_id", clientId);
-      } else if (userId) {
-        // Try to find client_id from user_id
-        const { data: clientData } = await supabase
-          .from("clients")
-          .select("id")
-          .eq("user_id", userId)
-          .eq("business_id", businessId)
-          .maybeSingle();
-
-        if (clientData) {
-          query = query.eq("client_id", clientData.id);
-        } else {
-          // If no client record, try to match by user_id in appointments
-          query = query.eq("user_id", userId);
-        }
-      }
-
-      const { data, error } = await query;
+        .limit(50);
 
       if (error) throw error;
 

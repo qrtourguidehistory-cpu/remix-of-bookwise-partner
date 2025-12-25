@@ -109,8 +109,8 @@ export default function MobileLayout({ children }: MobileLayoutProps) {
     try {
       // For partners: fetch notifications from client_notifications table
       // This table contains real-time notifications for the business
-      const yesterday = new Date();
-      yesterday.setDate(yesterday.getDate() - 1);
+      const weekAgo = new Date();
+      weekAgo.setDate(weekAgo.getDate() - 7); // Extended to 7 days
 
       // Fetch client_notifications for this business
       // These are notifications related to appointments of this business
@@ -133,9 +133,9 @@ export default function MobileLayout({ children }: MobileLayoutProps) {
           )
         `)
         .eq('business_id', profile.business_id)
-        .gte('created_at', yesterday.toISOString())
+        .gte('created_at', weekAgo.toISOString())
         .order('created_at', { ascending: false })
-        .limit(50) as any);
+        .limit(100) as any);
 
       if (notifError) {
         console.error('Error fetching client notifications:', notifError);
@@ -149,10 +149,12 @@ export default function MobileLayout({ children }: MobileLayoutProps) {
         
         // Use notification data directly from client_notifications
         let type: Notification['type'] = 'appointment';
-        if (notif.type === 'cancellation') {
+        if (notif.type === 'cancellation' || notif.type === 'cancelled') {
           type = 'cancellation';
-        } else if (notif.type === 'reminder') {
+        } else if (notif.type === 'reminder' || notif.type === 'confirmation') {
           type = 'reminder';
+        } else if (notif.type === 'new_appointment' || notif.type === 'early_arrival' || notif.type === 'early_arrival_request') {
+          type = 'appointment';
         }
 
         const timeAgo = formatDistanceToNow(new Date(notif.created_at), {
@@ -186,8 +188,8 @@ export default function MobileLayout({ children }: MobileLayoutProps) {
     try {
       // For clients: fetch notifications from client_notifications table
       // Filter by user_id to get notifications for this specific client
-      const yesterday = new Date();
-      yesterday.setDate(yesterday.getDate() - 1);
+      const weekAgo = new Date();
+      weekAgo.setDate(weekAgo.getDate() - 7); // Extended to 7 days
 
       const { data: clientNotifs, error: notifError } = await (supabase
         .from('client_notifications' as any)
@@ -207,9 +209,9 @@ export default function MobileLayout({ children }: MobileLayoutProps) {
           )
         `)
         .eq('user_id', profile.id)
-        .gte('created_at', yesterday.toISOString())
+        .gte('created_at', weekAgo.toISOString())
         .order('created_at', { ascending: false })
-        .limit(50) as any);
+        .limit(100) as any);
 
       if (notifError) {
         console.error('Error fetching client notifications:', notifError);
