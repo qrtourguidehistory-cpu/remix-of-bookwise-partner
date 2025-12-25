@@ -628,7 +628,7 @@ function DraggableAppointment({ appointment, onEdit, isActive, position, layout,
       borderColor = '#ef4444'; // Red
       break;
     case 'no_show':
-      borderColor = '#6b7280'; // Gray
+      borderColor = '#000000'; // Black for no-show
       break;
     case 'confirmed':
       borderColor = '#22c55e'; // Green
@@ -641,10 +641,9 @@ function DraggableAppointment({ appointment, onEdit, isActive, position, layout,
       const hasCredit = !appointment.payment_method && !appointment.payment_amount;
       if (hasCredit) {
         borderColor = '#38bdf8'; // Light blue for credit
-      } else if (appointment.payment_method === 'cash') {
-        borderColor = '#000000'; // Black for cash
-      } else if (appointment.payment_method && appointment.payment_amount) {
-        borderColor = '#22c55e'; // Green for paid (card/transfer/crypto)
+      } else {
+        // Green for all paid methods (cash, card, transfer, crypto)
+        borderColor = '#22c55e';
       }
       break;
     case 'pending':
