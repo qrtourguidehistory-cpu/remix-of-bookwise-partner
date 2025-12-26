@@ -2,7 +2,7 @@ import MobileLayout from "@/components/mobile/MobileLayout";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Star } from "lucide-react";
+import { Star, User, Mail, Phone } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { useAuth } from "@/contexts/AuthContext";
@@ -10,10 +10,15 @@ import { supabase } from "@/lib/supabaseClient";
 import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
 import { es, enUS } from "date-fns/locale";
+import { useNavigate } from "react-router-dom";
 
 interface Review {
   id: string;
+  clientId: string | null;
   clientName: string;
+  clientEmail: string | null;
+  clientPhone: string | null;
+  clientAvatar: string | null;
   rating: number;
   comment: string | null;
   date: string;
@@ -27,6 +32,7 @@ export default function ReviewsPage() {
   const [loading, setLoading] = useState(true);
   const { t, language } = useLanguage();
   const { profile } = useAuth();
+  const navigate = useNavigate();
 
   useEffect(() => {
     if (profile?.business_id) {
@@ -38,7 +44,7 @@ export default function ReviewsPage() {
     if (!profile?.business_id) return;
 
     try {
-      // Fetch reviews - try to include admin_response
+      // Fetch reviews - try to include admin_response and client info
       const { data: initialData, error } = await supabase
         .from("reviews")
         .select(`
@@ -47,7 +53,14 @@ export default function ReviewsPage() {
           comment,
           admin_response,
           created_at,
-          clients!reviews_client_id_fkey(full_name)
+          client_id,
+          clients!reviews_client_id_fkey(
+            id,
+            full_name,
+            email,
+            phone,
+            avatar_url
+          )
         `)
         .eq("business_id", profile.business_id)
         .order("created_at", { ascending: false });
@@ -76,7 +89,11 @@ export default function ReviewsPage() {
 
       const formattedReviews: Review[] = (data || []).map((review: any) => ({
         id: review.id,
+        clientId: review.client_id || review.clients?.id || null,
         clientName: review.clients?.full_name || "Cliente",
+        clientEmail: review.clients?.email || null,
+        clientPhone: review.clients?.phone || null,
+        clientAvatar: review.clients?.avatar_url || null,
         rating: review.rating || 0,
         comment: review.comment,
         date: review.created_at,
@@ -102,6 +119,7 @@ export default function ReviewsPage() {
         .update({
           admin_response: responses[reviewId],
           is_addressed: true,
+          response_created_at: new Date().toISOString(),
         })
         .eq("id", reviewId)
         .eq("business_id", profile.business_id);
@@ -161,21 +179,48 @@ export default function ReviewsPage() {
               <div key={review.id} className="border rounded-lg p-4 space-y-3">
                 {/* Header */}
                 <div className="flex items-start justify-between">
-                  <div className="flex items-center gap-3">
+                  <div 
+                    className="flex items-center gap-3 flex-1 cursor-pointer hover:opacity-80 transition-opacity"
+                    onClick={() => {
+                      if (review.clientId) {
+                        // Dispatch event to open client profile
+                        window.dispatchEvent(new CustomEvent('openClientProfile', {
+                          detail: { clientId: review.clientId }
+                        }));
+                      }
+                    }}
+                  >
                     <Avatar>
-                      <AvatarImage src="" />
+                      <AvatarImage src={review.clientAvatar || undefined} />
                       <AvatarFallback className="bg-primary/10 text-primary">
                         {review.clientName.split(" ").map(n => n[0]).join("")}
                       </AvatarFallback>
                     </Avatar>
-                    <div>
-                      <p className="font-semibold">{review.clientName}</p>
-                      <p className="text-sm text-muted-foreground">
-                        {formatDistanceToNow(new Date(review.date), {
-                          addSuffix: true,
-                          locale: language === "es" ? es : enUS,
-                        })}
-                      </p>
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2">
+                        <p className="font-semibold">{review.clientName}</p>
+                        <User className="h-3 w-3 text-muted-foreground" />
+                      </div>
+                      <div className="flex flex-col gap-0.5 mt-1">
+                        {review.clientEmail && (
+                          <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                            <Mail className="h-3 w-3" />
+                            <span>{review.clientEmail}</span>
+                          </div>
+                        )}
+                        {review.clientPhone && (
+                          <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                            <Phone className="h-3 w-3" />
+                            <span>{review.clientPhone}</span>
+                          </div>
+                        )}
+                        <p className="text-xs text-muted-foreground">
+                          {formatDistanceToNow(new Date(review.date), {
+                            addSuffix: true,
+                            locale: language === "es" ? es : enUS,
+                          })}
+                        </p>
+                      </div>
                     </div>
                   </div>
                   {/* Rating */}

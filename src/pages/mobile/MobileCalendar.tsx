@@ -8,6 +8,7 @@ import { MonthView } from "@/components/mobile/MonthView";
 import { StaffCalendarView } from "@/components/mobile/StaffCalendarView";
 import { CalendarLegend } from "@/components/mobile/CalendarLegend";
 import { TutorialTip } from "@/components/mobile/TutorialTip";
+import { ApprovalSuccessBanner } from "@/components/mobile/ApprovalSuccessBanner";
 import { useTutorialTips } from "@/hooks/useTutorialTips";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/lib/supabaseClient";
@@ -100,6 +101,9 @@ export default function MobileCalendar() {
 
   return (
     <MobileLayout>
+      {/* Approval Success Banner */}
+      <ApprovalSuccessBanner />
+      
       <CalendarHeader
         currentDate={currentDate}
         onDateChange={setCurrentDate}

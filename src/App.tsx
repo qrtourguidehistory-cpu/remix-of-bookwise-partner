@@ -54,6 +54,8 @@ import ClientPortal from "./pages/ClientPortal";
 import SplashPage from "./pages/SplashPage";
 import WelcomePage from "./pages/WelcomePage";
 import RootRoute from "./components/RootRoute";
+import HubDashboard from "./pages/hub/HubDashboard";
+import ModerationPage from "./pages/hub/ModerationPage";
 
 const queryClient = new QueryClient();
 
@@ -434,6 +436,24 @@ const App = () => (
                   element={
                     <ProtectedRoute requireOnboarding>
                       <ClientPortal />
+                    </ProtectedRoute>
+                  }
+                />
+
+                {/* Hub Routes (Super Admin) */}
+                <Route
+                  path="/hub"
+                  element={
+                    <ProtectedRoute>
+                      <HubDashboard />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/hub/moderation"
+                  element={
+                    <ProtectedRoute>
+                      <ModerationPage />
                     </ProtectedRoute>
                   }
                 />

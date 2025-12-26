@@ -138,6 +138,7 @@ export default function ReviewsManagement() {
         .update({
           admin_response: responses[reviewId],
           is_addressed: true,
+          response_created_at: new Date().toISOString(),
         })
         .eq("id", reviewId)
         .eq("business_id", profile.business_id);

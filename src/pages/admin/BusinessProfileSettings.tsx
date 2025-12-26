@@ -1,11 +1,11 @@
 import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
-import { ArrowLeft, Save, Eye, Globe, Building2, Image as ImageIcon, Phone, MapPin, Link2, Loader2, Star, Clock, CheckCircle2, Upload, X, AlertTriangle, CheckCircle, Scissors, Sparkles, Heart, Droplet, Users, HandMetal, Waves, Flame, Activity, Stethoscope, PawPrint, MoreHorizontal, AlertCircle, Pencil } from "lucide-react";
+import { ArrowLeft, Save, Eye, Globe, Building2, Image as ImageIcon, Phone, MapPin, Link2, Loader2, Star, Clock, CheckCircle2, Upload, X, AlertTriangle, CheckCircle, Scissors, Sparkles, Heart, Droplet, Users, HandMetal, Waves, Flame, Activity, Stethoscope, PawPrint, MoreHorizontal, AlertCircle, Pencil, Send, Ban, RefreshCw, FileCheck, XCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Switch } from "@/components/ui/switch";
+// Switch removed - visibility is now handled through approval system
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
@@ -34,6 +34,15 @@ interface BusinessProfile {
   onboarding_completed: boolean | null;
   location_details: any | null;
   google_maps_url: string | null;
+  approval_status: 'draft' | 'pending' | 'approved' | 'rejected' | 'suspended' | null;
+}
+
+interface ApprovalRequest {
+  id: string;
+  status: 'pending' | 'approved' | 'rejected' | 'cancelled';
+  submitted_at: string;
+  reviewed_at: string | null;
+  rejection_reason: string | null;
 }
 
 export default function BusinessProfileSettings() {
@@ -57,6 +66,8 @@ export default function BusinessProfileSettings() {
   const [tempBusinessName, setTempBusinessName] = useState("");
   const [tempPrimaryCategory, setTempPrimaryCategory] = useState<string>("");
   const [tempSecondaryCategories, setTempSecondaryCategories] = useState<string[]>([]);
+  const [approvalRequest, setApprovalRequest] = useState<ApprovalRequest | null>(null);
+  const [submittingRequest, setSubmittingRequest] = useState(false);
   
   const logoInputRef = useRef<HTMLInputElement>(null);
   const coverInputRef = useRef<HTMLInputElement>(null);
@@ -83,14 +94,15 @@ export default function BusinessProfileSettings() {
 
   useEffect(() => {
     fetchBusiness();
+    fetchApprovalRequest();
   }, [profile?.business_id]);
 
   useEffect(() => {
-    if (business?.id && business.is_public === false) {
-      // Only check requirements when visibility is disabled, not on every field change
+    if (business?.id && business.approval_status !== 'approved') {
+      // Check requirements when not approved
       checkRequirements();
     }
-  }, [business?.id, business?.is_public]);
+  }, [business?.id, business?.approval_status]);
 
   const fetchBusiness = async () => {
     if (!profile?.business_id) return;
@@ -98,7 +110,7 @@ export default function BusinessProfileSettings() {
     try {
       const { data, error } = await (supabase
         .from("businesses")
-        .select("id, business_name, is_public, slug, description, logo_url, cover_image_url, phone, address, website, primary_category, secondary_categories, average_rating, total_reviews, onboarding_completed, location_details")
+        .select("id, business_name, is_public, slug, description, logo_url, cover_image_url, phone, address, website, primary_category, secondary_categories, average_rating, total_reviews, onboarding_completed, location_details, approval_status")
         .eq("id", profile.business_id)
         .maybeSingle() as any);
 
@@ -111,6 +123,7 @@ export default function BusinessProfileSettings() {
         setBusiness({
           ...data,
           google_maps_url: googleMapsUrl,
+          approval_status: data.approval_status || 'draft',
         } as unknown as BusinessProfile);
         setTempBusinessName((data as any).business_name || "");
         setTempPrimaryCategory((data as any).primary_category || "");
@@ -132,6 +145,139 @@ export default function BusinessProfileSettings() {
       });
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchApprovalRequest = async () => {
+    if (!profile?.business_id) return;
+    
+    try {
+      const { data, error } = await supabase
+        .from("business_approval_requests")
+        .select("id, status, submitted_at, reviewed_at, rejection_reason")
+        .eq("business_id", profile.business_id)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (error) throw error;
+      setApprovalRequest(data as ApprovalRequest | null);
+    } catch (error) {
+      console.error("Error fetching approval request:", error);
+    }
+  };
+
+  const handleSubmitApprovalRequest = async () => {
+    if (!profile?.business_id || !profile?.id) return;
+    
+    // Validate requirements first
+    setCheckingRequirements(true);
+    try {
+      const requirements = await validatePublicVisibilityRequirements(profile.business_id);
+      setVisibilityRequirements(requirements);
+
+      if (!requirements.isValid) {
+        toast({
+          title: language === "es" ? "Requisitos no cumplidos" : "Requirements not met",
+          description: language === "es" 
+            ? `Debes completar todos los requisitos antes de enviar la solicitud.`
+            : `You must complete all requirements before submitting the request.`,
+          variant: "destructive",
+        });
+        return;
+      }
+    } catch (error) {
+      console.error("Error validating requirements:", error);
+      toast({
+        title: language === "es" ? "Error" : "Error",
+        description: language === "es" ? "No se pudieron validar los requisitos" : "Could not validate requirements",
+        variant: "destructive",
+      });
+      return;
+    } finally {
+      setCheckingRequirements(false);
+    }
+
+    setSubmittingRequest(true);
+    try {
+      const { data, error } = await supabase
+        .from("business_approval_requests")
+        .insert({
+          business_id: profile.business_id,
+          owner_id: profile.id,
+          status: 'pending',
+        })
+        .select()
+        .single();
+
+      if (error) {
+        if (error.code === '23505' || error.message?.includes('already exists')) {
+          toast({
+            title: language === "es" ? "Solicitud existente" : "Existing request",
+            description: language === "es" 
+              ? "Ya tienes una solicitud pendiente de revisión."
+              : "You already have a pending review request.",
+            variant: "destructive",
+          });
+        } else {
+          throw error;
+        }
+        return;
+      }
+
+      setApprovalRequest(data as ApprovalRequest);
+      setBusiness(prev => prev ? { ...prev, approval_status: 'pending' } : null);
+      
+      toast({
+        title: language === "es" ? "¡Solicitud enviada!" : "Request submitted!",
+        description: language === "es" 
+          ? "Tu solicitud será revisada en las próximas 24 horas."
+          : "Your request will be reviewed within 24 hours.",
+      });
+    } catch (error) {
+      console.error("Error submitting approval request:", error);
+      toast({
+        title: language === "es" ? "Error" : "Error",
+        description: language === "es" 
+          ? "No se pudo enviar la solicitud. Intenta nuevamente."
+          : "Could not submit request. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setSubmittingRequest(false);
+    }
+  };
+
+  const handleResubmitRequest = async () => {
+    if (!profile?.business_id) return;
+    
+    // Reset approval_status to draft to allow re-submission
+    try {
+      const { error } = await supabase
+        .from("businesses")
+        .update({ approval_status: 'draft' })
+        .eq("id", profile.business_id);
+
+      if (error) throw error;
+      
+      setBusiness(prev => prev ? { ...prev, approval_status: 'draft' } : null);
+      setApprovalRequest(null);
+      
+      toast({
+        title: language === "es" ? "Listo para re-enviar" : "Ready to resubmit",
+        description: language === "es" 
+          ? "Corrige los problemas mencionados y envía una nueva solicitud."
+          : "Fix the issues mentioned and submit a new request.",
+      });
+    } catch (error) {
+      console.error("Error resetting approval status:", error);
+      toast({
+        title: language === "es" ? "Error" : "Error",
+        description: language === "es" 
+          ? "No se pudo restablecer el estado."
+          : "Could not reset status.",
+        variant: "destructive",
+      });
     }
   };
 
@@ -164,43 +310,6 @@ export default function BusinessProfileSettings() {
     } finally {
       setCheckingRequirements(false);
     }
-  };
-
-  const handleVisibilityToggle = async (checked: boolean) => {
-    if (!business || !profile?.business_id) return;
-
-    // If trying to enable, validate requirements first
-    if (checked) {
-      setCheckingRequirements(true);
-      try {
-        const requirements = await validatePublicVisibilityRequirements(profile.business_id);
-        setVisibilityRequirements(requirements);
-
-        if (!requirements.isValid) {
-          toast({
-            title: language === "es" ? "Requisitos no cumplidos" : "Requirements not met",
-            description: language === "es" 
-              ? `Debes completar los siguientes requisitos: ${requirements.missingRequirements.join(", ")}`
-              : `You must complete the following requirements: ${requirements.missingRequirements.join(", ")}`,
-            variant: "destructive",
-          });
-          return; // Don't enable if requirements not met
-        }
-      } catch (error) {
-        console.error("Error validating requirements:", error);
-        toast({
-          title: language === "es" ? "Error" : "Error",
-          description: language === "es" ? "No se pudieron validar los requisitos" : "Could not validate requirements",
-          variant: "destructive",
-        });
-        return;
-      } finally {
-        setCheckingRequirements(false);
-      }
-    }
-
-    // If all requirements are met or disabling, update the state
-    setBusiness(prev => prev ? { ...prev, is_public: checked } : null);
   };
 
   const uploadImage = async (file: File, type: 'logo' | 'cover') => {
@@ -447,37 +556,16 @@ export default function BusinessProfileSettings() {
   const handleSave = async () => {
     if (!business || !profile?.business_id) return;
     
-    // Validate requirements if trying to enable public visibility (slug is no longer required)
-    if (business.is_public) {
-      setCheckingRequirements(true);
-      try {
-        const requirements = await validatePublicVisibilityRequirements(profile.business_id);
-        setVisibilityRequirements(requirements);
-
-        if (!requirements.isValid) {
-          toast({
-            title: language === "es" ? "Requisitos no cumplidos" : "Requirements not met",
-            description: language === "es" 
-              ? `Debes completar los siguientes requisitos antes de activar la visibilidad pública: ${requirements.missingRequirements.join(", ")}`
-              : `You must complete the following requirements before enabling public visibility: ${requirements.missingRequirements.join(", ")}`,
-            variant: "destructive",
-          });
-          // Revert is_public to false if requirements not met
-          setBusiness(prev => prev ? { ...prev, is_public: false } : null);
-          return;
-        }
-      } catch (error) {
-        console.error("Error validating requirements:", error);
-        toast({
-          title: language === "es" ? "Error" : "Error",
-          description: language === "es" ? "No se pudieron validar los requisitos" : "Could not validate requirements",
-          variant: "destructive",
-        });
-        setBusiness(prev => prev ? { ...prev, is_public: false } : null);
-        return;
-      } finally {
-        setCheckingRequirements(false);
-      }
+    // Disable critical field edits when approval is pending
+    if (business.approval_status === 'pending') {
+      toast({
+        title: language === "es" ? "Edición bloqueada" : "Editing blocked",
+        description: language === "es" 
+          ? "No puedes editar el perfil mientras la solicitud está en revisión."
+          : "You cannot edit the profile while the request is under review.",
+        variant: "destructive",
+      });
+      return;
     }
 
     setSaving(true);
@@ -488,10 +576,10 @@ export default function BusinessProfileSettings() {
         googleMapsUrl: business.google_maps_url || null,
       };
 
+      // Note: is_public is NOT included - it can only be changed through the approval system
       const { error } = await supabase
         .from("businesses")
         .update({
-          is_public: business.is_public,
           slug: business.slug || null,
           description: business.description || null,
           logo_url: business.logo_url || null,
@@ -519,8 +607,8 @@ export default function BusinessProfileSettings() {
         description: language === "es" ? "Perfil actualizado correctamente" : "Profile updated successfully",
       });
       
-      // Refresh requirements after saving
-      if (business.is_public === false) {
+      // Refresh requirements after saving (to update the checklist)
+      if (business.approval_status !== 'approved') {
         checkRequirements();
       }
     } catch (error) {
@@ -701,110 +789,237 @@ export default function BusinessProfileSettings() {
               </Card>
             )}
 
-            {/* Visibility Toggle */}
-            <Card>
+            {/* Publication Status & Approval Request */}
+            <Card className={
+              business.approval_status === 'approved' ? 'border-green-500/50' :
+              business.approval_status === 'pending' ? 'border-amber-500/50' :
+              business.approval_status === 'rejected' ? 'border-red-500/50' :
+              business.approval_status === 'suspended' ? 'border-red-700/50' :
+              ''
+            }>
               <CardHeader className="pb-3">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
                     <Globe className="h-5 w-5 text-primary" />
                     <div>
                       <CardTitle className="text-base">
-                        {language === "es" ? "Visibilidad Pública" : "Public Visibility"}
+                        {language === "es" ? "Estado de Publicación" : "Publication Status"}
                       </CardTitle>
                       <CardDescription>
                         {language === "es" 
-                          ? "Permite que clientes encuentren tu negocio" 
-                          : "Allow clients to discover your business"}
+                          ? "Tu negocio debe ser aprobado para ser visible en Bookwise Client" 
+                          : "Your business must be approved to be visible on Bookwise Client"}
                       </CardDescription>
                     </div>
                   </div>
-                  <Switch
-                    checked={business.is_public}
-                    disabled={checkingRequirements}
-                    onCheckedChange={handleVisibilityToggle}
-                  />
+                  {/* Status Badge */}
+                  {business.approval_status === 'approved' && (
+                    <Badge className="bg-green-500 hover:bg-green-600">
+                      <CheckCircle className="h-3 w-3 mr-1" />
+                      {language === "es" ? "Publicado" : "Published"}
+                    </Badge>
+                  )}
+                  {business.approval_status === 'pending' && (
+                    <Badge className="bg-amber-500 hover:bg-amber-600">
+                      <Clock className="h-3 w-3 mr-1" />
+                      {language === "es" ? "En revisión" : "Under review"}
+                    </Badge>
+                  )}
+                  {business.approval_status === 'rejected' && (
+                    <Badge variant="destructive">
+                      <XCircle className="h-3 w-3 mr-1" />
+                      {language === "es" ? "Rechazado" : "Rejected"}
+                    </Badge>
+                  )}
+                  {business.approval_status === 'suspended' && (
+                    <Badge className="bg-red-700 hover:bg-red-800">
+                      <Ban className="h-3 w-3 mr-1" />
+                      {language === "es" ? "Suspendido" : "Suspended"}
+                    </Badge>
+                  )}
+                  {(!business.approval_status || business.approval_status === 'draft') && (
+                    <Badge variant="secondary">
+                      {language === "es" ? "Borrador" : "Draft"}
+                    </Badge>
+                  )}
                 </div>
               </CardHeader>
-              <CardContent className="pt-0 space-y-3">
-                {checkingRequirements && (
-                  <div className="flex items-center gap-2 p-3 bg-muted rounded-lg">
-                    <Loader2 className="h-4 w-4 animate-spin text-primary" />
-                    <span className="text-sm text-muted-foreground">
-                      {language === "es" ? "Verificando requisitos..." : "Checking requirements..."}
-                    </span>
-                  </div>
-                )}
-                {business.is_public && visibilityRequirements?.isValid && (
-                  <div className="flex items-center gap-2 p-3 bg-primary/10 rounded-lg">
-                    <CheckCircle2 className="h-4 w-4 text-primary" />
-                    <span className="text-sm text-primary">
-                      {language === "es" 
-                        ? "Tu negocio será visible en BookWise Client" 
-                        : "Your business will be visible on BookWise Client"}
-                    </span>
-                  </div>
-                )}
-                {!business.is_public && visibilityRequirements && (
-                  <Alert>
-                    <AlertTriangle className="h-4 w-4" />
-                    <AlertTitle>
-                      {language === "es" ? "Requisitos para activar visibilidad pública" : "Requirements to enable public visibility"}
+              <CardContent className="pt-0 space-y-4">
+                {/* APPROVED Status */}
+                {business.approval_status === 'approved' && (
+                  <Alert className="border-green-500/50 bg-green-500/10">
+                    <CheckCircle className="h-4 w-4 text-green-600" />
+                    <AlertTitle className="text-green-700">
+                      {language === "es" ? "¡Tu negocio está publicado!" : "Your business is published!"}
                     </AlertTitle>
-                    <AlertDescription className="mt-2">
-                      <div className="space-y-2">
-                        <div className={`flex items-center gap-2 ${visibilityRequirements.requirements.logo ? 'text-green-600' : 'text-muted-foreground'}`}>
-                          {visibilityRequirements.requirements.logo ? (
-                            <CheckCircle className="h-4 w-4" />
-                          ) : (
-                            <X className="h-4 w-4" />
-                          )}
-                          <span className="text-sm">
-                            {language === "es" ? "Logo del establecimiento" : "Business logo"}
-                          </span>
-                        </div>
-                        <div className={`flex items-center gap-2 ${visibilityRequirements.requirements.coverImage ? 'text-green-600' : 'text-muted-foreground'}`}>
-                          {visibilityRequirements.requirements.coverImage ? (
-                            <CheckCircle className="h-4 w-4" />
-                          ) : (
-                            <X className="h-4 w-4" />
-                          )}
-                          <span className="text-sm">
-                            {language === "es" ? "Imagen de portada del establecimiento" : "Cover image"}
-                          </span>
-                        </div>
-                        <div className={`flex items-center gap-2 ${visibilityRequirements.requirements.phone ? 'text-green-600' : 'text-muted-foreground'}`}>
-                          {visibilityRequirements.requirements.phone ? (
-                            <CheckCircle className="h-4 w-4" />
-                          ) : (
-                            <X className="h-4 w-4" />
-                          )}
-                          <span className="text-sm">
-                            {language === "es" ? "Contacto (teléfono)" : "Contact (phone)"}
-                          </span>
-                        </div>
-                        <div className={`flex items-center gap-2 ${visibilityRequirements.requirements.address ? 'text-green-600' : 'text-muted-foreground'}`}>
-                          {visibilityRequirements.requirements.address ? (
-                            <CheckCircle className="h-4 w-4" />
-                          ) : (
-                            <X className="h-4 w-4" />
-                          )}
-                          <span className="text-sm">
-                            {language === "es" ? "Dirección del establecimiento" : "Business address"}
-                          </span>
-                        </div>
-                        <div className={`flex items-center gap-2 ${visibilityRequirements.requirements.googleMapsUrl ? 'text-green-600' : 'text-muted-foreground'}`}>
-                          {visibilityRequirements.requirements.googleMapsUrl ? (
-                            <CheckCircle className="h-4 w-4" />
-                          ) : (
-                            <X className="h-4 w-4" />
-                          )}
-                          <span className="text-sm">
-                            {language === "es" ? "URL de Google Maps" : "Google Maps URL"}
-                          </span>
-                        </div>
-                      </div>
+                    <AlertDescription className="text-green-600">
+                      {language === "es" 
+                        ? "Los clientes pueden encontrarte en Bookwise Client."
+                        : "Clients can find you on Bookwise Client."}
                     </AlertDescription>
                   </Alert>
+                )}
+
+                {/* PENDING Status */}
+                {business.approval_status === 'pending' && (
+                  <Alert className="border-amber-500/50 bg-amber-500/10">
+                    <Clock className="h-4 w-4 text-amber-600" />
+                    <AlertTitle className="text-amber-700">
+                      {language === "es" ? "Solicitud en revisión" : "Request under review"}
+                    </AlertTitle>
+                    <AlertDescription className="text-amber-600">
+                      {language === "es" 
+                        ? "Tu solicitud será revisada en las próximas 24 horas. Te notificaremos cuando sea aprobada."
+                        : "Your request will be reviewed within 24 hours. We'll notify you when it's approved."}
+                      {approvalRequest?.submitted_at && (
+                        <p className="mt-2 text-xs">
+                          {language === "es" ? "Enviada: " : "Submitted: "}
+                          {new Date(approvalRequest.submitted_at).toLocaleString()}
+                        </p>
+                      )}
+                    </AlertDescription>
+                  </Alert>
+                )}
+
+                {/* REJECTED Status */}
+                {business.approval_status === 'rejected' && (
+                  <>
+                    <Alert variant="destructive">
+                      <XCircle className="h-4 w-4" />
+                      <AlertTitle>
+                        {language === "es" ? "Solicitud rechazada" : "Request rejected"}
+                      </AlertTitle>
+                      <AlertDescription>
+                        {approvalRequest?.rejection_reason || (
+                          language === "es" 
+                            ? "Tu solicitud no cumple con los requisitos. Por favor revisa y corrige los problemas mencionados."
+                            : "Your request doesn't meet the requirements. Please review and fix the issues mentioned."
+                        )}
+                      </AlertDescription>
+                    </Alert>
+                    <Button 
+                      onClick={handleResubmitRequest}
+                      variant="outline"
+                      className="w-full"
+                    >
+                      <RefreshCw className="h-4 w-4 mr-2" />
+                      {language === "es" ? "Corregir y volver a enviar" : "Fix and resubmit"}
+                    </Button>
+                  </>
+                )}
+
+                {/* SUSPENDED Status */}
+                {business.approval_status === 'suspended' && (
+                  <Alert className="border-red-700/50 bg-red-700/10">
+                    <Ban className="h-4 w-4 text-red-700" />
+                    <AlertTitle className="text-red-800">
+                      {language === "es" ? "Negocio suspendido" : "Business suspended"}
+                    </AlertTitle>
+                    <AlertDescription className="text-red-700">
+                      {language === "es" 
+                        ? "Tu negocio ha sido suspendido por el administrador. Contacta soporte para más información."
+                        : "Your business has been suspended by the administrator. Contact support for more information."}
+                    </AlertDescription>
+                  </Alert>
+                )}
+
+                {/* DRAFT Status - Show requirements and submit button */}
+                {(!business.approval_status || business.approval_status === 'draft') && (
+                  <>
+                    {checkingRequirements && (
+                      <div className="flex items-center gap-2 p-3 bg-muted rounded-lg">
+                        <Loader2 className="h-4 w-4 animate-spin text-primary" />
+                        <span className="text-sm text-muted-foreground">
+                          {language === "es" ? "Verificando requisitos..." : "Checking requirements..."}
+                        </span>
+                      </div>
+                    )}
+                    
+                    {visibilityRequirements && (
+                      <Alert>
+                        <FileCheck className="h-4 w-4" />
+                        <AlertTitle>
+                          {language === "es" ? "Requisitos para solicitar publicación" : "Requirements to request publication"}
+                        </AlertTitle>
+                        <AlertDescription className="mt-2">
+                          <div className="space-y-2">
+                            <div className={`flex items-center gap-2 ${visibilityRequirements.requirements.logo ? 'text-green-600' : 'text-muted-foreground'}`}>
+                              {visibilityRequirements.requirements.logo ? (
+                                <CheckCircle className="h-4 w-4" />
+                              ) : (
+                                <X className="h-4 w-4" />
+                              )}
+                              <span className="text-sm">
+                                {language === "es" ? "Logo del establecimiento" : "Business logo"}
+                              </span>
+                            </div>
+                            <div className={`flex items-center gap-2 ${visibilityRequirements.requirements.coverImage ? 'text-green-600' : 'text-muted-foreground'}`}>
+                              {visibilityRequirements.requirements.coverImage ? (
+                                <CheckCircle className="h-4 w-4" />
+                              ) : (
+                                <X className="h-4 w-4" />
+                              )}
+                              <span className="text-sm">
+                                {language === "es" ? "Imagen de portada" : "Cover image"}
+                              </span>
+                            </div>
+                            <div className={`flex items-center gap-2 ${visibilityRequirements.requirements.phone ? 'text-green-600' : 'text-muted-foreground'}`}>
+                              {visibilityRequirements.requirements.phone ? (
+                                <CheckCircle className="h-4 w-4" />
+                              ) : (
+                                <X className="h-4 w-4" />
+                              )}
+                              <span className="text-sm">
+                                {language === "es" ? "Teléfono de contacto" : "Contact phone"}
+                              </span>
+                            </div>
+                            <div className={`flex items-center gap-2 ${visibilityRequirements.requirements.address ? 'text-green-600' : 'text-muted-foreground'}`}>
+                              {visibilityRequirements.requirements.address ? (
+                                <CheckCircle className="h-4 w-4" />
+                              ) : (
+                                <X className="h-4 w-4" />
+                              )}
+                              <span className="text-sm">
+                                {language === "es" ? "Dirección del negocio" : "Business address"}
+                              </span>
+                            </div>
+                            <div className={`flex items-center gap-2 ${visibilityRequirements.requirements.googleMapsUrl ? 'text-green-600' : 'text-muted-foreground'}`}>
+                              {visibilityRequirements.requirements.googleMapsUrl ? (
+                                <CheckCircle className="h-4 w-4" />
+                              ) : (
+                                <X className="h-4 w-4" />
+                              )}
+                              <span className="text-sm">
+                                {language === "es" ? "URL de Google Maps" : "Google Maps URL"}
+                              </span>
+                            </div>
+                          </div>
+                        </AlertDescription>
+                      </Alert>
+                    )}
+
+                    <Button 
+                      onClick={handleSubmitApprovalRequest}
+                      disabled={submittingRequest || checkingRequirements || !visibilityRequirements?.isValid}
+                      className="w-full"
+                      size="lg"
+                    >
+                      {submittingRequest ? (
+                        <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                      ) : (
+                        <Send className="h-4 w-4 mr-2" />
+                      )}
+                      {language === "es" ? "Solicitar publicación" : "Request publication"}
+                    </Button>
+                    
+                    {visibilityRequirements && !visibilityRequirements.isValid && (
+                      <p className="text-xs text-muted-foreground text-center">
+                        {language === "es" 
+                          ? "Completa todos los requisitos para poder enviar la solicitud"
+                          : "Complete all requirements to submit the request"}
+                      </p>
+                    )}
+                  </>
                 )}
               </CardContent>
             </Card>

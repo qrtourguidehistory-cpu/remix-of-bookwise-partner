@@ -66,6 +66,21 @@ export function AppointmentDetailView({
   const clientId = appointment?.client_id || 
                    appointment?.clients?.id || 
                    undefined;
+  
+  // Debug logging
+  useEffect(() => {
+    if (open && appointment) {
+      console.log("📋 AppointmentDetailView - Appointment data:", {
+        appointment_id: appointment.id,
+        client_id: appointment.client_id,
+        user_id: appointment.user_id,
+        clients_relation: appointment.clients,
+        clientId_calculated: clientId,
+        reserverUserId_calculated: reserverUserId,
+        business_id: profile?.business_id
+      });
+    }
+  }, [open, appointment, clientId, reserverUserId, profile?.business_id]);
   const [profileModalTarget, setProfileModalTarget] = useState<{ userId?: string; clientId?: string }>({});
   const [allergyOpen, setAllergyOpen] = useState(false);
   const [allergyText, setAllergyText] = useState("");
@@ -516,6 +531,21 @@ export function AppointmentDetailView({
     // Reuse existing status handler to trigger notifications/refresh
     onQuickAction?.("completed");
   };
+
+  // Listen for openClientActivity event from UserProfileModal
+  useEffect(() => {
+    const handleOpenActivity = (event: CustomEvent) => {
+      const { clientId: eventClientId, userId: eventUserId } = event.detail;
+      if (eventClientId || eventUserId) {
+        setClientActivityOpen(true);
+      }
+    };
+
+    window.addEventListener('openClientActivity', handleOpenActivity as EventListener);
+    return () => {
+      window.removeEventListener('openClientActivity', handleOpenActivity as EventListener);
+    };
+  }, []);
 
   // Important: keep hooks above this point. Returning before hooks breaks React rules.
   if (!hasAppointment) return null;
@@ -1007,24 +1037,56 @@ export function AppointmentDetailView({
                   {language === "es" ? "Reservado por:" : "Reserved by:"} 
                   <button 
                     className="ml-1 text-primary hover:underline"
-                    onClick={() => {
+                    onClick={async () => {
+                      console.log("🔍 Click en Reserved by - Datos disponibles:", {
+                        clientId,
+                        reserverUserId,
+                        appointment_client_id: appointment?.client_id,
+                        appointment_user_id: appointment?.user_id,
+                        clients_relation: appointment?.clients,
+                        business_id: profile?.business_id
+                      });
+                      
                       // PRIORITY 1: Use clientId if available (most reliable for manually added clients)
                       if (clientId) {
-                        setProfileModalTarget({ clientId: clientId, userId: undefined });
+                        console.log("✅ Usando clientId:", clientId);
+                        setProfileModalTarget({ clientId: clientId, userId: reserverUserId });
                         setUserProfileModalOpen(true);
                       } else if (appointment?.clients?.id) {
                         // PRIORITY 2: Use clients relation id
-                        setProfileModalTarget({ clientId: appointment.clients.id, userId: undefined });
+                        console.log("✅ Usando clients.id de relación:", appointment.clients.id);
+                        setProfileModalTarget({ clientId: appointment.clients.id, userId: appointment.clients.user_id || reserverUserId });
                         setUserProfileModalOpen(true);
                       } else if (reserverUserId) {
                         // PRIORITY 3: Fallback to userId for app-registered users
-                        setProfileModalTarget({ userId: reserverUserId, clientId: undefined });
+                        console.log("✅ Usando reserverUserId:", reserverUserId);
+                        // Try to find client_id by user_id first
+                        if (profile?.business_id) {
+                          const { data: clientByUserId } = await supabase
+                            .from("clients")
+                            .select("id")
+                            .eq("user_id", reserverUserId)
+                            .eq("business_id", profile.business_id)
+                            .maybeSingle();
+                          
+                          if (clientByUserId?.id) {
+                            console.log("✅ Cliente encontrado por user_id:", clientByUserId.id);
+                            setProfileModalTarget({ clientId: clientByUserId.id, userId: reserverUserId });
+                          } else {
+                            console.log("⚠️ No se encontró cliente por user_id, usando solo userId");
+                            setProfileModalTarget({ userId: reserverUserId, clientId: undefined });
+                          }
+                        } else {
+                          setProfileModalTarget({ userId: reserverUserId, clientId: undefined });
+                        }
                         setUserProfileModalOpen(true);
                       } else if (appointment?.clients?.user_id) {
                         // PRIORITY 4: Try clients.user_id
-                        setProfileModalTarget({ userId: appointment.clients.user_id, clientId: undefined });
+                        console.log("✅ Usando clients.user_id:", appointment.clients.user_id);
+                        setProfileModalTarget({ userId: appointment.clients.user_id, clientId: appointment.clients.id });
                         setUserProfileModalOpen(true);
                       } else {
+                        console.error("❌ No hay información de cliente disponible");
                         toast.error(language === "es" ? "No hay cliente asociado a esta reserva" : "No client linked to this booking");
                       }
                     }}

@@ -76,9 +76,10 @@ export function UserProfileModal({
           .eq("business_id", profile.business_id)
           .maybeSingle();
 
-        console.log("📊 Resultado de búsqueda cliente:", { clientRow, clientErr });
+        console.log("📊 Resultado de búsqueda cliente:", { clientRow, clientErr, error_code: clientErr?.code, error_message: clientErr?.message });
 
         if (clientRow && !clientErr) {
+          console.log("✅ Cliente encontrado en clients table:", clientRow);
           setClientMode(true);
           setEditable({
             full_name: clientRow.full_name || "",
@@ -94,12 +95,14 @@ export function UserProfileModal({
           });
           
           // Calculate rating for this client
-          const { data: reviewsData } = await supabase
+          const { data: reviewsData, error: reviewsError } = await supabase
             .from("reviews")
             .select("rating")
             .eq("client_id", clientId);
           
-          if (reviewsData && reviewsData.length > 0) {
+          if (reviewsError) {
+            console.error("Error fetching reviews:", reviewsError);
+          } else if (reviewsData && reviewsData.length > 0) {
             const totalRating = reviewsData.reduce((sum, review) => sum + (review.rating || 0), 0);
             const avgRating = totalRating / reviewsData.length;
             setAverageRating(avgRating);
@@ -108,6 +111,36 @@ export function UserProfileModal({
           
           setLoading(false);
           return; // Found client, stop here
+        } else if (clientErr) {
+          console.error("❌ Error fetching client:", clientErr);
+          // If RLS error, try without business_id filter (might be a cross-business client)
+          if (clientErr.code === 'PGRST116' || clientErr.message?.includes('row-level security')) {
+            console.log("⚠️ RLS error, intentando sin filtro business_id");
+            const { data: clientRowNoBusiness, error: clientErrNoBusiness } = await supabase
+              .from("clients")
+              .select("full_name, email, phone, business_id, user_id")
+              .eq("id", clientId)
+              .maybeSingle();
+            
+            if (clientRowNoBusiness && !clientErrNoBusiness) {
+              console.log("✅ Cliente encontrado sin filtro business_id:", clientRowNoBusiness);
+              setClientMode(true);
+              setEditable({
+                full_name: clientRowNoBusiness.full_name || "",
+                email: clientRowNoBusiness.email || "",
+                phone: clientRowNoBusiness.phone || "",
+                avatar_url: null,
+              });
+              setUserEmail(clientRowNoBusiness.email || "");
+              setUserProfile({
+                full_name: clientRowNoBusiness.full_name || null,
+                phone: clientRowNoBusiness.phone || null,
+                avatar_url: null,
+              });
+              setLoading(false);
+              return;
+            }
+          }
         }
       }
 
@@ -163,6 +196,20 @@ export function UserProfileModal({
               phone: (clientProfileData as any).phone || "",
               avatar_url: (clientProfileData as any).avatar_url || null,
             });
+            // Try to find if this user is also a client in this business
+            if (profile?.business_id) {
+              const { data: existingClient } = await supabase
+                .from("clients")
+                .select("id")
+                .eq("user_id", userId)
+                .eq("business_id", profile.business_id)
+                .maybeSingle();
+              
+              if (existingClient) {
+                console.log("✅ Usuario también es cliente en este negocio:", existingClient.id);
+                setClientMode(true);
+              }
+            }
           } else {
             // Try clients table by user_id
             console.log("🔍 Buscando cliente por user_id:", userId, "business_id:", profile?.business_id);
@@ -181,6 +228,7 @@ export function UserProfileModal({
 
             if (clientData && !clientError) {
               console.log("✅ Perfil encontrado en clients table por user_id:", clientData);
+              setClientMode(true);
               setUserProfile({
                 full_name: clientData.full_name || null,
                 phone: clientData.phone || null,
@@ -197,11 +245,57 @@ export function UserProfileModal({
               });
             } else {
               console.log("❌ No se encontró perfil en ninguna tabla");
-              setUserProfile({
-                full_name: null,
-                phone: null,
-                avatar_url: null,
-              });
+              // Last resort: try to get info from appointment if appointmentId is available
+              if (appointmentId && profile?.business_id) {
+                console.log("🔍 Último intento: buscando información desde appointment:", appointmentId);
+                const { data: appointmentData, error: appointmentError } = await supabase
+                  .from("appointments")
+                  .select("client_name, client_email, client_phone, clients!appointments_client_id_fkey(full_name, email, phone)")
+                  .eq("id", appointmentId)
+                  .eq("business_id", profile.business_id)
+                  .maybeSingle();
+                
+                if (appointmentData && !appointmentError) {
+                  const clientInfo = appointmentData.clients || {};
+                  const fullName = clientInfo.full_name || appointmentData.client_name || "";
+                  const email = clientInfo.email || appointmentData.client_email || "";
+                  const phone = clientInfo.phone || appointmentData.client_phone || "";
+                  
+                  if (fullName || email || phone) {
+                    console.log("✅ Información encontrada desde appointment:", { fullName, email, phone });
+                    setUserProfile({
+                      full_name: fullName || null,
+                      phone: phone || null,
+                      avatar_url: null,
+                    });
+                    setUserEmail(email || "");
+                    setEditable({
+                      full_name: fullName || "",
+                      email: email || "",
+                      phone: phone || "",
+                      avatar_url: null,
+                    });
+                  } else {
+                    setUserProfile({
+                      full_name: null,
+                      phone: null,
+                      avatar_url: null,
+                    });
+                  }
+                } else {
+                  setUserProfile({
+                    full_name: null,
+                    phone: null,
+                    avatar_url: null,
+                  });
+                }
+              } else {
+                setUserProfile({
+                  full_name: null,
+                  phone: null,
+                  avatar_url: null,
+                });
+              }
             }
           }
         }
@@ -238,10 +332,10 @@ export function UserProfileModal({
   }, [userId, clientId, language, profile?.business_id]);
 
   useEffect(() => {
-    console.log("🔍 UserProfileModal useEffect:", { open, userId, clientId });
+    console.log("🔍 UserProfileModal useEffect:", { open, userId, clientId, profile_business_id: profile?.business_id });
     
-    if (!open || (!userId && !clientId)) {
-      console.log("⚠️ UserProfileModal: No userId ni clientId, reseteando estado");
+    if (!open) {
+      console.log("⚠️ UserProfileModal: Modal cerrado, reseteando estado");
       setUserProfile(null);
       setUserEmail("");
       setAverageRating(0);
@@ -249,10 +343,18 @@ export function UserProfileModal({
       setClientMode(false);
       return;
     }
+    
+    if (!userId && !clientId) {
+      console.log("⚠️ UserProfileModal: No userId ni clientId, pero modal está abierto - intentando buscar información");
+      // Don't return early, try to fetch anyway if we have appointmentId
+      if (!appointmentId) {
+        return;
+      }
+    }
 
     console.log("✅ UserProfileModal: Llamando fetchUserProfile");
     fetchUserProfile();
-  }, [open, userId, clientId, fetchUserProfile]);
+  }, [open, userId, clientId, fetchUserProfile, appointmentId]);
 
   const handleSaveClient = async () => {
     if (!profile?.business_id || !clientId) return;
@@ -616,12 +718,30 @@ export function UserProfileModal({
           {/* Actions */}
           <div className="flex flex-col gap-3">
             {clientMode ? (
-              <Button onClick={handleSaveClient} disabled={addingClient}>
-                {addingClient ? (
-                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                ) : null}
-                {language === "es" ? "Guardar Cambios" : "Save Changes"}
-              </Button>
+              <>
+                <Button onClick={handleSaveClient} disabled={addingClient}>
+                  {addingClient ? (
+                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                  ) : null}
+                  {language === "es" ? "Guardar Cambios" : "Save Changes"}
+                </Button>
+                {clientId && (
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      onOpenChange(false);
+                      // Trigger activity view - parent should handle this
+                      setTimeout(() => {
+                        window.dispatchEvent(new CustomEvent('openClientActivity', { 
+                          detail: { clientId, userId } 
+                        }));
+                      }, 100);
+                    }}
+                  >
+                    {language === "es" ? "Ver Actividades" : "View Activities"}
+                  </Button>
+                )}
+              </>
             ) : (
               <Button
                 onClick={handleAddAsClient}
