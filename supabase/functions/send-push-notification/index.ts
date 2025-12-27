@@ -17,6 +17,107 @@ interface PushNotificationRequest {
   notificationType?: string;
 }
 
+// Detect token type based on format
+function detectTokenType(token: string): 'fcm' | 'apns' | 'expo' | 'unknown' {
+  if (!token) return 'unknown';
+  
+  // Expo tokens start with "ExponentPushToken["
+  if (token.startsWith('ExponentPushToken[')) return 'expo';
+  
+  // FCM tokens are typically long alphanumeric strings with colons
+  if (token.includes(':') && token.length > 100) return 'fcm';
+  
+  // APNs tokens are 64 character hex strings
+  if (/^[a-f0-9]{64}$/i.test(token)) return 'apns';
+  
+  // Default to FCM for Capacitor Android tokens
+  if (token.length > 100) return 'fcm';
+  
+  return 'unknown';
+}
+
+// Send via Firebase Cloud Messaging (for Android/Capacitor)
+async function sendViaFCM(token: string, title: string, body: string, data: Record<string, any>): Promise<{ success: boolean; error?: string }> {
+  const fcmServerKey = Deno.env.get("FCM_SERVER_KEY");
+  
+  if (!fcmServerKey) {
+    console.log("[FCM] No FCM_SERVER_KEY configured, skipping FCM push");
+    return { success: false, error: "FCM not configured" };
+  }
+
+  try {
+    const response = await fetch("https://fcm.googleapis.com/fcm/send", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `key=${fcmServerKey}`,
+      },
+      body: JSON.stringify({
+        to: token,
+        notification: {
+          title,
+          body,
+          sound: "default",
+          badge: 1,
+        },
+        data: {
+          ...data,
+          click_action: "FLUTTER_NOTIFICATION_CLICK",
+        },
+        priority: "high",
+      }),
+    });
+
+    if (!response.ok) {
+      const error = await response.text();
+      console.error("[FCM] Error:", error);
+      return { success: false, error };
+    }
+
+    const result = await response.json();
+    console.log("[FCM] Sent successfully:", result);
+    return { success: true };
+  } catch (error: any) {
+    console.error("[FCM] Exception:", error);
+    return { success: false, error: error.message };
+  }
+}
+
+// Send via Expo Push API (fallback for Expo tokens)
+async function sendViaExpo(token: string, title: string, body: string, data: Record<string, any>): Promise<{ success: boolean; error?: string }> {
+  try {
+    const response = await fetch("https://exp.host/--/api/v2/push/send", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+        "Accept-Encoding": "gzip, deflate",
+      },
+      body: JSON.stringify({
+        to: token,
+        title,
+        body,
+        data,
+        sound: "default",
+        badge: 1,
+      }),
+    });
+
+    if (!response.ok) {
+      const error = await response.text();
+      console.error("[Expo] Error:", error);
+      return { success: false, error };
+    }
+
+    const result = await response.json();
+    console.log("[Expo] Sent successfully:", result);
+    return { success: true };
+  } catch (error: any) {
+    console.error("[Expo] Exception:", error);
+    return { success: false, error: error.message };
+  }
+}
+
 serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -83,7 +184,7 @@ serve(async (req: Request) => {
       }
     }
 
-    console.log(`Push notification request for user ${targetUserId || clientId}: ${title}`);
+    console.log(`[Push] Notification request for user ${targetUserId || clientId}: ${title}`);
 
     // Create in-app notification regardless of push token
     if (businessId) {
@@ -97,12 +198,12 @@ serve(async (req: Request) => {
         type: notificationType || "general",
         meta: data || {},
       });
-      console.log("In-app notification created");
+      console.log("[Push] In-app notification created");
     }
 
     // If no push token, return success but note that push wasn't sent
     if (!pushToken) {
-      console.log("No push token found, skipping push notification");
+      console.log("[Push] No push token found, skipping push notification");
       return new Response(
         JSON.stringify({ 
           success: true, 
@@ -117,45 +218,41 @@ serve(async (req: Request) => {
       );
     }
 
-    // Send push notification via Expo Push API (for Capacitor/React Native apps)
-    // This is a generic implementation that works with Expo Push Notification Service
-    const expoPushUrl = "https://exp.host/--/api/v2/push/send";
-    
-    const pushPayload = {
-      to: pushToken,
-      title,
-      body,
-      data: {
-        ...data,
-        appointmentId,
-        notificationType,
-      },
-      sound: "default",
-      badge: 1,
+    // Detect token type and send accordingly
+    const tokenType = detectTokenType(pushToken);
+    console.log(`[Push] Token type detected: ${tokenType}`);
+
+    const pushData = {
+      ...data,
+      appointmentId,
+      notificationType,
     };
 
-    console.log("Sending push notification to:", pushToken.substring(0, 20) + "...");
+    let pushResult: { success: boolean; error?: string };
 
-    const pushResponse = await fetch(expoPushUrl, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Accept": "application/json",
-        "Accept-Encoding": "gzip, deflate",
-      },
-      body: JSON.stringify(pushPayload),
-    });
+    switch (tokenType) {
+      case 'fcm':
+        pushResult = await sendViaFCM(pushToken, title, body, pushData);
+        break;
+      case 'expo':
+        pushResult = await sendViaExpo(pushToken, title, body, pushData);
+        break;
+      default:
+        // Try FCM first (most common for Capacitor), then Expo as fallback
+        pushResult = await sendViaFCM(pushToken, title, body, pushData);
+        if (!pushResult.success) {
+          console.log("[Push] FCM failed, trying Expo as fallback");
+          pushResult = await sendViaExpo(pushToken, title, body, pushData);
+        }
+    }
 
-    if (!pushResponse.ok) {
-      const error = await pushResponse.text();
-      console.error("Push notification error:", error);
-      // Don't throw, just log - in-app notification was still created
+    if (!pushResult.success) {
       return new Response(
         JSON.stringify({ 
           success: true, 
           pushSent: false, 
           reason: "push_api_error",
-          error,
+          error: pushResult.error,
           inAppCreated: true 
         }),
         {
@@ -165,14 +262,11 @@ serve(async (req: Request) => {
       );
     }
 
-    const pushResult = await pushResponse.json();
-    console.log("Push notification sent successfully:", pushResult);
-
     return new Response(
       JSON.stringify({ 
         success: true, 
         pushSent: true, 
-        pushResult,
+        tokenType,
         inAppCreated: true 
       }),
       {
@@ -181,7 +275,7 @@ serve(async (req: Request) => {
       }
     );
   } catch (error: any) {
-    console.error("Error sending push notification:", error);
+    console.error("[Push] Error:", error);
     return new Response(
       JSON.stringify({ error: error.message }),
       {

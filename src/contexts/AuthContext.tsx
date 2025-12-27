@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useState, useRef, useMemo, useCal
 import { User, Session } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import { initializePushNotifications, clearPushToken } from "@/lib/pushNotificationService";
 
 interface AuthContextType {
   user: User | null;
@@ -266,6 +267,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
 
       toast.success("¡Bienvenido!");
+      
+      // Initialize push notifications after successful login
+      initializePushNotifications().catch((err) => {
+        console.log("[Auth] Push notifications init skipped:", err);
+      });
+      
       return { error: null };
     } catch (err: any) {
       toast.error(err.message || "Error inesperado");
@@ -297,6 +304,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const signOut = async () => {
+    // Clear push token before signing out
+    await clearPushToken().catch((err) => {
+      console.log("[Auth] Error clearing push token:", err);
+    });
+    
     const { error } = await supabase.auth.signOut();
     
     if (error) {

@@ -349,6 +349,70 @@ export type Database = {
           },
         ]
       }
+      business_approval_requests: {
+        Row: {
+          business_id: string
+          created_at: string | null
+          id: string
+          notes: string | null
+          owner_id: string
+          rejection_reason: string | null
+          reviewed_at: string | null
+          reviewed_by: string | null
+          status: string
+          submitted_at: string
+          updated_at: string | null
+        }
+        Insert: {
+          business_id: string
+          created_at?: string | null
+          id?: string
+          notes?: string | null
+          owner_id: string
+          rejection_reason?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          status?: string
+          submitted_at?: string
+          updated_at?: string | null
+        }
+        Update: {
+          business_id?: string
+          created_at?: string | null
+          id?: string
+          notes?: string | null
+          owner_id?: string
+          rejection_reason?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          status?: string
+          submitted_at?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "business_approval_requests_business_id_fkey"
+            columns: ["business_id"]
+            isOneToOne: false
+            referencedRelation: "businesses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "business_approval_requests_business_id_fkey"
+            columns: ["business_id"]
+            isOneToOne: false
+            referencedRelation: "establishments"
+            referencedColumns: ["establishment_id"]
+          },
+          {
+            foreignKeyName: "business_approval_requests_business_id_fkey"
+            columns: ["business_id"]
+            isOneToOne: false
+            referencedRelation: "establishments"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       business_hours: {
         Row: {
           break_end: string | null
@@ -414,6 +478,7 @@ export type Database = {
         Row: {
           account_type: string
           address: string | null
+          approval_status: string | null
           average_rating: number | null
           business_name: string
           cover_image_url: string | null
@@ -442,6 +507,7 @@ export type Database = {
         Insert: {
           account_type: string
           address?: string | null
+          approval_status?: string | null
           average_rating?: number | null
           business_name: string
           cover_image_url?: string | null
@@ -470,6 +536,7 @@ export type Database = {
         Update: {
           account_type?: string
           address?: string | null
+          approval_status?: string | null
           average_rating?: number | null
           business_name?: string
           cover_image_url?: string | null
@@ -1086,6 +1153,7 @@ export type Database = {
           id: string
           onboarding_step: number | null
           phone: string | null
+          push_token: string | null
           updated_at: string | null
         }
         Insert: {
@@ -1096,6 +1164,7 @@ export type Database = {
           id: string
           onboarding_step?: number | null
           phone?: string | null
+          push_token?: string | null
           updated_at?: string | null
         }
         Update: {
@@ -1106,6 +1175,7 @@ export type Database = {
           id?: string
           onboarding_step?: number | null
           phone?: string | null
+          push_token?: string | null
           updated_at?: string | null
         }
         Relationships: [

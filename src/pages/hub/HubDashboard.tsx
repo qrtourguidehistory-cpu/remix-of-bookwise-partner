@@ -136,7 +136,7 @@ export default function HubDashboard() {
       const { count: todayAppointments } = await supabase
         .from("appointments")
         .select("*", { count: "exact", head: true })
-        .eq("date", today);
+        .eq("appointment_date", today);
 
       // Get recent appointments
       const { data: recentApts } = await supabase
