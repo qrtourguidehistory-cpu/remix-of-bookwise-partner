@@ -250,16 +250,16 @@ export function UserProfileModal({
                 console.log("🔍 Último intento: buscando información desde appointment:", appointmentId);
                 const { data: appointmentData, error: appointmentError } = await supabase
                   .from("appointments")
-                  .select("client_name, client_email, client_phone, clients!appointments_client_id_fkey(full_name, email, phone)")
+                  .select("client_id, clients!appointments_client_id_fkey(full_name, email, phone)")
                   .eq("id", appointmentId)
                   .eq("business_id", profile.business_id)
                   .maybeSingle();
                 
                 if (appointmentData && !appointmentError) {
-                  const clientInfo = appointmentData.clients || {};
-                  const fullName = clientInfo.full_name || appointmentData.client_name || "";
-                  const email = clientInfo.email || appointmentData.client_email || "";
-                  const phone = clientInfo.phone || appointmentData.client_phone || "";
+                  const clientInfo = (appointmentData as any).clients || {};
+                  const fullName = clientInfo.full_name || "";
+                  const email = clientInfo.email || "";
+                  const phone = clientInfo.phone || "";
                   
                   if (fullName || email || phone) {
                     console.log("✅ Información encontrada desde appointment:", { fullName, email, phone });
