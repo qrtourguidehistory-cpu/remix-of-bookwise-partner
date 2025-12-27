@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
+import bookwiseLogo from "@/assets/bookwise-logo.png";
 
 export default function SplashPage({ shouldRedirect = true }: { shouldRedirect?: boolean }) {
   const navigate = useNavigate();
@@ -64,6 +65,14 @@ export default function SplashPage({ shouldRedirect = true }: { shouldRedirect?:
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.6, delay: 0.3 }}
       >
+        <motion.img
+          src={bookwiseLogo}
+          alt="BookWise Logo"
+          className="w-24 h-24 mb-4"
+          initial={{ opacity: 0, scale: 0.5 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ duration: 0.5, delay: 0.3 }}
+        />
         <motion.h1
           className="text-5xl md:text-7xl font-bold text-black"
           initial={{ opacity: 0, scale: 0.8 }}
