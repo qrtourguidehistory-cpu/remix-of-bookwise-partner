@@ -1,6 +1,10 @@
 import { Capacitor } from '@capacitor/core';
-import { PushNotifications } from '@capacitor/push-notifications';
 import { supabase } from '@/integrations/supabase/client';
+
+// Dynamic import for push notifications to avoid breaking web builds
+// We'll load it lazily only when needed on native platforms
+let PushNotifications: any = null;
+let pushNotificationsModule: any = null;
 
 export interface PushNotificationData {
   title: string;
@@ -23,6 +27,34 @@ class PushNotificationService {
   }
 
   /**
+   * Load push notifications module dynamically
+   */
+  private async loadPushNotificationsModule(): Promise<boolean> {
+    if (pushNotificationsModule) {
+      PushNotifications = pushNotificationsModule.PushNotifications;
+      return true;
+    }
+
+    // Only try to load on native platforms
+    if (!this.isAvailable()) {
+      return false;
+    }
+
+    try {
+      // Use eval to create a dynamic import that Vite cannot analyze at build time
+      // This prevents Vite from trying to resolve the module during build
+      const importFn = new Function('return import("@capacitor/push-notifications")');
+      pushNotificationsModule = await importFn();
+      PushNotifications = pushNotificationsModule.PushNotifications;
+      return true;
+    } catch (error) {
+      // This is expected on web builds or if module is not installed - silently fail
+      console.debug('[PushNotifications] Module not available (this is normal on web)');
+      return false;
+    }
+  }
+
+  /**
    * Initialize push notifications
    * Call this once when the app starts (after user is authenticated)
    */
@@ -34,6 +66,13 @@ class PushNotificationService {
 
     if (!this.isAvailable()) {
       console.log('[PushNotifications] Not available on web platform');
+      return false;
+    }
+
+    // Ensure PushNotifications is loaded
+    const loaded = await this.loadPushNotificationsModule();
+    if (!loaded || !PushNotifications) {
+      console.error('[PushNotifications] Failed to load plugin');
       return false;
     }
 
@@ -71,6 +110,11 @@ class PushNotificationService {
    * Set up push notification listeners
    */
   private setupListeners(): void {
+    if (!PushNotifications) {
+      console.warn('[PushNotifications] Plugin not loaded, cannot setup listeners');
+      return;
+    }
+
     // On registration success - save token to database
     PushNotifications.addListener('registration', async (token) => {
       console.log('[PushNotifications] Registration token:', token.value);
@@ -178,6 +222,11 @@ class PushNotificationService {
       return 'denied';
     }
 
+    const loaded = await this.loadPushNotificationsModule();
+    if (!loaded || !PushNotifications) {
+      return 'denied';
+    }
+
     const status = await PushNotifications.checkPermissions();
     return status.receive;
   }
@@ -186,6 +235,10 @@ class PushNotificationService {
    * Remove all notification listeners (cleanup)
    */
   async removeAllListeners(): Promise<void> {
+    if (!PushNotifications) {
+      return;
+    }
+
     await PushNotifications.removeAllListeners();
     this.initialized = false;
   }
@@ -194,7 +247,31 @@ class PushNotificationService {
 // Export singleton instance
 export const pushNotificationService = new PushNotificationService();
 
-// Export convenience functions
-export const initializePushNotifications = () => pushNotificationService.initialize();
-export const clearPushToken = () => pushNotificationService.clearToken();
-export const getPushPermissionStatus = () => pushNotificationService.getPermissionStatus();
+// Export convenience functions with error handling
+export const initializePushNotifications = async () => {
+  try {
+    return await pushNotificationService.initialize();
+  } catch (error) {
+    // Silently fail if push notifications are not available (e.g., on web)
+    console.debug('[PushNotifications] Initialization skipped (not available)');
+    return false;
+  }
+};
+
+export const clearPushToken = async () => {
+  try {
+    return await pushNotificationService.clearToken();
+  } catch (error) {
+    // Silently fail if push notifications are not available
+    console.debug('[PushNotifications] Clear token skipped (not available)');
+  }
+};
+
+export const getPushPermissionStatus = async () => {
+  try {
+    return await pushNotificationService.getPermissionStatus();
+  } catch (error) {
+    // Return denied if push notifications are not available
+    return 'denied';
+  }
+};

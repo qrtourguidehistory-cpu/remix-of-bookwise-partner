@@ -15,8 +15,20 @@ export default defineConfig(({ mode }) => ({
       "@": path.resolve(__dirname, "./src"),
     },
   },
+  optimizeDeps: {
+    exclude: ['@capacitor/push-notifications'],
+  },
   build: {
     outDir: "dist",
     emptyOutDir: true,
+    rollupOptions: {
+      external: (id) => {
+        // Don't bundle capacitor plugins for web builds
+        if (id.includes('@capacitor/push-notifications')) {
+          return true;
+        }
+        return false;
+      },
+    },
   },
 }));
