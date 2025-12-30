@@ -1,7 +1,20 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
+import { Capacitor } from "@capacitor/core";
 import bookwiseLogo from "@/assets/bookwise-logo.png";
+
+// Trigger haptic feedback on native platforms
+const triggerHapticFeedback = async () => {
+  if (Capacitor.isNativePlatform()) {
+    try {
+      const { Haptics, ImpactStyle } = await import("@capacitor/haptics");
+      await Haptics.impact({ style: ImpactStyle.Medium });
+    } catch (error) {
+      console.log("[Haptics] Not available:", error);
+    }
+  }
+};
 
 export default function SplashPage({
   shouldRedirect = true
@@ -31,6 +44,8 @@ export default function SplashPage({
     let timer: NodeJS.Timeout;
     if (shouldRedirect) {
       timer = setTimeout(() => {
+        // Trigger haptic feedback before navigating
+        triggerHapticFeedback();
         navigate("/welcome");
       }, 3000);
     }
