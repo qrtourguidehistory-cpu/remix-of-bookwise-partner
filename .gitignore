@@ -27,7 +27,16 @@ dist-ssr
 *.sw?
 
 # Capacitor
-android/
+# android/ - Comentado para permitir subir la carpeta android al repo
 ios/
 *.keystore
 *.jks
+
+# Android build files (dentro de android/)
+android/app/build/
+android/.gradle/
+android/build/
+android/local.properties
+android/.idea/
+android/*.iml
+android/app/*.iml

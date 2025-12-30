@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">BookWise Partner</string>
+    <string name="title_activity_main">BookWise Partner</string>
+    <string name="package_name">app.lovable.37b48817e8004c8982197e479ce68da5</string>
+    <string name="custom_url_scheme">app.lovable.37b48817e8004c8982197e479ce68da5</string>
+</resources>
