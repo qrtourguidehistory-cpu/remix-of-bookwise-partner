@@ -278,7 +278,7 @@ export default function BookingFlow() {
         title: t("appointmentConfirmed"),
         description: t("notifications"),
       });
-      setTimeout(() => navigate("/"), 1500);
+      setTimeout(() => navigate("/", { replace: true }), 1500);
     } catch (error) {
       console.error("Error creating appointment:", error);
       toast({

@@ -2,10 +2,11 @@ import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { ThemeProvider } from "@/contexts/ThemeContext";
 import { LanguageProvider } from "@/contexts/LanguageContext";
 import { AuthProvider } from "@/contexts/AuthContext";
+import { useBackButton } from "@/hooks/useBackButton";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import LoginPage from "./pages/auth/LoginPage";
 import SignupPage from "./pages/auth/SignupPage";
@@ -59,6 +60,12 @@ import ModerationPage from "./pages/hub/ModerationPage";
 
 const queryClient = new QueryClient();
 
+// Component to handle back button at the router level
+function BackButtonHandler() {
+  useBackButton();
+  return null;
+}
+
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <ThemeProvider>
@@ -68,6 +75,7 @@ const App = () => (
           <Sonner />
           <BrowserRouter>
             <AuthProvider>
+              <BackButtonHandler />
               <Routes>
                 {/* Public Routes */}
                 <Route path="/" element={<RootRoute />} />

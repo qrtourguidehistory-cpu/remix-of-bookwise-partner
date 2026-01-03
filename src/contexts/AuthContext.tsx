@@ -283,13 +283,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const signUp = async (email: string, password: string, fullName: string) => {
     const redirectUrl = `${window.location.origin}/onboarding`;
     
-    const { error } = await supabase.auth.signUp({
+    const { data, error } = await supabase.auth.signUp({
       email,
       password,
       options: {
         emailRedirectTo: redirectUrl,
         data: {
           full_name: fullName,
+          account_type: 'partner', // Mark as partner signup
         },
       },
     });
@@ -299,7 +300,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return { error };
     }
 
-    toast.success("¡Cuenta creada! Revisa tu email para confirmar.");
+    // Check if user was actually created or if they already exist
+    // Supabase returns data.user but no session if user exists but isn't confirmed
+    if (data.user && !data.session) {
+      // User might already exist - check if they have a business (partner)
+      // This is a soft check - the main validation is server-side
+      toast.success("¡Cuenta creada! Revisa tu email para confirmar.");
+    } else if (data.session) {
+      // Auto-confirmed (if email confirmation is disabled)
+      toast.success("¡Cuenta creada exitosamente!");
+    } else {
+      toast.success("¡Cuenta creada! Revisa tu email para confirmar.");
+    }
+    
     return { error: null };
   };
 

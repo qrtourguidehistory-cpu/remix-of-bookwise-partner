@@ -22,7 +22,7 @@ export default function LoginPage() {
   // Redirect if already authenticated
   useEffect(() => {
     if (isAuthenticated) {
-      navigate("/");
+      navigate("/", { replace: true });
     }
   }, [isAuthenticated, navigate]);
 
@@ -39,7 +39,7 @@ export default function LoginPage() {
       const { error } = await signIn(email, password);
       
       if (!error) {
-        navigate("/");
+        navigate("/", { replace: true });
       }
     } catch (err) {
       toast.error(language === "es" ? "Error inesperado" : "Unexpected error");
