@@ -227,7 +227,7 @@ export default function OnboardingFlow() {
       await refreshProfile();
 
       toast.success("¡Configuración completada!");
-      navigate("/");
+      navigate("/", { replace: true });
     } catch (error: any) {
       toast.error(error.message || "Error al completar la configuración");
     }

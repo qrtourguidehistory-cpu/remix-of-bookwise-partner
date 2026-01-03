@@ -4,8 +4,13 @@ import { ArrowRight } from "lucide-react";
 import { motion, useScroll, useTransform, Variants } from "framer-motion";
 import { useRef } from "react";
 import welcomeImage from "@/assets/welcome-booking.jpg";
+
 export default function WelcomePage() {
   const navigate = useNavigate();
+
+  const handleContinue = () => {
+    navigate("/auth/login", { replace: true });
+  };
   const containerRef = useRef<HTMLDivElement>(null);
   const {
     scrollYProgress
@@ -100,7 +105,7 @@ export default function WelcomePage() {
         </div>
 
         {/* Logo y nombre - Estático */}
-        <motion.div className="absolute top-8 left-6 z-30" variants={staggerContainer} initial="hidden" animate="show">
+        <motion.div className="absolute top-8 left-6 z-30 pt-safe" variants={staggerContainer} initial="hidden" animate="show">
           <motion.h1 className="text-5xl md:text-6xl font-black text-white tracking-tight" variants={fadeInUp} style={{
             textShadow: "0 4px 20px rgba(0,0,0,0.5)"
           }}>
@@ -117,7 +122,7 @@ export default function WelcomePage() {
         </motion.div>
 
         {/* Skip button with entrance animation */}
-        <motion.div className="absolute top-8 right-6 z-30" initial={{
+        <motion.div className="absolute top-8 right-6 z-30 pt-safe" initial={{
         opacity: 0,
         x: 20
       }} animate={{
@@ -127,14 +132,14 @@ export default function WelcomePage() {
         delay: 0.8,
         duration: 0.5
       }}>
-          <Button variant="secondary" size="sm" className="rounded-full bg-white/15 backdrop-blur-md border border-white/25 text-white hover:bg-white/25 shadow-xl transition-all hover:scale-105" onClick={() => navigate("/auth/login")}>
+          <Button variant="secondary" size="sm" className="rounded-full bg-white/15 backdrop-blur-md border border-white/25 text-white hover:bg-white/25 shadow-xl transition-all hover:scale-105" onClick={handleContinue}>
             Omitir
           </Button>
         </motion.div>
       </div>
 
       {/* Content Section with stagger animations */}
-      <motion.div className="absolute bottom-0 left-0 right-0 p-6 pb-10 bg-gradient-to-t from-background via-background/98 to-transparent pt-28 z-20" initial={{
+      <motion.div className="absolute bottom-0 left-0 right-0 p-6 pb-safe bg-gradient-to-t from-background via-background/98 to-transparent pt-28 z-20" style={{ paddingBottom: 'max(env(safe-area-inset-bottom), 2.5rem)' }} initial={{
       opacity: 0,
       y: 60
     }} animate={{
@@ -145,9 +150,6 @@ export default function WelcomePage() {
       delay: 0.5,
       ease: "easeOut"
     }}>
-        {/* Feature pills with stagger */}
-        
-
         <motion.h2 className="text-2xl md:text-3xl font-bold text-foreground mb-2" initial={{
         opacity: 0,
         y: 20
@@ -160,7 +162,6 @@ export default function WelcomePage() {
       }}>
           Comienza con BookWise Partner
         </motion.h2>
-        
 
         <motion.div initial={{
         opacity: 0,
@@ -178,7 +179,7 @@ export default function WelcomePage() {
       }} whileTap={{
         scale: 0.98
       }}>
-          <Button size="lg" className="w-full justify-between text-lg py-6 rounded-xl shadow-xl hover:shadow-2xl transition-all group" onClick={() => navigate("/auth/login")}>
+          <Button size="lg" className="w-full justify-between text-lg py-6 rounded-xl shadow-xl hover:shadow-2xl transition-all group mb-safe" onClick={handleContinue}>
             <span>Continuar</span>
             <ArrowRight className="w-5 h-5 transition-transform group-hover:translate-x-1" />
           </Button>

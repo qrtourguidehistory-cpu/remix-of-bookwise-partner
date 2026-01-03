@@ -43,12 +43,25 @@ export default function SignupPage() {
       signupSchema.parse({ fullName, email, password, confirmPassword });
       
       setLoading(true);
+      
+      // Check if this email is already registered as a partner
+      // by attempting to sign in (will fail but give us info)
+      // We'll check in the signUp response for existing user error
+      
       const { error } = await signUp(email, password, fullName);
       
-      if (!error) {
-        navigate("/onboarding");
+      if (error) {
+        // Handle specific error for user already registered
+        if (error.message?.includes('already registered') || 
+            error.message?.includes('User already registered') ||
+            error.message?.includes('already exists')) {
+          setErrors({ email: 'Este email ya está registrado. Por favor inicia sesión.' });
+        }
+        setLoading(false);
+        return;
       }
       
+      navigate("/onboarding", { replace: true });
       setLoading(false);
     } catch (error) {
       if (error instanceof z.ZodError) {
