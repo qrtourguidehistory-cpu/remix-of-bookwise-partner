@@ -4,9 +4,15 @@ import { Browser } from '@capacitor/browser';
 import { App } from '@capacitor/app';
 import { supabase } from '@/integrations/supabase/client';
 
+// Deep link scheme for the app
+const APP_SCHEME = 'com.bookwise.partner';
+const REDIRECT_URL = `${APP_SCHEME}://auth/callback`;
+
 /**
  * Hook for handling OAuth in Capacitor apps using external browser
  * This approach opens the system browser for OAuth and handles the redirect back to the app
+ * 
+ * NO Firebase, NO Native Sign-In - Pure Web OAuth via Supabase
  */
 export function useCapacitorOAuth() {
   const [loading, setLoading] = useState(false);
@@ -20,38 +26,55 @@ export function useCapacitorOAuth() {
       console.log('[CapacitorOAuth] App opened with URL:', url);
       
       // Check if this is an auth callback
-      if (url.includes('auth/v1/callback') || url.includes('access_token') || url.includes('code=')) {
+      if (url.includes('auth/callback') || url.includes('access_token') || url.includes('code=')) {
         try {
-          // Close the browser
-          await Browser.close();
+          // Close the browser immediately
+          await Browser.close().catch(() => {
+            // Browser might already be closed, ignore error
+          });
           
-          // Extract tokens from URL
-          const urlObj = new URL(url);
+          // Extract tokens from URL - handle both hash fragments and query params
+          let accessToken: string | null = null;
+          let refreshToken: string | null = null;
+          let code: string | null = null;
           
           // Check for hash fragments (implicit flow)
           if (url.includes('#')) {
             const hashParams = new URLSearchParams(url.split('#')[1]);
-            const accessToken = hashParams.get('access_token');
-            const refreshToken = hashParams.get('refresh_token');
+            accessToken = hashParams.get('access_token');
+            refreshToken = hashParams.get('refresh_token');
+          }
+          
+          // Check for query params (PKCE flow)
+          if (url.includes('?')) {
+            const urlObj = new URL(url);
+            code = urlObj.searchParams.get('code');
             
-            if (accessToken) {
-              console.log('[CapacitorOAuth] Setting session from hash tokens');
-              const { error } = await supabase.auth.setSession({
-                access_token: accessToken,
-                refresh_token: refreshToken || '',
-              });
-              
-              if (error) {
-                console.error('[CapacitorOAuth] Error setting session:', error);
-              } else {
-                console.log('[CapacitorOAuth] Session set successfully');
-              }
-              return;
+            // Also check for tokens in query params
+            if (!accessToken) {
+              accessToken = urlObj.searchParams.get('access_token');
+              refreshToken = urlObj.searchParams.get('refresh_token');
             }
           }
           
-          // Check for code (PKCE flow)
-          const code = urlObj.searchParams.get('code');
+          // Handle implicit flow - set session directly
+          if (accessToken) {
+            console.log('[CapacitorOAuth] Setting session from tokens');
+            const { error } = await supabase.auth.setSession({
+              access_token: accessToken,
+              refresh_token: refreshToken || '',
+            });
+            
+            if (error) {
+              console.error('[CapacitorOAuth] Error setting session:', error);
+            } else {
+              console.log('[CapacitorOAuth] Session set successfully');
+            }
+            setLoading(false);
+            return;
+          }
+          
+          // Handle PKCE flow - exchange code for session
           if (code) {
             console.log('[CapacitorOAuth] Exchanging code for session');
             const { error } = await supabase.auth.exchangeCodeForSession(code);
@@ -61,9 +84,15 @@ export function useCapacitorOAuth() {
             } else {
               console.log('[CapacitorOAuth] Code exchanged successfully');
             }
+            setLoading(false);
+            return;
           }
+          
+          console.warn('[CapacitorOAuth] No tokens or code found in callback URL');
         } catch (error) {
           console.error('[CapacitorOAuth] Error handling redirect:', error);
+        } finally {
+          setLoading(false);
         }
       }
     };
@@ -80,31 +109,38 @@ export function useCapacitorOAuth() {
     setLoading(true);
     
     try {
-      // Get the OAuth URL from Supabase
+      // Determine redirect URL based on platform
       const redirectUrl = isNative 
-        ? 'com.bookwise.partner://auth/callback'  // Deep link for native apps
-        : `${window.location.origin}/`;
+        ? REDIRECT_URL  // Deep link for native apps
+        : `${window.location.origin}/`;  // Web origin for browser
+      
+      console.log('[CapacitorOAuth] Starting Google OAuth with redirect:', redirectUrl);
       
       const { data, error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
           redirectTo: redirectUrl,
           skipBrowserRedirect: isNative, // Don't auto-redirect on native, we'll handle it
+          queryParams: {
+            access_type: 'offline',
+            prompt: 'consent',
+          },
         },
       });
 
       if (error) {
         console.error('[CapacitorOAuth] OAuth error:', error);
+        setLoading(false);
         return { success: false, error: error.message };
       }
 
       if (isNative && data.url) {
-        // Open external browser for OAuth
-        console.log('[CapacitorOAuth] Opening browser with URL:', data.url);
+        // Open external system browser for OAuth
+        console.log('[CapacitorOAuth] Opening system browser with URL:', data.url);
         await Browser.open({ 
           url: data.url,
           presentationStyle: 'popover',
-          windowName: '_blank',
+          windowName: '_self',
         });
         return { success: true, pending: true }; // Auth is pending, will complete on redirect
       }
@@ -113,12 +149,8 @@ export function useCapacitorOAuth() {
       return { success: true };
     } catch (error: any) {
       console.error('[CapacitorOAuth] Error:', error);
+      setLoading(false);
       return { success: false, error: error.message };
-    } finally {
-      // Don't reset loading on native - it will reset when auth completes
-      if (!isNative) {
-        setLoading(false);
-      }
     }
   }, [isNative]);
 
@@ -127,8 +159,10 @@ export function useCapacitorOAuth() {
     
     try {
       const redirectUrl = isNative 
-        ? 'com.bookwise.partner://auth/callback'
+        ? REDIRECT_URL
         : `${window.location.origin}/`;
+      
+      console.log('[CapacitorOAuth] Starting Apple OAuth with redirect:', redirectUrl);
       
       const { data, error } = await supabase.auth.signInWithOAuth({
         provider: 'apple',
@@ -140,6 +174,7 @@ export function useCapacitorOAuth() {
 
       if (error) {
         console.error('[CapacitorOAuth] Apple OAuth error:', error);
+        setLoading(false);
         return { success: false, error: error.message };
       }
 
@@ -147,7 +182,7 @@ export function useCapacitorOAuth() {
         await Browser.open({ 
           url: data.url,
           presentationStyle: 'popover',
-          windowName: '_blank',
+          windowName: '_self',
         });
         return { success: true, pending: true };
       }
@@ -155,18 +190,15 @@ export function useCapacitorOAuth() {
       return { success: true };
     } catch (error: any) {
       console.error('[CapacitorOAuth] Apple error:', error);
+      setLoading(false);
       return { success: false, error: error.message };
-    } finally {
-      if (!isNative) {
-        setLoading(false);
-      }
     }
   }, [isNative]);
 
   // Reset loading state when auth state changes
   useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
-      if (event === 'SIGNED_IN') {
+      if (event === 'SIGNED_IN' || event === 'SIGNED_OUT') {
         setLoading(false);
       }
     });
