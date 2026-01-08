@@ -104,8 +104,8 @@ export default function WelcomePage() {
         }} />)}
         </div>
 
-        {/* Logo y nombre - Estático */}
-        <motion.div className="absolute top-8 left-6 z-30 pt-safe" variants={staggerContainer} initial="hidden" animate="show">
+        {/* Logo y nombre - Ajustado para safe area */}
+        <motion.div className="absolute top-4 left-6 z-30 pt-[max(env(safe-area-inset-top),0.5rem)]" variants={staggerContainer} initial="hidden" animate="show">
           <motion.h1 className="text-5xl md:text-6xl font-black text-white tracking-tight" variants={fadeInUp} style={{
             textShadow: "0 4px 20px rgba(0,0,0,0.5)"
           }}>
@@ -121,8 +121,8 @@ export default function WelcomePage() {
           </motion.p>
         </motion.div>
 
-        {/* Skip button with entrance animation */}
-        <motion.div className="absolute top-8 right-6 z-30 pt-safe" initial={{
+        {/* Skip button - Ajustado para safe area */}
+        <motion.div className="absolute top-4 right-6 z-30 pt-[max(env(safe-area-inset-top),0.5rem)]" initial={{
         opacity: 0,
         x: 20
       }} animate={{

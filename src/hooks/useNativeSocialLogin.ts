@@ -55,11 +55,17 @@ export function useNativeSocialLogin() {
 
       console.log('[NativeSocialLogin] Google result:', JSON.stringify(result));
 
-      if (result?.result?.idToken) {
+      const idToken = result?.result?.idToken || result?.idToken;
+      const accessToken = result?.result?.accessToken || result?.accessToken;
+      
+      console.log('[NativeSocialLogin] Tokens received:', { hasIdToken: !!idToken, hasAccessToken: !!accessToken });
+      
+      if (idToken) {
         // Use the ID token to sign in with Supabase
         const { data, error } = await supabase.auth.signInWithIdToken({
           provider: 'google',
-          token: result.result.idToken,
+          token: idToken,
+          access_token: accessToken,
         });
 
         if (error) {
@@ -70,8 +76,8 @@ export function useNativeSocialLogin() {
         console.log('[NativeSocialLogin] Supabase success:', data.user?.email);
         return { success: true };
       } else {
-        // No idToken in result
-        console.error('[NativeSocialLogin] No idToken in result');
+        // No idToken in result - log full result for debugging
+        console.error('[NativeSocialLogin] No idToken in result:', JSON.stringify(result, null, 2));
         return { success: false, error: 'No ID token received from Google' };
       }
     } catch (error: any) {
