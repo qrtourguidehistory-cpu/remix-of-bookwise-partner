@@ -12,7 +12,12 @@
           "package_name": "com.bookwise.partner"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "762901353486-v2vvtk3oskg0t8rd58la8lums0tb87sa.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
           "current_key": "AIzaSyDmAsfyBpNHLLocFygC8m9wszkv5ham52I"
@@ -20,7 +25,12 @@
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "762901353486-v2vvtk3oskg0t8rd58la8lums0tb87sa.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
         }
       }
     }
