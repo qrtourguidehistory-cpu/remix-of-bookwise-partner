@@ -64,7 +64,7 @@ export default function WelcomePage() {
       }
     }
   };
-  return <div ref={containerRef} className="min-h-screen bg-background flex flex-col relative overflow-hidden">
+  return <div ref={containerRef} className="fixed inset-0 bg-background flex flex-col overflow-hidden">
       {/* Background Image with Parallax */}
       <div className="flex-1 relative">
         <motion.div className="h-full w-full absolute inset-0" style={{
