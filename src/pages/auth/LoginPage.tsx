@@ -59,8 +59,9 @@ export default function LoginPage() {
   const handleGoogleSignIn = async () => {
     setLoading(true);
     try {
-      // Use native login on Android/iOS, OAuth web on browser
+      // Use native login on Android/iOS
       if (isNative) {
+        console.log('[LoginPage] Attempting native Google login...');
         const result = await signInWithGoogleNative();
         
         if (result.success) {
@@ -69,21 +70,13 @@ export default function LoginPage() {
           return;
         }
         
-        // Handle specific errors
-        if (result.error === 'REAUTH_REQUIRED') {
-          toast.error(
-            language === "es" 
-              ? "Error de autenticación. Intenta de nuevo." 
-              : "Authentication error. Please try again."
-          );
-          // Try fallback to OAuth web
-          await fallbackToOAuthWeb();
-          return;
-        }
-        
-        // Generic error - try fallback
-        console.log('[LoginPage] Native login failed, trying OAuth fallback');
-        await fallbackToOAuthWeb();
+        // Handle specific errors - show toast and don't fallback to web (it doesn't work in native)
+        console.error('[LoginPage] Native login error:', result.error);
+        toast.error(
+          language === "es" 
+            ? "Error con Google. Verifica tu configuración." 
+            : "Google error. Check your configuration."
+        );
       } else {
         // Web browser - use OAuth redirect
         const { error } = await supabase.auth.signInWithOAuth({
@@ -97,6 +90,7 @@ export default function LoginPage() {
         }
       }
     } catch (error) {
+      console.error('[LoginPage] Google sign-in error:', error);
       toast.error("Error al conectar con Google");
     } finally {
       if (mountedRef.current) setLoading(false);
