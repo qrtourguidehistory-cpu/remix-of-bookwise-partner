@@ -1,24 +1,21 @@
 import { useEffect, useCallback, useState } from 'react';
 import { Capacitor } from '@capacitor/core';
-import { Browser } from '@capacitor/browser';
 import { App } from '@capacitor/app';
 import { supabase } from '@/integrations/supabase/client';
 
-// Deep link scheme for the app
-const APP_SCHEME = 'com.bookwise.partner';
-const REDIRECT_URL = `${APP_SCHEME}://auth/callback`;
+// Deep link scheme for the app - used for native redirect
+const NATIVE_REDIRECT_URL = 'com.bookwise.partner://auth/callback';
 
 /**
- * Hook for handling OAuth in Capacitor apps using external browser
- * This approach opens the system browser for OAuth and handles the redirect back to the app
- * 
- * NO Firebase, NO Native Sign-In - Pure Web OAuth via Supabase
+ * Hook for handling OAuth in Capacitor apps
+ * Uses pure web OAuth flow - NO native sign-in, NO Firebase
+ * Supabase handles opening the browser and redirecting back
  */
 export function useCapacitorOAuth() {
   const [loading, setLoading] = useState(false);
   const isNative = Capacitor.isNativePlatform();
 
-  // Handle deep link redirects from OAuth
+  // Handle deep link redirects from OAuth (native only)
   useEffect(() => {
     if (!isNative) return;
 
@@ -28,11 +25,6 @@ export function useCapacitorOAuth() {
       // Check if this is an auth callback
       if (url.includes('auth/callback') || url.includes('access_token') || url.includes('code=')) {
         try {
-          // Close the browser immediately
-          await Browser.close().catch(() => {
-            // Browser might already be closed, ignore error
-          });
-          
           // Extract tokens from URL - handle both hash fragments and query params
           let accessToken: string | null = null;
           let refreshToken: string | null = null;
@@ -109,18 +101,18 @@ export function useCapacitorOAuth() {
     setLoading(true);
     
     try {
-      // Determine redirect URL based on platform
+      // Use deep link for native, web origin for browser
       const redirectUrl = isNative 
-        ? REDIRECT_URL  // Deep link for native apps
-        : `${window.location.origin}/`;  // Web origin for browser
+        ? NATIVE_REDIRECT_URL
+        : `${window.location.origin}/`;
       
       console.log('[CapacitorOAuth] Starting Google OAuth with redirect:', redirectUrl);
       
-      const { data, error } = await supabase.auth.signInWithOAuth({
+      // Let Supabase handle everything - no skipBrowserRedirect, no Browser.open
+      const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
           redirectTo: redirectUrl,
-          skipBrowserRedirect: isNative, // Don't auto-redirect on native, we'll handle it
           queryParams: {
             access_type: 'offline',
             prompt: 'consent',
@@ -134,18 +126,7 @@ export function useCapacitorOAuth() {
         return { success: false, error: error.message };
       }
 
-      if (isNative && data.url) {
-        // Open external system browser for OAuth
-        console.log('[CapacitorOAuth] Opening system browser with URL:', data.url);
-        await Browser.open({ 
-          url: data.url,
-          presentationStyle: 'popover',
-          windowName: '_self',
-        });
-        return { success: true, pending: true }; // Auth is pending, will complete on redirect
-      }
-
-      // Web flow - redirect happens automatically
+      // Supabase will handle the redirect automatically
       return { success: true };
     } catch (error: any) {
       console.error('[CapacitorOAuth] Error:', error);
@@ -159,16 +140,16 @@ export function useCapacitorOAuth() {
     
     try {
       const redirectUrl = isNative 
-        ? REDIRECT_URL
+        ? NATIVE_REDIRECT_URL
         : `${window.location.origin}/`;
       
       console.log('[CapacitorOAuth] Starting Apple OAuth with redirect:', redirectUrl);
       
-      const { data, error } = await supabase.auth.signInWithOAuth({
+      // Let Supabase handle everything
+      const { error } = await supabase.auth.signInWithOAuth({
         provider: 'apple',
         options: {
           redirectTo: redirectUrl,
-          skipBrowserRedirect: isNative,
         },
       });
 
@@ -176,15 +157,6 @@ export function useCapacitorOAuth() {
         console.error('[CapacitorOAuth] Apple OAuth error:', error);
         setLoading(false);
         return { success: false, error: error.message };
-      }
-
-      if (isNative && data.url) {
-        await Browser.open({ 
-          url: data.url,
-          presentationStyle: 'popover',
-          windowName: '_self',
-        });
-        return { success: true, pending: true };
       }
 
       return { success: true };
