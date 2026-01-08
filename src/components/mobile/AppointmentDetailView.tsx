@@ -262,21 +262,9 @@ export function AppointmentDetailView({
         return;
       }
 
-      // PRIORITY 3: If we have user_id, search in profiles/client_profiles
+      // PRIORITY 3: If we have user_id, search in client_profiles FIRST, then profiles
       if (appointment?.user_id) {
-        // Try profiles table first (partners/staff)
-        const { data: profileData, error: profileError } = await supabase
-          .from("profiles")
-          .select("full_name")
-          .eq("id", appointment.user_id)
-          .maybeSingle();
-
-        if (profileData && !profileError && profileData.full_name) {
-          setReserverName(profileData.full_name);
-          return;
-        }
-
-        // Try client_profiles table (clients from client app)
+        // Try client_profiles table FIRST (clients from client app)
         const { data: clientProfileData, error: clientProfileError } = await (supabase
           .from("client_profiles" as any)
           .select("full_name")
@@ -301,6 +289,18 @@ export function AppointmentDetailView({
             setReserverName(clientByUserId.full_name);
             return;
           }
+        }
+
+        // LAST: Try profiles table (partners/staff) - only if not found in client tables
+        const { data: profileData, error: profileError } = await supabase
+          .from("profiles")
+          .select("full_name")
+          .eq("id", appointment.user_id)
+          .maybeSingle();
+
+        if (profileData && !profileError && profileData.full_name) {
+          setReserverName(profileData.full_name);
+          return;
         }
       }
 
@@ -1075,13 +1075,16 @@ export function AppointmentDetailView({
                   <button 
                     className="ml-1 text-primary hover:underline"
                     onClick={() => {
-                      // Always prioritize clientId for "Reserved by" - this shows the CLIENT info
-                      // not the user who made the booking
+                      // Try clientId first, then reserverUserId (who made the booking)
                       if (clientId) {
                         setProfileModalTarget({ clientId: clientId, userId: undefined });
                         setUserProfileModalOpen(true);
                       } else if (appointment?.clients?.id) {
                         setProfileModalTarget({ clientId: appointment.clients.id, userId: undefined });
+                        setUserProfileModalOpen(true);
+                      } else if (reserverUserId) {
+                        // Fallback to user who made the booking
+                        setProfileModalTarget({ userId: reserverUserId, clientId: undefined });
                         setUserProfileModalOpen(true);
                       } else {
                         toast.error(language === "es" ? "No hay cliente asociado a esta reserva" : "No client linked to this booking");
@@ -1238,15 +1241,15 @@ export function AppointmentDetailView({
         open={clientActionsOpen}
         onOpenChange={setClientActionsOpen}
         onViewClient={() => {
-          // Prefer reserver user (who made the booking) for "View client"
-          if (reserverUserId) {
-            setProfileModalTarget({ userId: reserverUserId, clientId: undefined });
+          // Use clientId first (business client record), then reserverUserId (who made the booking)
+          if (clientId) {
+            setProfileModalTarget({ clientId, userId: undefined });
             setUserProfileModalOpen(true);
             return;
           }
-          // Fallback: business client record
-          if (clientId) {
-            setProfileModalTarget({ clientId, userId: undefined });
+          // Fallback: user who made the booking (from client app)
+          if (reserverUserId) {
+            setProfileModalTarget({ userId: reserverUserId, clientId: undefined });
             setUserProfileModalOpen(true);
             return;
           }
