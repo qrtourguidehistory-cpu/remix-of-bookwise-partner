@@ -1,7 +1,7 @@
 import type { CapacitorConfig } from '@capacitor/cli';
 
 const config: CapacitorConfig = {
-  appId: 'app.lovable.37b48817e8004c8982197e479ce68da5',
+  appId: 'app.lovable.v37b48817e8004c8982197e479ce68da5',
   appName: 'BookWise Partner',
   webDir: 'dist',
   server: {
