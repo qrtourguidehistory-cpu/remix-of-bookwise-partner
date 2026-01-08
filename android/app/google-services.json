@@ -1,0 +1,39 @@
+{
+  "project_info": {
+    "project_number": "762901353486",
+    "project_id": "bookwise-447115",
+    "storage_bucket": "bookwise-447115.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:762901353486:android:partner_app_id",
+        "android_client_info": {
+          "package_name": "app.lovable.v37b48817e8004c8982197e479ce68da5"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "762901353486-v2vvtk3oskg0t8rd58la8lums0tb87sa.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": ""
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "762901353486-v2vvtk3oskg0t8rd58la8lums0tb87sa.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
