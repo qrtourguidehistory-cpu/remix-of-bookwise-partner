@@ -92,23 +92,9 @@ export default function LoginPage() {
     }
   };
 
-  const handleFacebookSignIn = async () => {
-    setLoading(true);
-    try {
-      const { error } = await supabase.auth.signInWithOAuth({
-        provider: 'facebook',
-        options: {
-          redirectTo: `${window.location.origin}/`,
-        }
-      });
-      if (error) {
-        toast.error("Error al conectar con Facebook");
-      }
-    } catch (error) {
-      toast.error("Error al conectar con Facebook");
-    } finally {
-      if (mountedRef.current) setLoading(false);
-    }
+  // Email button handler
+  const handleEmailClick = () => {
+    setShowEmailForm(true);
   };
 
   return (
@@ -152,9 +138,9 @@ export default function LoginPage() {
 
           {/* Social Login Buttons */}
           <div className="space-y-3">
+            {/* Apple - Black filled button */}
             <Button
-              variant="outline"
-              className="w-full h-14 justify-start gap-4 text-base font-medium rounded-xl border-border"
+              className="w-full h-14 justify-center gap-3 text-base font-medium rounded-xl bg-foreground text-background hover:bg-foreground/90"
               onClick={handleAppleSignIn}
               disabled={loading}
             >
@@ -164,21 +150,10 @@ export default function LoginPage() {
               <span>{language === "es" ? "Continuar con Apple" : "Continue with Apple"}</span>
             </Button>
 
+            {/* Google - Outlined button */}
             <Button
               variant="outline"
-              className="w-full h-14 justify-start gap-4 text-base font-medium rounded-xl border-border"
-              onClick={handleFacebookSignIn}
-              disabled={loading}
-            >
-              <svg className="w-5 h-5 text-[#1877F2]" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/>
-              </svg>
-              <span>{language === "es" ? "Continuar con Facebook" : "Continue with Facebook"}</span>
-            </Button>
-
-            <Button
-              variant="outline"
-              className="w-full h-14 justify-start gap-4 text-base font-medium rounded-xl border-border"
+              className="w-full h-14 justify-center gap-3 text-base font-medium rounded-xl border-border"
               onClick={handleGoogleSignIn}
               disabled={loading}
             >
@@ -190,33 +165,47 @@ export default function LoginPage() {
               </svg>
               <span>{language === "es" ? "Continuar con Google" : "Continue with Google"}</span>
             </Button>
+
+            {/* Email - Outlined button */}
+            <Button
+              variant="outline"
+              className="w-full h-14 justify-center gap-3 text-base font-medium rounded-xl border-border"
+              onClick={handleEmailClick}
+              disabled={loading}
+            >
+              <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <rect width="20" height="16" x="2" y="4" rx="2"/>
+                <path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/>
+              </svg>
+              <span>{language === "es" ? "Continuar con Email" : "Continue with Email"}</span>
+            </Button>
           </div>
 
-          {/* Divider */}
-          <div className="relative">
-            <Separator />
-            <span className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-background px-3 text-sm text-muted-foreground uppercase">
-              {language === "es" ? "O" : "OR"}
-            </span>
-          </div>
-
-          {/* Email Form */}
-          <form onSubmit={handleEmailContinue} className="space-y-4">
-            <Input
-              type="email"
-              placeholder={language === "es" ? "tu@email.com" : "your@email.com"}
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-              className="h-14 text-base rounded-xl border-border px-4"
-            />
-            
-            {showEmailForm && (
-              <motion.div
-                initial={{ opacity: 0, height: 0 }}
-                animate={{ opacity: 1, height: "auto" }}
-                transition={{ duration: 0.3 }}
-              >
+          {/* Email Form - Shows when email button is clicked */}
+          {showEmailForm && (
+            <motion.div
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: "auto" }}
+              transition={{ duration: 0.3 }}
+            >
+              <div className="relative mb-4">
+                <Separator />
+                <span className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-background px-3 text-sm text-muted-foreground uppercase">
+                  {language === "es" ? "O" : "OR"}
+                </span>
+              </div>
+              
+              <form onSubmit={handleEmailContinue} className="space-y-4">
+                <Input
+                  type="email"
+                  placeholder={language === "es" ? "tu@email.com" : "your@email.com"}
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  required
+                  className="h-14 text-base rounded-xl border-border px-4"
+                  autoFocus
+                />
+                
                 <Input
                   type="password"
                   placeholder={language === "es" ? "Contraseña" : "Password"}
@@ -225,20 +214,20 @@ export default function LoginPage() {
                   required
                   className="h-14 text-base rounded-xl border-border px-4"
                 />
-              </motion.div>
-            )}
 
-            <Button 
-              type="submit" 
-              className="w-full h-14 text-base font-medium rounded-xl"
-              disabled={loading}
-            >
-              {loading 
-                ? (language === "es" ? "Conectando..." : "Connecting...")
-                : (language === "es" ? "Continuar" : "Continue")
-              }
-            </Button>
-          </form>
+                <Button 
+                  type="submit" 
+                  className="w-full h-14 text-base font-medium rounded-xl"
+                  disabled={loading}
+                >
+                  {loading 
+                    ? (language === "es" ? "Conectando..." : "Connecting...")
+                    : (language === "es" ? "Continuar" : "Continue")
+                  }
+                </Button>
+              </form>
+            </motion.div>
+          )}
 
           {showEmailForm && (
             <motion.div
