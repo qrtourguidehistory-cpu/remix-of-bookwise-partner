@@ -23,7 +23,9 @@ export function useNativeSocialLogin() {
 
     // Dynamically import SocialLogin only on native platforms
     if (native) {
-      import('@capgo/capacitor-social-login').then((module) => {
+      // Use a non-literal import to avoid Vite/Rollup trying to resolve this at build time
+      const modulePath = '@capgo/capacitor-social-login';
+      import(modulePath).then((module) => {
         setSocialLogin(module.SocialLogin);
         // Initialize Google login
         module.SocialLogin.initialize({
