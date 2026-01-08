@@ -72,11 +72,9 @@ export default function LoginPage() {
         
         // Handle specific errors - show toast and don't fallback to web (it doesn't work in native)
         console.error('[LoginPage] Native login error:', result.error);
-        toast.error(
-          language === "es" 
-            ? "Error con Google. Verifica tu configuración." 
-            : "Google error. Check your configuration."
-        );
+        const nativeMsg = language === "es" ? "Error con Google. Verifica tu configuración." : "Google error. Check your configuration.";
+        // Include plugin error in toast to aid debugging when available
+        toast.error(result.error ? `${nativeMsg} (${result.error})` : nativeMsg);
       } else {
         // Web browser - use OAuth redirect
         const { error } = await supabase.auth.signInWithOAuth({
