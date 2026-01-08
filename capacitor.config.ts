@@ -4,12 +4,6 @@ const config: CapacitorConfig = {
   appId: 'app.lovable.v37b48817e8004c8982197e479ce68da5',
   appName: 'BookWise Partner',
   webDir: 'dist',
-  server: {
-    url: 'https://37b48817-e800-4c89-8219-7e479ce68da5.lovableproject.com?forceHideBadge=true',
-    cleartext: true,
-    androidScheme: 'https',
-    iosScheme: 'https',
-  },
   plugins: {
     SplashScreen: {
       launchShowDuration: 2000,
