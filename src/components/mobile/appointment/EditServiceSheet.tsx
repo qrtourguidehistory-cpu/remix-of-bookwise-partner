@@ -93,23 +93,51 @@ export function EditServiceSheet({
 
     setSaving(true);
     try {
-      // Store service info in appointment notes or as metadata
-      // Since appointment_services table doesn't exist, we'll update the appointment notes
-      const serviceInfo = {
+      const serviceData = {
+        appointment_id: appointmentId,
         service_id: service.id,
-        service_name: service.name,
         price: computedTotal,
         staff_id: staffId === "none" ? null : staffId,
         start_time: startTime || null,
         duration_minutes: duration ? Number(duration) : service.duration_minutes,
         discount_type: discount === "none" ? null : discount,
         discount_value: Number(discountValue || 0),
+        quantity: 1,
       };
 
-      // For now, show a success message but note the limitation
+      // Check if we're editing an existing record or creating a new one
+      if (existingCreatedAt && existingStartTime !== undefined) {
+        // Update existing record - use composite key match
+        const { error } = await (supabase
+          .from("appointment_services" as any)
+          .update({
+            price: serviceData.price,
+            staff_id: serviceData.staff_id,
+            start_time: serviceData.start_time,
+            duration_minutes: serviceData.duration_minutes,
+            discount_type: serviceData.discount_type,
+            discount_value: serviceData.discount_value,
+          })
+          .eq("appointment_id", appointmentId)
+          .eq("service_id", service.id)
+          .eq("created_at", existingCreatedAt) as any);
+
+        if (error) throw error;
+      } else {
+        // Insert new record
+        const { error } = await (supabase
+          .from("appointment_services" as any)
+          .insert(serviceData) as any);
+
+        if (error) throw error;
+      }
+
       toast.success(language === "es" ? "Servicio aplicado" : "Service applied");
       onApplied?.();
       onOpenChange(false);
+    } catch (error: any) {
+      console.error("Error saving service:", error);
+      toast.error(error?.message || (language === "es" ? "Error al guardar servicio" : "Error saving service"));
     } finally {
       setSaving(false);
     }
@@ -121,10 +149,24 @@ export function EditServiceSheet({
 
     setSaving(true);
     try {
-      // Since appointment_services table doesn't exist, just close
+      // Delete the record using composite key
+      if (existingCreatedAt) {
+        const { error } = await (supabase
+          .from("appointment_services" as any)
+          .delete()
+          .eq("appointment_id", appointmentId)
+          .eq("service_id", service.id)
+          .eq("created_at", existingCreatedAt) as any);
+
+        if (error) throw error;
+      }
+
       toast.success(language === "es" ? "Servicio eliminado" : "Service deleted");
       onApplied?.();
       onOpenChange(false);
+    } catch (error: any) {
+      console.error("Error deleting service:", error);
+      toast.error(error?.message || (language === "es" ? "Error al eliminar servicio" : "Error deleting service"));
     } finally {
       setSaving(false);
     }

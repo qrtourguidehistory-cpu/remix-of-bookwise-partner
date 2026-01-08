@@ -233,10 +233,37 @@ export function AppointmentDetailView({
     };
   }, [open, appointment?.business_id]);
 
-  // Fetch reserver name if user_id exists - search in multiple tables
+  // Fetch reserver name - PRIORITY: Use client_id first if available, then user_id
   useEffect(() => {
-    if (open && appointment?.user_id) {
-      const fetchReserverName = async () => {
+    if (!open || !appointment) {
+      setReserverName("");
+      return;
+    }
+
+    const fetchReserverName = async () => {
+      // PRIORITY 1: If appointment has client_id, get name from clients table (most reliable)
+      if (appointment?.client_id && profile?.business_id) {
+        const { data: clientData, error: clientError } = await supabase
+          .from("clients")
+          .select("full_name")
+          .eq("id", appointment.client_id)
+          .eq("business_id", profile.business_id)
+          .maybeSingle();
+
+        if (clientData && !clientError && clientData.full_name) {
+          setReserverName(clientData.full_name);
+          return;
+        }
+      }
+
+      // PRIORITY 2: Use the loaded clients relation
+      if (appointment?.clients?.full_name) {
+        setReserverName(appointment.clients.full_name);
+        return;
+      }
+
+      // PRIORITY 3: If we have user_id, search in profiles/client_profiles
+      if (appointment?.user_id) {
         // Try profiles table first (partners/staff)
         const { data: profileData, error: profileError } = await supabase
           .from("profiles")
@@ -261,63 +288,73 @@ export function AppointmentDetailView({
           return;
         }
 
-        // Try clients table (business clients) - search by user_id
+        // Try clients table by user_id
         if (profile?.business_id) {
-          const { data: clientData, error: clientError } = await supabase
+          const { data: clientByUserId, error: clientError } = await supabase
             .from("clients")
             .select("full_name")
             .eq("user_id", appointment.user_id)
             .eq("business_id", profile.business_id)
             .maybeSingle();
 
-          if (clientData && !clientError && clientData.full_name) {
-            setReserverName(clientData.full_name);
+          if (clientByUserId && !clientError && clientByUserId.full_name) {
+            setReserverName(clientByUserId.full_name);
             return;
           }
         }
+      }
 
-        // If appointment has client_id, try to get name from clients table
-        if (appointment?.client_id && profile?.business_id) {
-          const { data: clientByIdData, error: clientByIdError } = await supabase
-            .from("clients")
-            .select("full_name, user_id")
-            .eq("id", appointment.client_id)
-            .eq("business_id", profile.business_id)
-            .maybeSingle();
+      // PRIORITY 4: Fallback to appointment fields
+      const fallbackName = appointment?.client_name || 
+                          appointment?.guest_name || 
+                          "";
+      setReserverName(fallbackName || (language === "es" ? "Usuario" : "User"));
+    };
 
-          // Only use if the user_id matches (same person)
-          if (clientByIdData && !clientByIdError && 
-              clientByIdData.user_id === appointment.user_id && 
-              clientByIdData.full_name) {
-            setReserverName(clientByIdData.full_name);
-            return;
-          }
-        }
+    fetchReserverName();
+  }, [open, appointment?.user_id, appointment?.client_id, appointment?.client_name, appointment?.clients?.full_name, profile?.business_id, language]);
 
-        // Last fallback: try to get from appointment.client_name if available
-        if (appointment?.client_name) {
-          setReserverName(appointment.client_name);
+  // Fetch addon services from appointment_services table
+  useEffect(() => {
+    if (!open || !appointment?.id || !profile?.business_id) {
+      setAddonItems([]);
+      return;
+    }
+
+    const fetchAddonServices = async () => {
+      try {
+        const { data, error } = await (supabase
+          .from("appointment_services" as any)
+          .select(`
+            service_id,
+            quantity,
+            price,
+            staff_id,
+            start_time,
+            duration_minutes,
+            discount_type,
+            discount_value,
+            created_at,
+            services:service_id (id, name, category, duration_minutes, price),
+            staff:staff_id (id, full_name)
+          `)
+          .eq("appointment_id", appointment.id) as any);
+
+        if (error) {
+          console.error("Error fetching addon services:", error);
+          setAddonItems([]);
           return;
         }
 
-        // Final fallback to generic name
-        setReserverName(language === "es" ? "Usuario" : "User");
-      };
-      
-      fetchReserverName();
-    } else {
-      // If no user_id, try to get name from client_name or clients relation
-      if (open && appointment) {
-        const name = appointment?.clients?.full_name || 
-                    appointment?.client_name || 
-                    appointment?.guest_name || 
-                    "";
-        setReserverName(name || "");
-      } else {
-        setReserverName("");
+        setAddonItems(data || []);
+      } catch (err) {
+        console.error("Error fetching addon services:", err);
+        setAddonItems([]);
       }
-    }
-  }, [open, appointment?.user_id, appointment?.client_id, appointment?.client_name, appointment?.clients?.full_name, profile?.business_id, language]);
+    };
+
+    fetchAddonServices();
+  }, [open, appointment?.id, profile?.business_id]);
 
   // Check if there's a pending early arrival request for this appointment
   useEffect(() => {
@@ -1037,56 +1074,16 @@ export function AppointmentDetailView({
                   {language === "es" ? "Reservado por:" : "Reserved by:"} 
                   <button 
                     className="ml-1 text-primary hover:underline"
-                    onClick={async () => {
-                      console.log("🔍 Click en Reserved by - Datos disponibles:", {
-                        clientId,
-                        reserverUserId,
-                        appointment_client_id: appointment?.client_id,
-                        appointment_user_id: appointment?.user_id,
-                        clients_relation: appointment?.clients,
-                        business_id: profile?.business_id
-                      });
-                      
-                      // PRIORITY 1: Use clientId if available (most reliable for manually added clients)
+                    onClick={() => {
+                      // Always prioritize clientId for "Reserved by" - this shows the CLIENT info
+                      // not the user who made the booking
                       if (clientId) {
-                        console.log("✅ Usando clientId:", clientId);
-                        setProfileModalTarget({ clientId: clientId, userId: reserverUserId });
+                        setProfileModalTarget({ clientId: clientId, userId: undefined });
                         setUserProfileModalOpen(true);
                       } else if (appointment?.clients?.id) {
-                        // PRIORITY 2: Use clients relation id
-                        console.log("✅ Usando clients.id de relación:", appointment.clients.id);
-                        setProfileModalTarget({ clientId: appointment.clients.id, userId: appointment.clients.user_id || reserverUserId });
-                        setUserProfileModalOpen(true);
-                      } else if (reserverUserId) {
-                        // PRIORITY 3: Fallback to userId for app-registered users
-                        console.log("✅ Usando reserverUserId:", reserverUserId);
-                        // Try to find client_id by user_id first
-                        if (profile?.business_id) {
-                          const { data: clientByUserId } = await supabase
-                            .from("clients")
-                            .select("id")
-                            .eq("user_id", reserverUserId)
-                            .eq("business_id", profile.business_id)
-                            .maybeSingle();
-                          
-                          if (clientByUserId?.id) {
-                            console.log("✅ Cliente encontrado por user_id:", clientByUserId.id);
-                            setProfileModalTarget({ clientId: clientByUserId.id, userId: reserverUserId });
-                          } else {
-                            console.log("⚠️ No se encontró cliente por user_id, usando solo userId");
-                            setProfileModalTarget({ userId: reserverUserId, clientId: undefined });
-                          }
-                        } else {
-                          setProfileModalTarget({ userId: reserverUserId, clientId: undefined });
-                        }
-                        setUserProfileModalOpen(true);
-                      } else if (appointment?.clients?.user_id) {
-                        // PRIORITY 4: Try clients.user_id
-                        console.log("✅ Usando clients.user_id:", appointment.clients.user_id);
-                        setProfileModalTarget({ userId: appointment.clients.user_id, clientId: appointment.clients.id });
+                        setProfileModalTarget({ clientId: appointment.clients.id, userId: undefined });
                         setUserProfileModalOpen(true);
                       } else {
-                        console.error("❌ No hay información de cliente disponible");
                         toast.error(language === "es" ? "No hay cliente asociado a esta reserva" : "No client linked to this booking");
                       }
                     }}
@@ -1324,9 +1321,28 @@ export function AppointmentDetailView({
         existingStaffId={pickedService?.existingStaffId || null}
         existingCreatedAt={pickedService?.existingCreatedAt || null}
         onApplied={async () => {
-          // Note: appointment_services table doesn't exist yet
-          // When implemented, this would fetch add-on services for the appointment
-          setAddonItems([]);
+          // Reload addon services after adding/editing
+          try {
+            const { data } = await (supabase
+              .from("appointment_services" as any)
+              .select(`
+                service_id,
+                quantity,
+                price,
+                staff_id,
+                start_time,
+                duration_minutes,
+                discount_type,
+                discount_value,
+                created_at,
+                services:service_id (id, name, category, duration_minutes, price),
+                staff:staff_id (id, full_name)
+              `)
+              .eq("appointment_id", appointment.id) as any);
+            setAddonItems(data || []);
+          } catch (err) {
+            console.error("Error reloading addon services:", err);
+          }
         }}
       />
 
