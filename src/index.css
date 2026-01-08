@@ -22,9 +22,9 @@
   }
 }
 
-/* Global safe area styles */
+/* Global safe area styles - only left/right padding, top/bottom handled by components */
 html, body {
-  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+  padding: 0 env(safe-area-inset-right) 0 env(safe-area-inset-left);
   min-height: 100vh;
   min-height: -webkit-fill-available;
 }

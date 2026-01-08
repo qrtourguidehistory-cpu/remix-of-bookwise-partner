@@ -9,6 +9,7 @@ import { useLanguage } from "@/contexts/LanguageContext";
 import { supabase } from "@/lib/supabaseClient";
 import { toast } from "sonner";
 import { motion } from "framer-motion";
+import { useNativeSocialLogin } from "@/hooks/useNativeSocialLogin";
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
@@ -18,6 +19,7 @@ export default function LoginPage() {
   const { signIn, isAuthenticated } = useAuth();
   const navigate = useNavigate();
   const { language, setLanguage } = useLanguage();
+  const { isNative, signInWithGoogleNative, fallbackToOAuthWeb, loading: nativeLoading } = useNativeSocialLogin();
 
   // Redirect if already authenticated
   useEffect(() => {
@@ -57,14 +59,42 @@ export default function LoginPage() {
   const handleGoogleSignIn = async () => {
     setLoading(true);
     try {
-      const { error } = await supabase.auth.signInWithOAuth({
-        provider: 'google',
-        options: {
-          redirectTo: `${window.location.origin}/`,
+      // Use native login on Android/iOS, OAuth web on browser
+      if (isNative) {
+        const result = await signInWithGoogleNative();
+        
+        if (result.success) {
+          toast.success("¡Bienvenido!");
+          navigate("/", { replace: true });
+          return;
         }
-      });
-      if (error) {
-        toast.error("Error al conectar con Google");
+        
+        // Handle specific errors
+        if (result.error === 'REAUTH_REQUIRED') {
+          toast.error(
+            language === "es" 
+              ? "Error de autenticación. Intenta de nuevo." 
+              : "Authentication error. Please try again."
+          );
+          // Try fallback to OAuth web
+          await fallbackToOAuthWeb();
+          return;
+        }
+        
+        // Generic error - try fallback
+        console.log('[LoginPage] Native login failed, trying OAuth fallback');
+        await fallbackToOAuthWeb();
+      } else {
+        // Web browser - use OAuth redirect
+        const { error } = await supabase.auth.signInWithOAuth({
+          provider: 'google',
+          options: {
+            redirectTo: `${window.location.origin}/`,
+          }
+        });
+        if (error) {
+          toast.error("Error al conectar con Google");
+        }
       }
     } catch (error) {
       toast.error("Error al conectar con Google");
@@ -155,7 +185,7 @@ export default function LoginPage() {
               variant="outline"
               className="w-full h-14 justify-center gap-3 text-base font-medium rounded-xl border-border"
               onClick={handleGoogleSignIn}
-              disabled={loading}
+              disabled={loading || nativeLoading}
             >
               <svg className="w-5 h-5" viewBox="0 0 24 24">
                 <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
