@@ -6,10 +6,9 @@ import { Separator } from "@/components/ui/separator";
 import { X, Globe, HelpCircle } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useLanguage } from "@/contexts/LanguageContext";
-import { supabase } from "@/lib/supabaseClient";
 import { toast } from "sonner";
 import { motion } from "framer-motion";
-import { useNativeSocialLogin } from "@/hooks/useNativeSocialLogin";
+import { useCapacitorOAuth } from "@/hooks/useCapacitorOAuth";
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
@@ -19,7 +18,7 @@ export default function LoginPage() {
   const { signIn, isAuthenticated } = useAuth();
   const navigate = useNavigate();
   const { language, setLanguage } = useLanguage();
-  const { isNative, signInWithGoogleNative, fallbackToOAuthWeb, loading: nativeLoading } = useNativeSocialLogin();
+  const { signInWithGoogle, signInWithApple, loading: oauthLoading } = useCapacitorOAuth();
 
   // Redirect if already authenticated
   useEffect(() => {
@@ -46,7 +45,6 @@ export default function LoginPage() {
     } catch (err) {
       toast.error(language === "es" ? "Error inesperado" : "Unexpected error");
     } finally {
-      // Ensure loading state is reset even if navigation fails or throws
       if (mountedRef.current) {
         setLoading(false);
       }
@@ -57,67 +55,22 @@ export default function LoginPage() {
   const mountedRef = useMountedRef();
 
   const handleGoogleSignIn = async () => {
-    setLoading(true);
-    try {
-      // Use native login on Android/iOS
-      if (isNative) {
-        console.log('[LoginPage] Attempting native Google login...');
-        const result = await signInWithGoogleNative();
-        
-        if (result.success) {
-          toast.success("¡Bienvenido!");
-          navigate("/", { replace: true });
-          return;
-        }
-        
-        // Handle specific errors - show toast and don't fallback to web (it doesn't work in native)
-        console.error('[LoginPage] Native login error:', result.error);
-        const nativeMsg = language === "es" ? "Error con Google. Verifica tu configuración." : "Google error. Check your configuration.";
-        // Include plugin error in toast to aid debugging when available
-        toast.error(result.error ? `${nativeMsg} (${result.error})` : nativeMsg);
-      } else {
-        // Web browser - use OAuth redirect
-        const { error } = await supabase.auth.signInWithOAuth({
-          provider: 'google',
-          options: {
-            redirectTo: `${window.location.origin}/`,
-          }
-        });
-        if (error) {
-          toast.error("Error al conectar con Google");
-        }
-      }
-    } catch (error) {
-      console.error('[LoginPage] Google sign-in error:', error);
-      toast.error("Error al conectar con Google");
-    } finally {
-      if (mountedRef.current) setLoading(false);
+    const result = await signInWithGoogle();
+    
+    if (!result.success && result.error) {
+      toast.error(language === "es" ? "Error al conectar con Google" : "Error connecting with Google");
     }
   };
 
   const handleAppleSignIn = async () => {
-    setLoading(true);
-    try {
-      const { error } = await supabase.auth.signInWithOAuth({
-        provider: 'apple',
-        options: {
-          redirectTo: `${window.location.origin}/`,
-        }
-      });
-      if (error) {
-        toast.error("Error al conectar con Apple");
-      }
-    } catch (error) {
-      toast.error("Error al conectar con Apple");
-    } finally {
-      if (mountedRef.current) setLoading(false);
+    const result = await signInWithApple();
+    
+    if (!result.success && result.error) {
+      toast.error(language === "es" ? "Error al conectar con Apple" : "Error connecting with Apple");
     }
   };
 
-  // Email button handler
-  const handleEmailClick = () => {
-    setShowEmailForm(true);
-  };
+  const isLoading = loading || oauthLoading;
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
@@ -164,7 +117,7 @@ export default function LoginPage() {
             <Button
               className="w-full h-14 justify-center gap-3 text-base font-medium rounded-xl bg-foreground text-background hover:bg-foreground/90"
               onClick={handleAppleSignIn}
-              disabled={loading}
+              disabled={isLoading}
             >
               <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
                 <path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.81-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z"/>
@@ -177,7 +130,7 @@ export default function LoginPage() {
               variant="outline"
               className="w-full h-14 justify-center gap-3 text-base font-medium rounded-xl border-border"
               onClick={handleGoogleSignIn}
-              disabled={loading || nativeLoading}
+              disabled={isLoading}
             >
               <svg className="w-5 h-5" viewBox="0 0 24 24">
                 <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
@@ -192,8 +145,8 @@ export default function LoginPage() {
             <Button
               variant="outline"
               className="w-full h-14 justify-center gap-3 text-base font-medium rounded-xl border-border"
-              onClick={handleEmailClick}
-              disabled={loading}
+              onClick={() => setShowEmailForm(true)}
+              disabled={isLoading}
             >
               <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <rect width="20" height="16" x="2" y="4" rx="2"/>
@@ -240,9 +193,9 @@ export default function LoginPage() {
                 <Button 
                   type="submit" 
                   className="w-full h-14 text-base font-medium rounded-xl"
-                  disabled={loading}
+                  disabled={isLoading}
                 >
-                  {loading 
+                  {isLoading 
                     ? (language === "es" ? "Conectando..." : "Connecting...")
                     : (language === "es" ? "Continuar" : "Continue")
                   }
