@@ -55,7 +55,7 @@ export function AppointmentQuickActionsSheet({
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="bottom" className="p-0 bg-card border-t border-border">
+      <SheetContent side="bottom" className="p-0 bg-card border-t border-border" hideDefaultClose>
         <SheetHeader className="sr-only">
           <SheetTitle>{language === "es" ? "Acciones rápidas" : "Quick actions"}</SheetTitle>
           <SheetDescription>

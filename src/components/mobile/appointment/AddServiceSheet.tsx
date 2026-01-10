@@ -95,7 +95,7 @@ export function AddServiceSheet({ open, onOpenChange, onSelectService }: AddServ
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="bottom" className="p-0 bg-card border-t border-border h-[85vh]">
+      <SheetContent side="bottom" className="p-0 bg-card border-t border-border h-[85vh]" hideDefaultClose>
         <SheetHeader className="sr-only">
           <SheetTitle>{language === "es" ? "Seleccionar servicio" : "Select service"}</SheetTitle>
           <SheetDescription>
