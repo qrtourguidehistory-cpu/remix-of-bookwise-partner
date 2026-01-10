@@ -10,7 +10,7 @@ export const BUILD_INFO = {
   // Version from package
   version: "1.0.0",
   // App name
-  appName: "Mí Turnow",
+  appName: "Mí Turnow Partner",
 };
 
 // Generate a short random build ID for easy identification
