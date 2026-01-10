@@ -109,7 +109,7 @@ export default function HubLayout({ children }: HubLayoutProps) {
           <Button variant="ghost" size="icon" onClick={() => setSidebarOpen(true)}>
             <Menu className="h-5 w-5" />
           </Button>
-          <span className="font-bold text-lg">Bookwise <span className="text-muted-foreground font-normal text-sm">Admin</span></span>
+          <span className="font-bold text-lg">Mí Turnow <span className="text-muted-foreground font-normal text-sm">Admin</span></span>
         </div>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
@@ -151,7 +151,7 @@ export default function HubLayout({ children }: HubLayoutProps) {
         <div className="flex flex-col h-full">
           {/* Logo */}
           <div className="flex items-center justify-between h-16 px-4 border-b">
-            <span className="font-bold text-lg">Bookwise <span className="text-muted-foreground font-normal text-sm">Admin</span></span>
+            <span className="font-bold text-lg">Mí Turnow <span className="text-muted-foreground font-normal text-sm">Admin</span></span>
             <Button
               variant="ghost"
               size="icon"

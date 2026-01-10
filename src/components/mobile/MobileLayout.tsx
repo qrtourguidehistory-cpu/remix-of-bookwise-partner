@@ -385,7 +385,7 @@ export default function MobileLayout({ children }: MobileLayoutProps) {
         </header>
 
         {/* Main Content */}
-        <main className="flex-1 overflow-x-hidden overflow-y-auto" style={{ paddingBottom: 'calc(5rem + env(safe-area-inset-bottom))' }}>
+        <main className="flex-1 overflow-x-hidden overflow-y-auto" style={{ paddingBottom: 'calc(6rem + env(safe-area-inset-bottom) + 16px)' }}>
           {children}
         </main>
 

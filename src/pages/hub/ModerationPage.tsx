@@ -191,8 +191,8 @@ export default function ModerationPage() {
       toast({
         title: language === "es" ? "¡Aprobado!" : "Approved!",
         description: language === "es" 
-          ? "El negocio ha sido aprobado y ahora es visible en Bookwise Client"
-          : "The business has been approved and is now visible on Bookwise Client",
+          ? "El negocio ha sido aprobado y ahora es visible en Mí Turnow Client"
+          : "The business has been approved and is now visible on Mí Turnow Client",
       });
 
       fetchRequests();

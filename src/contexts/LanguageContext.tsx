@@ -10,7 +10,7 @@ interface Translations {
 }
 
 const translations: Translations = {
-  appName: { en: "BookWise Partner", es: "BookWise Partner" },
+  appName: { en: "Mí Turnow", es: "Mí Turnow" },
   calendar: { en: "Calendar", es: "Agenda" },
   sales: { en: "Sales", es: "Ventas" },
   add: { en: "Add", es: "Agregar" },

@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { Capacitor } from "@capacitor/core";
-import MiTurnowLogo from "@/components/ui/MiTurnowLogo";
+import MiTurnowTicketLogo from "@/components/ui/MiTurnowTicketLogo";
 
 // Trigger haptic feedback on native platforms
 const triggerHapticFeedback = async () => {
@@ -96,7 +96,7 @@ export default function SplashPage({
           transition={{ duration: 0.6, ease: "backOut" }}
         >
           {/* Animated Logo */}
-          <MiTurnowLogo size={120} animated variant="dark" />
+          <MiTurnowTicketLogo size={120} animated variant="dark" />
           
           {/* Brand Name */}
           <AnimatePresence>
@@ -108,20 +108,21 @@ export default function SplashPage({
                 transition={{ duration: 0.5, ease: "easeOut" }}
               >
                 <motion.h1
-                  className="text-5xl md:text-6xl font-black text-[#1a365d] tracking-tight"
+                  className="text-4xl md:text-5xl font-black text-[#1a365d] tracking-tight leading-none text-center"
                   initial={{ opacity: 0, letterSpacing: "0.3em" }}
                   animate={{ opacity: 1, letterSpacing: "0em" }}
                   transition={{ duration: 0.5, delay: 0.1 }}
                 >
-                  MiTurnow
+                  <span className="block">Mí</span>
+                  <span className="block">Turnow</span>
                 </motion.h1>
                 <motion.p
-                  className="text-lg text-[#38b2ac] mt-2 font-medium"
+                  className="text-sm text-[#38b2ac] mt-3 font-semibold tracking-[0.3em] uppercase"
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   transition={{ duration: 0.4, delay: 0.3 }}
                 >
-                  Gestión inteligente de citas
+                  partner
                 </motion.p>
               </motion.div>
             )}
