@@ -92,11 +92,15 @@ export default function WelcomePage() {
 
         {/* Logo y nombre - Ajustado para safe area */}
         <motion.div className="absolute top-4 left-6 z-30 pt-[max(env(safe-area-inset-top),0.5rem)]" variants={staggerContainer} initial="hidden" animate="show">
-          
-          <motion.h1 className="text-5xl md:text-6xl font-black text-white tracking-tight" variants={fadeInUp} style={{
+          <motion.h1 className="text-4xl md:text-5xl font-black text-white tracking-tight leading-none" variants={fadeInUp} style={{
           textShadow: "0 4px 20px rgba(0,0,0,0.5)"
-        }}>Mí Turnow</motion.h1>
-          <motion.p className="text-white/70 text-sm mt-3 font-medium tracking-wide" variants={fadeInUp}>Gestión inteligente de citas en tu negocio</motion.p>
+        }}>
+            <span className="block">Mí</span>
+            <span className="block">Turnow</span>
+          </motion.h1>
+          <motion.span className="text-sm md:text-base font-semibold text-white/80 tracking-[0.3em] uppercase mt-2 block" variants={fadeInUp}>
+            partner
+          </motion.span>
         </motion.div>
 
         {/* Skip button - Ajustado para safe area */}

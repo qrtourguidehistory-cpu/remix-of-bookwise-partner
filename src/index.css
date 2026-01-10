@@ -20,21 +20,31 @@
   .mt-safe {
     margin-top: env(safe-area-inset-top);
   }
+  /* Enhanced safe area for Android navigation bar */
+  .pb-safe-nav {
+    padding-bottom: max(env(safe-area-inset-bottom), 1rem);
+  }
+  .pb-safe-extra {
+    padding-bottom: calc(env(safe-area-inset-bottom) + 1rem);
+  }
 }
 
 /* Global safe area styles - only left/right padding, top/bottom handled by components */
 html, body {
   padding: 0 env(safe-area-inset-right) 0 env(safe-area-inset-left);
   min-height: 100vh;
+  min-height: 100dvh;
   min-height: -webkit-fill-available;
 }
 
 html {
   height: -webkit-fill-available;
+  height: 100dvh;
 }
 
 #root {
   min-height: 100vh;
+  min-height: 100dvh;
   min-height: -webkit-fill-available;
 }
 

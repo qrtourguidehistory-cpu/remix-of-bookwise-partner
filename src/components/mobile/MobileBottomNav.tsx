@@ -78,7 +78,7 @@ export function MobileBottomNav() {
 
   return (
     <>
-      <nav className="fixed bottom-0 left-0 right-0 bg-card border-t border-border z-50 shadow-lg" style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
+      <nav className="fixed bottom-0 left-0 right-0 bg-card border-t border-border z-50 shadow-lg" style={{ paddingBottom: 'max(env(safe-area-inset-bottom), 16px)' }}>
         <div className="flex items-center justify-around px-1 py-1 max-w-2xl mx-auto">
           {navItems.map((item, index) => {
             const Icon = item.icon;
