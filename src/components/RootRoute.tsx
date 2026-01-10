@@ -1,19 +1,24 @@
 import { Navigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
-import SplashPage from "@/pages/SplashPage";
 import MobileCalendar from "@/pages/mobile/MobileCalendar";
 import ProtectedRoute from "@/components/ProtectedRoute";
 
-// Root route handler - shows SplashPage if not authenticated, Calendar if authenticated
+// Root route handler - redirects to WelcomePage if not authenticated, Calendar if authenticated
 export default function RootRoute() {
   const { isAuthenticated, loading } = useAuth();
 
+  // Show minimal loading state while checking auth
   if (loading) {
-    return <SplashPage shouldRedirect={false} />;
+    return (
+      <div className="fixed inset-0 bg-background flex items-center justify-center">
+        <div className="animate-pulse">
+          <div className="text-2xl font-bold text-primary">Mí Turnow</div>
+        </div>
+      </div>
+    );
   }
 
   if (isAuthenticated) {
-    // Pass explicit key to force re-render on auth change but not loop
     return (
       <ProtectedRoute requireOnboarding key="protected-calendar">
         <MobileCalendar />
@@ -21,6 +26,7 @@ export default function RootRoute() {
     );
   }
 
-  return <SplashPage />;
+  // Redirect directly to welcome page instead of showing splash
+  return <Navigate to="/welcome" replace />;
 }
 

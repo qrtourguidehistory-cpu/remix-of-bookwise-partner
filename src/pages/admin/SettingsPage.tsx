@@ -60,7 +60,7 @@ function FooterText() {
   return (
     <div className="mt-8 p-4 border rounded-lg text-center text-sm text-muted-foreground" data-footer-text>
       <p>{language === "es" ? "Versión" : "Version"} 1.0.0</p>
-      <p className="mt-1">© 2024 Salon Management System</p>
+      <p className="mt-1">© 2026 Mí Turnow - {language === "es" ? "Sistema de Gestión de Citas" : "Appointment Management System"}</p>
     </div>
   );
 }
@@ -212,6 +212,20 @@ export default function SettingsPage() {
           description: language === "es" ? "Administrar clientes bloqueados" : "Manage blocked clients",
           path: "/admin/blocked-clients",
           color: "text-red-500"
+        },
+        {
+          icon: Users,
+          label: language === "es" ? "Permisos del Dispositivo" : "Device Permissions",
+          description: language === "es" ? "Cámara, ubicación y notificaciones" : "Camera, location and notifications",
+          path: "/admin/permissions",
+          color: "text-blue-500"
+        },
+        {
+          icon: ShieldOff,
+          label: language === "es" ? "Eliminar Cuenta" : "Delete Account",
+          description: language === "es" ? "Eliminar permanentemente tu cuenta" : "Permanently delete your account",
+          path: "/admin/delete-account",
+          color: "text-red-600"
         }
       ]
     }

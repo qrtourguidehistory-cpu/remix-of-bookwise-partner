@@ -188,8 +188,8 @@ export default function PaymentMethodsPage() {
       <div className="p-4 space-y-4 pb-24">
         <p className="text-sm text-muted-foreground">
           {language === "es" 
-            ? "Selecciona los métodos de pago que aceptas. Estos se mostrarán a tus clientes en BookWise Client."
-            : "Select the payment methods you accept. These will be shown to your clients in BookWise Client."
+            ? "Selecciona los métodos de pago que aceptas. Estos se mostrarán a tus clientes."
+            : "Select the payment methods you accept. These will be shown to your clients."
           }
         </p>
 

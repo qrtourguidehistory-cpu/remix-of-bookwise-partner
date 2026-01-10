@@ -51,8 +51,9 @@ import SMSTemplatesPage from "./pages/admin/SMSTemplatesPage";
 import BusinessProfileSettings from "./pages/admin/BusinessProfileSettings";
 import TemporaryClosePage from "./pages/admin/TemporaryClosePage";
 import AccessibilitySettings from "./pages/admin/AccessibilitySettings";
+import PermissionsSettingsPage from "./pages/admin/PermissionsSettingsPage";
+import DeleteAccountPage from "./pages/admin/DeleteAccountPage";
 import ClientPortal from "./pages/ClientPortal";
-import SplashPage from "./pages/SplashPage";
 import WelcomePage from "./pages/WelcomePage";
 import RootRoute from "./components/RootRoute";
 import HubDashboard from "./pages/hub/HubDashboard";
@@ -436,6 +437,22 @@ const App = () => (
                   element={
                     <ProtectedRoute requireOnboarding>
                       <BusinessProfileSettings />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/admin/permissions"
+                  element={
+                    <ProtectedRoute requireOnboarding>
+                      <PermissionsSettingsPage />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/admin/delete-account"
+                  element={
+                    <ProtectedRoute requireOnboarding>
+                      <DeleteAccountPage />
                     </ProtectedRoute>
                   }
                 />

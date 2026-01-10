@@ -53,11 +53,11 @@ const getStaffColor = (staffId: string | null | undefined): string => {
 const getStatusInfo = (status: string) => {
   switch (status) {
     case 'confirmed':
-      return { color: '#10b981', label: 'Confirmada' };
+      return { color: '#3b82f6', label: 'Confirmada' }; // Blue for confirmed
     case 'started':
-      return { color: '#f97316', label: 'Iniciada' };
+      return { color: '#8b5cf6', label: 'Iniciada' }; // Purple for started
     case 'completed':
-      return { color: '#3b82f6', label: 'Completada' };
+      return { color: '#22c55e', label: 'Completada' }; // Green for completed
     case 'cancelled':
       return { color: '#ef4444', label: 'Cancelada' };
     case 'no_show':
@@ -631,7 +631,7 @@ function DraggableAppointment({ appointment, onEdit, isActive, position, layout,
       borderColor = '#000000'; // Black for no-show
       break;
     case 'confirmed':
-      borderColor = '#22c55e'; // Green
+      borderColor = '#3b82f6'; // Blue for confirmed
       break;
     case 'started':
       borderColor = '#8b5cf6'; // Purple

@@ -43,11 +43,11 @@ const getStaffColor = (staffId: string): string => {
 const getStatusInfo = (status: string) => {
   switch (status) {
     case 'confirmed':
-      return { color: '#10b981', label: 'Confirmada' };
+      return { color: '#3b82f6', label: 'Confirmada' }; // Blue for confirmed
     case 'started':
-      return { color: '#f97316', label: 'Iniciada' };
+      return { color: '#8b5cf6', label: 'Iniciada' }; // Purple for started
     case 'completed':
-      return { color: '#3b82f6', label: 'Completada' };
+      return { color: '#22c55e', label: 'Completada' }; // Green for completed
     case 'cancelled':
       return { color: '#ef4444', label: 'Cancelada' };
     case 'no_show':
