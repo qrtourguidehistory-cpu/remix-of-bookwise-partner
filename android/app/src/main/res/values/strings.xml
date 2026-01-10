@@ -1,7 +1,7 @@
 <?xml version='1.0' encoding='utf-8'?>
 <resources>
-    <string name="app_name">MiTurnow</string>
-    <string name="title_activity_main">MiTurnow</string>
+    <string name="app_name">Mí Turnow</string>
+    <string name="title_activity_main">Mí Turnow</string>
     <string name="package_name">com.miturnow.app</string>
     <string name="custom_url_scheme">com.miturnow.app</string>
 </resources>
