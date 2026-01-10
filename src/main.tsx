@@ -2,6 +2,10 @@ import { createRoot } from "react-dom/client";
 import { Capacitor } from "@capacitor/core";
 import App from "./App.tsx";
 import "./index.css";
+import { initializeSafeArea } from "./hooks/useSafeArea";
+
+// Initialize safe area variables immediately
+initializeSafeArea();
 
 // Initialize Capacitor plugins for native platforms
 const initializeCapacitor = async () => {
