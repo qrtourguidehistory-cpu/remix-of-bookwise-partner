@@ -2,7 +2,7 @@ import type { CapacitorConfig } from '@capacitor/cli';
 
 const config: CapacitorConfig = {
   appId: 'com.miturnow.app',
-  appName: 'MiTurnow',
+  appName: 'Mí Turnow',
   webDir: 'dist',
   plugins: {
     SplashScreen: {
