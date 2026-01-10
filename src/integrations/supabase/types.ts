@@ -14,6 +14,42 @@ export type Database = {
   }
   public: {
     Tables: {
+      account_deletion_requests: {
+        Row: {
+          business_id: string | null
+          cancelled_at: string | null
+          created_at: string | null
+          id: string
+          requested_at: string | null
+          scheduled_for: string
+          status: string | null
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          business_id?: string | null
+          cancelled_at?: string | null
+          created_at?: string | null
+          id?: string
+          requested_at?: string | null
+          scheduled_for: string
+          status?: string | null
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          business_id?: string | null
+          cancelled_at?: string | null
+          created_at?: string | null
+          id?: string
+          requested_at?: string | null
+          scheduled_for?: string
+          status?: string | null
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       appointment_notifications: {
         Row: {
           appointment_id: string | null
