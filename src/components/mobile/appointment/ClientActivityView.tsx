@@ -201,7 +201,7 @@ export function ClientActivityView({
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="bottom" className="bg-card border-t border-border h-[90vh] overflow-y-auto">
+      <SheetContent side="bottom" className="bg-card border-t border-border h-[90vh] overflow-y-auto" hideDefaultClose>
         <SheetHeader>
           <div className="flex items-center justify-between mb-4">
             <SheetTitle>

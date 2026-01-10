@@ -725,7 +725,7 @@ export function AppointmentDetailView({
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="bottom" className="bg-card border-t border-border h-[90vh] overflow-y-auto p-0">
+      <SheetContent side="bottom" className="bg-card border-t border-border h-[90vh] overflow-y-auto p-0" hideDefaultClose>
         <SheetHeader className="sr-only">
           <SheetTitle>{language === "es" ? "Detalle de cita" : "Appointment details"}</SheetTitle>
           <SheetDescription>

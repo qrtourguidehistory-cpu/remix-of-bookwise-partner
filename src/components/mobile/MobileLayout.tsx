@@ -372,7 +372,7 @@ export default function MobileLayout({ children }: MobileLayoutProps) {
     <AppointmentDetailContext.Provider value={{ openAppointmentDetail }}>
       <div className="min-h-screen bg-background text-foreground flex flex-col overflow-x-hidden">
         {/* Top Header */}
-        <header className="sticky top-0 z-40 bg-card border-b border-border px-4 py-3 shadow-sm" style={{ paddingTop: 'calc(env(safe-area-inset-top) + 0.75rem)' }}>
+        <header className="sticky top-0 z-40 bg-card border-b border-border px-4 py-3 shadow-sm pt-safe">
           <div className="flex items-center justify-between max-w-2xl mx-auto">
             <h1 className="text-xl font-bold text-primary">{t("appName")}</h1>
             <Button variant="ghost" size="icon" className="relative" onClick={handleOpenNotifications}>
@@ -385,7 +385,7 @@ export default function MobileLayout({ children }: MobileLayoutProps) {
         </header>
 
         {/* Main Content */}
-        <main className="flex-1 overflow-x-hidden overflow-y-auto" style={{ paddingBottom: 'calc(6rem + env(safe-area-inset-bottom) + 16px)' }}>
+        <main className="flex-1 overflow-x-hidden overflow-y-auto pb-content-with-nav">
           {children}
         </main>
 
