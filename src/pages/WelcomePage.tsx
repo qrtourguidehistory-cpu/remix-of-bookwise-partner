@@ -4,12 +4,12 @@ import { ArrowRight } from "lucide-react";
 import { motion, useScroll, useTransform, Variants } from "framer-motion";
 import { useRef } from "react";
 import welcomeImage from "@/assets/welcome-booking.jpg";
-
 export default function WelcomePage() {
   const navigate = useNavigate();
-
   const handleContinue = () => {
-    navigate("/auth/login", { replace: true });
+    navigate("/auth/login", {
+      replace: true
+    });
   };
   const containerRef = useRef<HTMLDivElement>(null);
   const {
@@ -23,7 +23,6 @@ export default function WelcomePage() {
   const imageY = useTransform(scrollYProgress, [0, 1], ["0%", "30%"]);
   const imageScale = useTransform(scrollYProgress, [0, 1], [1, 1.2]);
   const overlayOpacity = useTransform(scrollYProgress, [0, 0.5], [0.3, 0.7]);
-
   const staggerContainer: Variants = {
     hidden: {
       opacity: 0
@@ -107,13 +106,13 @@ export default function WelcomePage() {
         {/* Logo y nombre - Ajustado para safe area */}
         <motion.div className="absolute top-4 left-6 z-30 pt-[max(env(safe-area-inset-top),0.5rem)]" variants={staggerContainer} initial="hidden" animate="show">
           <motion.h1 className="text-5xl md:text-6xl font-black text-white tracking-tight" variants={fadeInUp} style={{
-            textShadow: "0 4px 20px rgba(0,0,0,0.5)"
-          }}>
+          textShadow: "0 4px 20px rgba(0,0,0,0.5)"
+        }}>
             BookWise
           </motion.h1>
           <motion.h2 className="text-4xl md:text-5xl font-black text-white/90 -mt-1 tracking-tight" variants={fadeInUp} style={{
-            textShadow: "0 4px 20px rgba(0,0,0,0.5)"
-          }}>
+          textShadow: "0 4px 20px rgba(0,0,0,0.5)"
+        }}>
             Partner
           </motion.h2>
           <motion.p className="text-white/70 text-sm mt-3 font-medium tracking-wide" variants={fadeInUp}>
@@ -139,7 +138,9 @@ export default function WelcomePage() {
       </div>
 
       {/* Content Section with stagger animations */}
-      <motion.div className="absolute bottom-0 left-0 right-0 p-6 pb-safe bg-gradient-to-t from-background via-background/98 to-transparent pt-28 z-20" style={{ paddingBottom: 'max(env(safe-area-inset-bottom), 2.5rem)' }} initial={{
+      <motion.div className="absolute bottom-0 left-0 right-0 p-6 pb-safe bg-gradient-to-t from-background via-background/98 to-transparent pt-28 z-20" style={{
+      paddingBottom: 'max(env(safe-area-inset-bottom), 2.5rem)'
+    }} initial={{
       opacity: 0,
       y: 60
     }} animate={{
@@ -150,18 +151,7 @@ export default function WelcomePage() {
       delay: 0.5,
       ease: "easeOut"
     }}>
-        <motion.h2 className="text-2xl md:text-3xl font-bold text-foreground mb-2" initial={{
-        opacity: 0,
-        y: 20
-      }} animate={{
-        opacity: 1,
-        y: 0
-      }} transition={{
-        delay: 0.7,
-        duration: 0.5
-      }}>
-          Comienza con BookWise Partner
-        </motion.h2>
+        
 
         <motion.div initial={{
         opacity: 0,
