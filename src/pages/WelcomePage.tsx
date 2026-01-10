@@ -92,13 +92,10 @@ export default function WelcomePage() {
 
         {/* Logo y nombre - Ajustado para safe area */}
         <motion.div className="absolute top-4 left-6 z-30 pt-[max(env(safe-area-inset-top),0.5rem)]" variants={staggerContainer} initial="hidden" animate="show">
-          <motion.div className="flex items-center gap-3 mb-2" variants={fadeInUp}>
-            <MiTurnowLogo size={48} variant="light" animated />
-          </motion.div>
+          
           <motion.h1 className="text-5xl md:text-6xl font-black text-white tracking-tight" variants={fadeInUp} style={{
           textShadow: "0 4px 20px rgba(0,0,0,0.5)"
         }}>Mí Turnow</motion.h1>
-          <motion.span className="text-xl md:text-2xl font-semibold text-white/90 tracking-widest uppercase mt-1" variants={fadeInUp}>Partner</motion.span>
           <motion.p className="text-white/70 text-sm mt-3 font-medium tracking-wide" variants={fadeInUp}>Gestión inteligente de citas en tu negocio</motion.p>
         </motion.div>
 
