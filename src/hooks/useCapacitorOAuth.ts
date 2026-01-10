@@ -1,6 +1,7 @@
 import { useEffect, useCallback, useState } from 'react';
 import { Capacitor } from '@capacitor/core';
 import { App } from '@capacitor/app';
+import { Browser } from '@capacitor/browser';
 import { supabase } from '@/integrations/supabase/client';
 
 // Deep link scheme for the app - used for native redirect
@@ -8,8 +9,7 @@ const NATIVE_REDIRECT_URL = 'com.miturnow.app://auth/callback';
 
 /**
  * Hook for handling OAuth in Capacitor apps
- * Uses pure web OAuth flow - NO native sign-in, NO Firebase
- * Supabase handles opening the browser and redirecting back
+ * Uses Browser plugin with skipBrowserRedirect for reliable native OAuth
  */
 export function useCapacitorOAuth() {
   const [loading, setLoading] = useState(false);
@@ -21,6 +21,14 @@ export function useCapacitorOAuth() {
 
     const handleAppUrlOpen = async ({ url }: { url: string }) => {
       console.log('[CapacitorOAuth] App opened with URL:', url);
+      
+      // Close the browser when we get the callback
+      try {
+        await Browser.close();
+        console.log('[CapacitorOAuth] Browser closed');
+      } catch (e) {
+        console.log('[CapacitorOAuth] Browser was already closed or not open');
+      }
       
       // Check if this is an auth callback
       if (url.includes('auth/callback') || url.includes('access_token') || url.includes('code=')) {
@@ -108,26 +116,58 @@ export function useCapacitorOAuth() {
       
       console.log('[CapacitorOAuth] Starting Google OAuth with redirect:', redirectUrl);
       
-      // Let Supabase handle everything - no skipBrowserRedirect, no Browser.open
-      const { error } = await supabase.auth.signInWithOAuth({
-        provider: 'google',
-        options: {
-          redirectTo: redirectUrl,
-          queryParams: {
-            access_type: 'offline',
-            prompt: 'consent',
+      if (isNative) {
+        // NATIVE: Use skipBrowserRedirect and open browser manually
+        const { data, error } = await supabase.auth.signInWithOAuth({
+          provider: 'google',
+          options: {
+            redirectTo: redirectUrl,
+            skipBrowserRedirect: true, // Don't let Supabase open browser
+            queryParams: {
+              access_type: 'offline',
+              prompt: 'consent',
+            },
           },
-        },
-      });
+        });
 
-      if (error) {
-        console.error('[CapacitorOAuth] OAuth error:', error);
-        setLoading(false);
-        return { success: false, error: error.message };
+        if (error) {
+          console.error('[CapacitorOAuth] OAuth error:', error);
+          setLoading(false);
+          return { success: false, error: error.message };
+        }
+
+        if (data?.url) {
+          console.log('[CapacitorOAuth] Opening browser with URL');
+          // Open the OAuth URL with Capacitor Browser
+          await Browser.open({ 
+            url: data.url,
+            windowName: '_self',
+            presentationStyle: 'popover'
+          });
+        }
+
+        return { success: true };
+      } else {
+        // WEB: Let Supabase handle the redirect
+        const { error } = await supabase.auth.signInWithOAuth({
+          provider: 'google',
+          options: {
+            redirectTo: redirectUrl,
+            queryParams: {
+              access_type: 'offline',
+              prompt: 'consent',
+            },
+          },
+        });
+
+        if (error) {
+          console.error('[CapacitorOAuth] OAuth error:', error);
+          setLoading(false);
+          return { success: false, error: error.message };
+        }
+
+        return { success: true };
       }
-
-      // Supabase will handle the redirect automatically
-      return { success: true };
     } catch (error: any) {
       console.error('[CapacitorOAuth] Error:', error);
       setLoading(false);
@@ -145,21 +185,49 @@ export function useCapacitorOAuth() {
       
       console.log('[CapacitorOAuth] Starting Apple OAuth with redirect:', redirectUrl);
       
-      // Let Supabase handle everything
-      const { error } = await supabase.auth.signInWithOAuth({
-        provider: 'apple',
-        options: {
-          redirectTo: redirectUrl,
-        },
-      });
+      if (isNative) {
+        // NATIVE: Use skipBrowserRedirect and open browser manually
+        const { data, error } = await supabase.auth.signInWithOAuth({
+          provider: 'apple',
+          options: {
+            redirectTo: redirectUrl,
+            skipBrowserRedirect: true,
+          },
+        });
 
-      if (error) {
-        console.error('[CapacitorOAuth] Apple OAuth error:', error);
-        setLoading(false);
-        return { success: false, error: error.message };
+        if (error) {
+          console.error('[CapacitorOAuth] Apple OAuth error:', error);
+          setLoading(false);
+          return { success: false, error: error.message };
+        }
+
+        if (data?.url) {
+          console.log('[CapacitorOAuth] Opening browser for Apple OAuth');
+          await Browser.open({ 
+            url: data.url,
+            windowName: '_self',
+            presentationStyle: 'popover'
+          });
+        }
+
+        return { success: true };
+      } else {
+        // WEB: Let Supabase handle the redirect
+        const { error } = await supabase.auth.signInWithOAuth({
+          provider: 'apple',
+          options: {
+            redirectTo: redirectUrl,
+          },
+        });
+
+        if (error) {
+          console.error('[CapacitorOAuth] Apple OAuth error:', error);
+          setLoading(false);
+          return { success: false, error: error.message };
+        }
+
+        return { success: true };
       }
-
-      return { success: true };
     } catch (error: any) {
       console.error('[CapacitorOAuth] Apple error:', error);
       setLoading(false);

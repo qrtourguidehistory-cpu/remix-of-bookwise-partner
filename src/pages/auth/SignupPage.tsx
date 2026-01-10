@@ -8,8 +8,8 @@ import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { User, Mail, Lock, Eye, EyeOff } from "lucide-react";
 import { z } from "zod";
-import { supabase } from "@/lib/supabaseClient";
 import { toast } from "sonner";
+import { useCapacitorOAuth } from "@/hooks/useCapacitorOAuth";
 
 const signupSchema = z.object({
   fullName: z.string().min(2, "Name must be at least 2 characters"),
@@ -34,6 +34,9 @@ export default function SignupPage() {
   const [errors, setErrors] = useState<any>({});
   const { signUp } = useAuth();
   const navigate = useNavigate();
+  
+  // Use unified Capacitor OAuth hook
+  const { signInWithGoogle, loading: oauthLoading } = useCapacitorOAuth();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -44,14 +47,9 @@ export default function SignupPage() {
       
       setLoading(true);
       
-      // Check if this email is already registered as a partner
-      // by attempting to sign in (will fail but give us info)
-      // We'll check in the signUp response for existing user error
-      
       const { error } = await signUp(email, password, fullName);
       
       if (error) {
-        // Handle specific error for user already registered
         if (error.message?.includes('already registered') || 
             error.message?.includes('User already registered') ||
             error.message?.includes('already exists')) {
@@ -78,24 +76,13 @@ export default function SignupPage() {
   };
 
   const handleGoogleSignUp = async () => {
-    setLoading(true);
-    try {
-      const { error } = await supabase.auth.signInWithOAuth({
-        provider: 'google',
-        options: {
-          redirectTo: `${window.location.origin}/onboarding`,
-        }
-      });
-      if (error) {
-        toast.error("Error al conectar con Google");
-      }
-    } catch (error) {
-      console.error("Error in Google sign up:", error);
+    const result = await signInWithGoogle();
+    if (!result.success && result.error) {
       toast.error("Error al conectar con Google");
-    } finally {
-      setLoading(false);
     }
   };
+
+  const isLoading = loading || oauthLoading;
 
   return (
     <AuthLayout
@@ -186,7 +173,7 @@ export default function SignupPage() {
           )}
         </div>
 
-        <Button type="submit" className="w-full" disabled={loading}>
+        <Button type="submit" className="w-full" disabled={isLoading}>
           {loading ? "Creating account..." : "Create Account"}
         </Button>
       </form>
@@ -202,7 +189,7 @@ export default function SignupPage() {
         <Button 
           variant="outline" 
           onClick={handleGoogleSignUp}
-          disabled={loading}
+          disabled={isLoading}
           className="w-full"
           type="button"
         >
@@ -224,7 +211,7 @@ export default function SignupPage() {
               d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
             />
           </svg>
-          {loading ? "Conectando..." : "Continuar con Google"}
+          {oauthLoading ? "Conectando..." : "Continuar con Google"}
         </Button>
       </div>
 
