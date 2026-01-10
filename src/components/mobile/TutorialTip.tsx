@@ -69,12 +69,13 @@ export function TutorialTip({
             {/* Background decoration */}
             <div className="absolute top-0 right-0 w-16 h-16 bg-white/10 rounded-full -translate-y-1/2 translate-x-1/2" />
             
-            {/* Close button */}
+            {/* Close button - larger touch area */}
             <button
               onClick={handleDismiss}
-              className="absolute top-1.5 right-1.5 p-0.5 hover:bg-white/20 rounded-full transition-colors"
+              className="absolute top-0 right-0 p-2 hover:bg-white/20 rounded-full transition-colors"
+              aria-label="Cerrar"
             >
-              <X className="w-3 h-3" />
+              <X className="w-4 h-4" />
             </button>
 
             <div className="flex gap-2 relative">

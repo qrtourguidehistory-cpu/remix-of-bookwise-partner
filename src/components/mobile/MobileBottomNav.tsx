@@ -23,9 +23,6 @@ export function MobileBottomNav() {
   const [clientSheetOpen, setClientSheetOpen] = useState(false);
   const [settingsSheetOpen, setSettingsSheetOpen] = useState(false);
   const [showAddTip, setShowAddTip] = useState(false);
-  const [showClientsTip, setShowClientsTip] = useState(false);
-  const [addButtonPressed, setAddButtonPressed] = useState(false);
-  const [clientsButtonPressed, setClientsButtonPressed] = useState(false);
   const [showFooterText, setShowFooterText] = useState(() => {
     return localStorage.getItem("show-footer-text") !== "false";
   });
@@ -52,23 +49,18 @@ export function MobileBottomNav() {
     };
   }, [showFooterText]);
 
-  // Show add tip when button is pressed for first time
+  // Show add tip when button is pressed for first time - mark as seen immediately
   const handleAddButtonClick = () => {
-    if (canShowTip("add_button_tip") && !addButtonPressed) {
-      setAddButtonPressed(true);
+    if (canShowTip("add_button_tip")) {
       setShowAddTip(true);
       setActiveTip("add_button_tip");
+      markTipAsSeen("add_button_tip"); // Mark immediately so it never shows again
     }
     setAddSheetOpen(true);
   };
 
-  // Show clients tip when button is pressed for first time
+  // Clients button click - no tip
   const handleClientsButtonClick = () => {
-    if (canShowTip("clients_button_tip") && !clientsButtonPressed) {
-      setClientsButtonPressed(true);
-      setShowClientsTip(true);
-      setActiveTip("clients_button_tip");
-    }
     setClientSheetOpen(true);
   };
 
@@ -133,23 +125,7 @@ export function MobileBottomNav() {
         isVisible={showAddTip}
         title="Botón de Agregar"
         message="Usa este botón para agregar citas, ventas, servicios y más."
-        onDismiss={() => {
-          setShowAddTip(false);
-          markTipAsSeen("add_button_tip");
-        }}
-        position="bottom"
-        delay={300}
-      />
-
-      {/* Tutorial tip for clients button */}
-      <TutorialTip
-        isVisible={showClientsTip}
-        title="Gestión de Clientes"
-        message="Administra tus clientes, ve su historial y añade nuevos desde aquí."
-        onDismiss={() => {
-          setShowClientsTip(false);
-          markTipAsSeen("clients_button_tip");
-        }}
+        onDismiss={() => setShowAddTip(false)}
         position="bottom"
         delay={300}
       />
