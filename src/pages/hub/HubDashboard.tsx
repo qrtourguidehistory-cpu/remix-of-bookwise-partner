@@ -228,8 +228,8 @@ export default function HubDashboard() {
           <h1 className="text-2xl font-bold">Dashboard</h1>
           <p className="text-muted-foreground">
             {language === "es" 
-              ? "Vista general del sistema Bookwise" 
-              : "Bookwise system overview"}
+              ? "Vista general del sistema MiTurnow" 
+              : "MiTurnow system overview"}
           </p>
         </div>
 

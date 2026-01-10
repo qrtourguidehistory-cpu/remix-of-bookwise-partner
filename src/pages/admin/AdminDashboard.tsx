@@ -43,7 +43,7 @@ export default function AdminDashboard() {
                     ? "Configura una URL personalizada para tu negocio."
                     : !isPublic 
                     ? "Activa la visibilidad pública para que los clientes te encuentren."
-                    : t("configurePublicProfile") || "Configura tu perfil público para que los clientes te encuentren en BookWise Cliente."}
+                    : t("configurePublicProfile") || "Configura tu perfil público para que los clientes te encuentren en MiTurnow Cliente."}
                 </p>
               </div>
               <Button asChild variant="default" className="flex-shrink-0">

@@ -1,7 +1,7 @@
 <?xml version='1.0' encoding='utf-8'?>
 <resources>
-    <string name="app_name">BookWise Partner</string>
-    <string name="title_activity_main">BookWise Partner</string>
-    <string name="package_name">com.bookwise.partner</string>
-    <string name="custom_url_scheme">com.bookwise.partner</string>
+    <string name="app_name">MiTurnow</string>
+    <string name="title_activity_main">MiTurnow</string>
+    <string name="package_name">com.miturnow.app</string>
+    <string name="custom_url_scheme">com.miturnow.app</string>
 </resources>

@@ -1,8 +1,8 @@
 import type { CapacitorConfig } from '@capacitor/cli';
 
 const config: CapacitorConfig = {
-  appId: 'com.bookwise.partner',
-  appName: 'BookWise Partner',
+  appId: 'com.miturnow.app',
+  appName: 'MiTurnow',
   webDir: 'dist',
   plugins: {
     SplashScreen: {
@@ -34,7 +34,7 @@ const config: CapacitorConfig = {
     },
   },
   ios: {
-    scheme: 'BookWise Partner',
+    scheme: 'MiTurnow',
   },
 };
 

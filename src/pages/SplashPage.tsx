@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { Capacitor } from "@capacitor/core";
-import bookwiseLogo from "@/assets/bookwise-logo.png";
+import MiTurnowLogo from "@/components/ui/MiTurnowLogo";
 
 // Trigger haptic feedback on native platforms
 const triggerHapticFeedback = async () => {
@@ -23,7 +23,7 @@ export default function SplashPage({
 }) {
   const navigate = useNavigate();
   const [progress, setProgress] = useState(0);
-  const [showLogo, setShowLogo] = useState(true);
+  const [showText, setShowText] = useState(false);
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -36,22 +36,21 @@ export default function SplashPage({
       });
     }, 40);
 
-    // Transition from logo to text after delay
-    const logoTimer = setTimeout(() => {
-      setShowLogo(false);
-    }, 1200);
+    // Show text after logo animation
+    const textTimer = setTimeout(() => {
+      setShowText(true);
+    }, 1000);
 
     let timer: NodeJS.Timeout;
     if (shouldRedirect) {
       timer = setTimeout(() => {
-        // Trigger haptic feedback before navigating
         triggerHapticFeedback();
         navigate("/welcome");
       }, 3000);
     }
     return () => {
       clearInterval(interval);
-      clearTimeout(logoTimer);
+      clearTimeout(textTimer);
       if (timer) clearTimeout(timer);
     };
   }, [navigate, shouldRedirect]);
@@ -61,116 +60,76 @@ export default function SplashPage({
       {/* Progress bar at top */}
       <div className="absolute top-0 left-0 w-full h-1 bg-black/10">
         <motion.div
-          className="h-full bg-black"
+          className="h-full bg-[#1a365d]"
           initial={{ width: "0%" }}
           animate={{ width: `${progress}%` }}
           transition={{ duration: 0.1 }}
         />
       </div>
 
-      {/* Animated background circles with stagger */}
+      {/* Animated background circles with brand colors */}
       <motion.div
-        className="absolute w-96 h-96 rounded-full bg-black/5"
+        className="absolute w-96 h-96 rounded-full bg-[#1a365d]/5"
         initial={{ scale: 0, opacity: 0, rotate: 0 }}
         animate={{ scale: 2.5, opacity: 0.2, rotate: 180 }}
         transition={{ duration: 2.5, ease: "easeOut" }}
       />
       <motion.div
-        className="absolute w-64 h-64 rounded-full bg-black/5"
+        className="absolute w-64 h-64 rounded-full bg-[#38b2ac]/5"
         initial={{ scale: 0, opacity: 0, rotate: 0 }}
         animate={{ scale: 2, opacity: 0.15, rotate: -90 }}
         transition={{ duration: 2, delay: 0.2, ease: "easeOut" }}
       />
       <motion.div
-        className="absolute w-40 h-40 rounded-full border-2 border-black/10"
+        className="absolute w-40 h-40 rounded-full border-2 border-[#1a365d]/10"
         initial={{ scale: 0, opacity: 0 }}
         animate={{ scale: 3, opacity: 0.3 }}
         transition={{ duration: 1.8, delay: 0.4, ease: "easeOut" }}
       />
 
-      {/* Logo and Text with AnimatePresence */}
+      {/* Logo and Text */}
       <div className="z-10 flex flex-col items-center px-4 relative h-64 w-full justify-center">
-        <AnimatePresence mode="wait">
-          {showLogo ? (
-            <motion.div
-              key="logo"
-              className="absolute flex flex-col items-center"
-              initial={{ opacity: 0, scale: 0.3, rotateY: -180 }}
-              animate={{ 
-                opacity: 1, 
-                scale: 1, 
-                rotateY: 0,
-              }}
-              exit={{ 
-                opacity: 0, 
-                scale: 1.5, 
-                rotateY: 180,
-                filter: "blur(10px)"
-              }}
-              transition={{ 
-                duration: 0.8, 
-                ease: [0.34, 1.56, 0.64, 1],
-              }}
-            >
-              <motion.img
-                src={bookwiseLogo}
-                alt="BookWise Logo"
-                className="w-32 h-32 md:w-40 md:h-40 rounded-2xl shadow-2xl"
-                animate={{ 
-                  boxShadow: [
-                    "0 0 0 0 rgba(0,0,0,0)",
-                    "0 0 60px 10px rgba(0,0,0,0.15)",
-                    "0 0 0 0 rgba(0,0,0,0)"
-                  ]
-                }}
-                transition={{ 
-                  duration: 1.5, 
-                  repeat: Infinity,
-                  ease: "easeInOut"
-                }}
-              />
-            </motion.div>
-          ) : (
-            <motion.div
-              key="text"
-              className="absolute flex flex-col items-center"
-              initial={{ opacity: 0, y: 50, scale: 0.8 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              transition={{ 
-                duration: 0.6,
-                ease: [0.34, 1.56, 0.64, 1]
-              }}
-            >
-              <motion.h1
-                className="text-5xl md:text-7xl font-bold text-black"
-                initial={{ opacity: 0, letterSpacing: "0.5em" }}
-                animate={{ opacity: 1, letterSpacing: "0em" }}
-                transition={{ duration: 0.6, delay: 0.1 }}
-              >
-                BookWise
-              </motion.h1>
-              <motion.h2
-                className="text-3xl md:text-5xl font-bold text-black mt-1"
-                initial={{ opacity: 0, x: -30 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ duration: 0.5, delay: 0.3 }}
-              >
-                Partner
-              </motion.h2>
-              <motion.p
-                className="text-lg md:text-xl text-black/60 mt-6 text-center max-w-md font-medium"
+        <motion.div
+          className="flex flex-col items-center"
+          initial={{ opacity: 0, scale: 0.8 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ duration: 0.6, ease: "backOut" }}
+        >
+          {/* Animated Logo */}
+          <MiTurnowLogo size={120} animated variant="dark" />
+          
+          {/* Brand Name */}
+          <AnimatePresence>
+            {showText && (
+              <motion.div
+                className="mt-6 flex flex-col items-center"
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.5, delay: 0.5 }}
+                transition={{ duration: 0.5, ease: "easeOut" }}
               >
-                Administra la agenda de tu negocio sin problema
-              </motion.p>
-            </motion.div>
-          )}
-        </AnimatePresence>
+                <motion.h1
+                  className="text-5xl md:text-6xl font-black text-[#1a365d] tracking-tight"
+                  initial={{ opacity: 0, letterSpacing: "0.3em" }}
+                  animate={{ opacity: 1, letterSpacing: "0em" }}
+                  transition={{ duration: 0.5, delay: 0.1 }}
+                >
+                  MiTurnow
+                </motion.h1>
+                <motion.p
+                  className="text-lg text-[#38b2ac] mt-2 font-medium"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  transition={{ duration: 0.4, delay: 0.3 }}
+                >
+                  Gestión inteligente de citas
+                </motion.p>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </motion.div>
       </div>
 
-      {/* Animated loading indicator with wave effect */}
+      {/* Animated loading indicator with brand colors */}
       <motion.div
         className="absolute bottom-20 flex gap-3"
         initial={{ opacity: 0 }}
@@ -180,7 +139,7 @@ export default function SplashPage({
         {[0, 1, 2, 3, 4].map(i => (
           <motion.div
             key={i}
-            className="w-2 h-2 rounded-full bg-black"
+            className="w-2 h-2 rounded-full bg-[#1a365d]"
             animate={{
               y: [0, -12, 0],
               scale: [1, 1.3, 1],
@@ -196,15 +155,15 @@ export default function SplashPage({
         ))}
       </motion.div>
 
-      {/* Decorative corner elements */}
+      {/* Decorative corner elements with brand accent */}
       <motion.div
-        className="absolute top-8 left-8 w-16 h-16 border-l-2 border-t-2 border-black/20"
+        className="absolute top-8 left-8 w-16 h-16 border-l-2 border-t-2 border-[#38b2ac]/30"
         initial={{ opacity: 0, scale: 0 }}
         animate={{ opacity: 1, scale: 1 }}
         transition={{ delay: 0.8, duration: 0.5 }}
       />
       <motion.div
-        className="absolute bottom-8 right-8 w-16 h-16 border-r-2 border-b-2 border-black/20"
+        className="absolute bottom-8 right-8 w-16 h-16 border-r-2 border-b-2 border-[#38b2ac]/30"
         initial={{ opacity: 0, scale: 0 }}
         animate={{ opacity: 1, scale: 1 }}
         transition={{ delay: 0.8, duration: 0.5 }}
