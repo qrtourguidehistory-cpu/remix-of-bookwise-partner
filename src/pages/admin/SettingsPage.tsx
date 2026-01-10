@@ -5,6 +5,7 @@ import { useNavigate } from "react-router-dom";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { useState, useEffect } from "react";
 import { cn } from "@/lib/utils";
+import { BUILD_INFO, getPlatformInfo, getBuildInfoString } from "@/lib/buildInfo";
 import { 
   Clock, 
   Users, 
@@ -59,8 +60,12 @@ function FooterText() {
 
   return (
     <div className="mt-8 p-4 border rounded-lg text-center text-sm text-muted-foreground" data-footer-text>
-      <p>{language === "es" ? "Versión" : "Version"} 1.0.0</p>
+      <p>{language === "es" ? "Versión" : "Version"} {BUILD_INFO.version}</p>
       <p className="mt-1">© 2026 Mí Turnow - {language === "es" ? "Sistema de Gestión de Citas" : "Appointment Management System"}</p>
+      {/* Build stamp for version verification */}
+      <p className="mt-2 text-xs font-mono opacity-60">
+        {getBuildInfoString()} | {getPlatformInfo()}
+      </p>
     </div>
   );
 }
