@@ -111,7 +111,7 @@ export function CheckoutSheet({
           </div>
         </div>
 
-        <div className="sticky bottom-0 bg-card border-t border-border p-4">
+        <div className="sticky bottom-0 bg-card border-t border-border p-4 pb-safe-nav">
           <Button className="w-full h-12 rounded-full" onClick={onContinue}>
             {language === "es" ? "Continuar a pago" : "Continue to payment"}
           </Button>

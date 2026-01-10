@@ -8,9 +8,13 @@ import { ClientActionSheet } from "./ClientActionSheet";
 import { SettingsSheet } from "./SettingsSheet";
 import { TutorialTip } from "./TutorialTip";
 import { useTutorialTips } from "@/hooks/useTutorialTips";
+import { useSafeArea } from "@/hooks/useSafeArea";
 import { useLanguage } from "@/contexts/LanguageContext";
 
 export function MobileBottomNav() {
+  // Initialize safe area calculation for Android
+  useSafeArea();
+  
   const location = useLocation();
   const navigate = useNavigate();
   const { t } = useLanguage();
@@ -78,7 +82,10 @@ export function MobileBottomNav() {
 
   return (
     <>
-      <nav className="fixed bottom-0 left-0 right-0 bg-card border-t border-border z-50 shadow-lg pb-safe">
+      <nav 
+        className="fixed left-0 right-0 bg-card border-t border-border z-50 shadow-lg pb-safe"
+        style={{ bottom: "max(0px, var(--app-safe-bottom, 0px))" }}
+      >
         <div className="flex items-center justify-around px-1 py-2 max-w-2xl mx-auto">
           {navItems.map((item, index) => {
             const Icon = item.icon;

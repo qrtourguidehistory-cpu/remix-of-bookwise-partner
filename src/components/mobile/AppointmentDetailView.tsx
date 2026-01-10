@@ -1103,7 +1103,7 @@ export function AppointmentDetailView({
 
         {/* Fixed Footer - Only show if not completed */}
         {appointment.status !== 'completed' && (
-          <div className="sticky bottom-0 bg-card border-t border-border p-4">
+          <div className="sticky bottom-0 bg-card border-t border-border p-4 pb-safe-nav">
             <div className="flex items-center justify-between">
               <div>
                 <span className="text-sm text-muted-foreground">{language === "es" ? "Total" : "Total"}</span>

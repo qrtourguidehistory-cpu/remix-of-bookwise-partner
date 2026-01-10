@@ -126,7 +126,7 @@ export function PaymentSheet({ open, onOpenChange, total, onPay }: PaymentSheetP
           )}
         </div>
 
-        <div className="sticky bottom-0 bg-card border-t border-border p-4">
+        <div className="sticky bottom-0 bg-card border-t border-border p-4 pb-safe-nav">
           <Button className="w-full h-12 rounded-full" onClick={handlePay} disabled={paying}>
             {language === "es" ? "Pagar ahora" : "Pay now"}
           </Button>

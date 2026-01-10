@@ -2,10 +2,16 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Safe Area Insets for Mobile Devices - Robust with fallbacks */
+/* CSS Variables for safe area - set by useSafeArea hook */
+:root {
+  --app-safe-bottom: 0px;
+  --bottom-nav-height: 76px;
+}
+
+/* Safe Area Insets for Mobile Devices - Intelligent with Android support */
 .pb-safe {
   padding-bottom: 16px; /* fallback */
-  padding-bottom: max(16px, env(safe-area-inset-bottom, 16px));
+  padding-bottom: max(16px, env(safe-area-inset-bottom, 0px), var(--app-safe-bottom, 0px));
 }
 
 .pt-safe {
@@ -20,7 +26,7 @@
 
 .mb-safe {
   margin-bottom: 16px; /* fallback */
-  margin-bottom: max(16px, env(safe-area-inset-bottom, 16px));
+  margin-bottom: max(16px, env(safe-area-inset-bottom, 0px), var(--app-safe-bottom, 0px));
 }
 
 .mt-safe {
@@ -30,20 +36,25 @@
 
 /* Enhanced safe area for Android navigation bar */
 .pb-safe-nav {
-  padding-bottom: 20px; /* fallback for devices without env() support */
-  padding-bottom: max(20px, env(safe-area-inset-bottom, 20px));
+  padding-bottom: 24px; /* fallback for devices without env() support */
+  padding-bottom: max(24px, env(safe-area-inset-bottom, 0px), var(--app-safe-bottom, 0px));
 }
 
 /* Safe area for bottom navigation - accounts for nav height + safe area */
 .pb-safe-bottom-nav {
-  padding-bottom: calc(76px + 16px); /* fallback: 76px nav + 16px safe */
-  padding-bottom: calc(76px + max(16px, env(safe-area-inset-bottom, 16px)));
+  padding-bottom: calc(var(--bottom-nav-height, 76px) + 16px); /* fallback */
+  padding-bottom: calc(var(--bottom-nav-height, 76px) + max(16px, env(safe-area-inset-bottom, 0px), var(--app-safe-bottom, 0px)));
 }
 
 /* Main content padding that accounts for bottom nav */
 .pb-content-with-nav {
-  padding-bottom: calc(80px + 24px); /* fallback */
-  padding-bottom: calc(80px + max(24px, env(safe-area-inset-bottom, 24px)));
+  padding-bottom: calc(var(--bottom-nav-height, 76px) + 32px); /* fallback */
+  padding-bottom: calc(var(--bottom-nav-height, 76px) + max(32px, env(safe-area-inset-bottom, 0px), var(--app-safe-bottom, 0px)));
+}
+
+/* For sticky footers inside sheets/drawers */
+.sticky-footer-safe {
+  padding-bottom: max(16px, env(safe-area-inset-bottom, 0px), var(--app-safe-bottom, 0px));
 }
 
 /* Global safe area styles - only left/right padding, top/bottom handled by components */

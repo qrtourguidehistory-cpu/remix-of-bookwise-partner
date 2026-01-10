@@ -135,7 +135,10 @@ export default function MobileCalendar() {
         <Button
           onClick={handleReturnToToday}
           size="icon"
-          className="fixed bottom-20 right-4 h-12 w-12 rounded-full shadow-lg z-40"
+          className="fixed right-4 h-12 w-12 rounded-full shadow-lg z-40"
+          style={{ 
+            bottom: "calc(var(--bottom-nav-height, 76px) + max(24px, var(--app-safe-bottom, 0px)))" 
+          }}
           title="Regresar a hoy"
         >
           <Calendar className="h-5 w-5" />
