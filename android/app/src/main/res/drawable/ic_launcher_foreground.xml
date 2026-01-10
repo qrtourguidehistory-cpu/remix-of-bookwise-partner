@@ -5,48 +5,35 @@
     android:viewportWidth="108"
     android:viewportHeight="108">
     
-    <!-- Ticket shape - white background -->
+    <!-- Ticket shape - white rounded rectangle -->
     <path
         android:fillColor="#FFFFFF"
-        android:pathData="M30,20 L78,20 Q82,20 82,24 L82,84 Q82,88 78,88 L30,88 Q26,88 26,84 L26,24 Q26,20 30,20 Z"/>
+        android:pathData="M32,24 L76,24 Q80,24 80,28 L80,80 Q80,84 76,84 L32,84 Q28,84 28,80 L28,28 Q28,24 32,24 Z"/>
     
-    <!-- Left notch -->
+    <!-- Left notch (circular cut) -->
     <path
-        android:fillColor="#1a365d"
-        android:pathData="M26,42 A6,6 0 0,1 26,54"/>
+        android:fillColor="#2563EB"
+        android:pathData="M28,48 A6,6 0 0,1 28,60"/>
     
-    <!-- Right notch -->
+    <!-- Right notch (circular cut) -->
     <path
-        android:fillColor="#1a365d"
-        android:pathData="M82,42 A6,6 0 0,0 82,54"/>
+        android:fillColor="#2563EB"
+        android:pathData="M80,48 A6,6 0 0,0 80,60"/>
     
-    <!-- Dashed separator line (simplified as small rectangles) -->
+    <!-- Arrow pointing right (cyan/teal color) -->
     <path
-        android:fillColor="#1a365d"
+        android:fillColor="#06B6D4"
+        android:pathData="M42,54 L58,54 L58,48 L70,56 L58,64 L58,58 L42,58 Z"/>
+    
+    <!-- Dashed line above arrow -->
+    <path
+        android:fillColor="#2563EB"
+        android:fillAlpha="0.3"
+        android:pathData="M36,42 h6 M46,42 h6 M56,42 h6 M66,42 h6"/>
+    
+    <!-- Small decorative lines at bottom -->
+    <path
+        android:fillColor="#2563EB"
         android:fillAlpha="0.2"
-        android:pathData="M34,47 h4 M42,47 h4 M50,47 h4 M58,47 h4 M66,47 h4 M74,47 h2"/>
-    
-    <!-- TURNO text placeholder - simplified as rectangle -->
-    <path
-        android:fillColor="#1a365d"
-        android:fillAlpha="0.8"
-        android:pathData="M38,30 h32 v6 h-32 z"/>
-    
-    <!-- Number 01 - simplified representation -->
-    <path
-        android:fillColor="#38b2ac"
-        android:pathData="M42,58 L42,76 L48,76 L48,58 Z"/>
-    <path
-        android:fillColor="#38b2ac"
-        android:pathData="M52,58 Q60,58 60,67 Q60,76 52,76 L52,76 Q60,76 60,67 Q60,58 52,58 Z M54,62 Q56,62 56,67 Q56,72 54,72 Q52,72 52,67 Q52,62 54,62 Z"/>
-    
-    <!-- Decorative arrows -->
-    <path
-        android:fillColor="#1a365d"
-        android:fillAlpha="0.4"
-        android:pathData="M36,80 L42,78 L42,82 Z"/>
-    <path
-        android:fillColor="#1a365d"
-        android:fillAlpha="0.4"
-        android:pathData="M72,80 L66,78 L66,82 Z"/>
+        android:pathData="M36,70 h36 M40,74 h28"/>
 </vector>
