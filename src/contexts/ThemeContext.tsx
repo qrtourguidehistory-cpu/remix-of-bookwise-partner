@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState } from "react";
+import React, { createContext, useContext, useEffect, useState } from "react";
 import { loadSavedThemeColor } from "@/lib/themeUtils";
 
 type Theme = "light" | "dark";
