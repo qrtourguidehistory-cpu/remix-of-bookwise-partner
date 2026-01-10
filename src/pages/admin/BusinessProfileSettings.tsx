@@ -807,8 +807,8 @@ export default function BusinessProfileSettings() {
                       </CardTitle>
                       <CardDescription>
                         {language === "es" 
-                          ? "Tu negocio debe ser aprobado para ser visible en Bookwise Client" 
-                          : "Your business must be approved to be visible on Bookwise Client"}
+                          ? "Tu negocio debe ser aprobado para ser visible en MiTurnow Client" 
+                          : "Your business must be approved to be visible on MiTurnow Client"}
                       </CardDescription>
                     </div>
                   </div>
@@ -854,8 +854,8 @@ export default function BusinessProfileSettings() {
                     </AlertTitle>
                     <AlertDescription className="text-green-600">
                       {language === "es" 
-                        ? "Los clientes pueden encontrarte en Bookwise Client."
-                        : "Clients can find you on Bookwise Client."}
+                        ? "Los clientes pueden encontrarte en MiTurnow Client."
+                        : "Clients can find you on MiTurnow Client."}
                     </AlertDescription>
                   </Alert>
                 )}
@@ -1498,8 +1498,8 @@ export default function BusinessProfileSettings() {
                   </CardTitle>
                   <CardDescription>
                     {language === "es" 
-                      ? "Así se verá tu negocio en BookWise Client" 
-                      : "This is how your business will appear on BookWise Client"}
+                      ? "Así se verá tu negocio en MiTurnow Client" 
+                      : "This is how your business will appear on MiTurnow Client"}
                   </CardDescription>
                 </CardHeader>
                 <CardContent>

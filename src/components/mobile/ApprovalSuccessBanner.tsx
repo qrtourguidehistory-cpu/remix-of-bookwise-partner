@@ -167,8 +167,8 @@ export function ApprovalSuccessBanner({ onDismiss }: ApprovalSuccessBannerProps)
               </div>
               <p className="text-sm text-green-700 dark:text-green-400 mb-3">
                 {language === "es"
-                  ? "Los clientes ahora pueden encontrarte en Bookwise Client. ¡Sigue estos consejos para maximizar tu éxito!"
-                  : "Clients can now find you on Bookwise Client. Follow these tips to maximize your success!"}
+                  ? "Los clientes ahora pueden encontrarte en MiTurnow Client. ¡Sigue estos consejos para maximizar tu éxito!"
+                  : "Clients can now find you on MiTurnow Client. Follow these tips to maximize your success!"}
               </p>
 
               {/* Tips Accordion */}
