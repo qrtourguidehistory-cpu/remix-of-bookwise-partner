@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import MobileLayout from "@/components/mobile/MobileLayout";
 import { Card } from "@/components/ui/card";
-import { DollarSign, TrendingUp, Plus, FileDown, FileText, ArrowRight } from "lucide-react";
+import { DollarSign, TrendingUp, Plus, FileDown, FileText, ArrowRight, BarChart3 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/lib/supabaseClient";
 import { useLanguage } from "@/contexts/LanguageContext";

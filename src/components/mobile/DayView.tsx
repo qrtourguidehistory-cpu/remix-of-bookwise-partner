@@ -490,8 +490,9 @@ export function DayView({ date, filters, appointmentToOpen, onAppointmentOpened 
               style={{ 
                 minHeight: `${((timelineEndMinutes - timelineStartMinutes) / 60) * pixelsPerHour}px`,
                 height: `${((timelineEndMinutes - timelineStartMinutes) / 60) * pixelsPerHour}px`,
-                paddingBottom: '160px' // allow extra scroll space for legend/footer overlap
+                paddingBottom: 'calc(220px + env(safe-area-inset-bottom))' // allow extra scroll space for legend/footer overlap and safe-area
               }}
+              
               onClick={handleTimelineClick}
             >
               {/* Hour markers */}

@@ -2,6 +2,61 @@ import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import * as XLSX from "xlsx";
 import { format } from "date-fns";
+import { Capacitor } from "@capacitor/core";
+
+/**
+ * Helper: convert ArrayBuffer to base64
+ */
+function arrayBufferToBase64(buffer: ArrayBuffer) {
+  let binary = '';
+  const bytes = new Uint8Array(buffer);
+  const len = bytes.byteLength;
+  for (let i = 0; i < len; i++) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  return typeof window !== 'undefined' && window.btoa ? window.btoa(binary) : Buffer.from(binary, 'binary').toString('base64');
+}
+
+/**
+ * Helper: write base64 to device file system on native (Android/iOS) using Capacitor Filesystem + Share
+ */
+async function writeBase64ToDevice(filename: string, base64Data: string, mimeType: string) {
+  if (!Capacitor.isNativePlatform()) {
+    throw new Error('Not running on native platform');
+  }
+  try {
+    const { Filesystem, FilesystemDirectory } = await new Function('return import("@capacitor/filesystem")')();
+    const { Share } = await new Function('return import("@capacitor/share")')();
+
+    // Choose directory depending on platform
+    const directory = (Capacitor.getPlatform && Capacitor.getPlatform() === 'android') ? FilesystemDirectory.External : FilesystemDirectory.Documents;
+
+    const path = `Download/${filename}`;
+    const result = await Filesystem.writeFile({
+      path,
+      data: base64Data,
+      directory,
+      recursive: true
+    });
+
+    // Share the file so user can open/save it
+    const fileUri = (result as any).uri || path;
+    try {
+      await Share.share({
+        title: filename,
+        url: fileUri
+      });
+    } catch (shareErr) {
+      // Some devices may not support Share with file URL; ignore and just return path
+      console.warn('Share failed:', shareErr);
+    }
+
+    return result;
+  } catch (error) {
+    console.error('Error writing file to device:', error);
+    throw error;
+  }
+}
 
 export interface SalesReportData {
   date: string;
@@ -209,7 +264,7 @@ export interface DailySalesSummaryData {
   }[];
 }
 
-export const exportDailySummaryToPDF = (data: DailySalesSummaryData, businessName: string) => {
+export const exportDailySummaryToPDF = async (data: DailySalesSummaryData, businessName: string) => {
   try {
     const doc = new jsPDF();
     
@@ -268,8 +323,18 @@ export const exportDailySummaryToPDF = (data: DailySalesSummaryData, businessNam
       });
     }
     
-    // Save the PDF
+    // Save the PDF (use native filesystem on device if possible)
     const dateStr = data.date ? format(new Date(data.date), "yyyy-MM-dd") : format(new Date(), "yyyy-MM-dd");
+    if (Capacitor.isNativePlatform()) {
+      try {
+        const arrayBuffer = doc.output('arraybuffer') as ArrayBuffer;
+        const base64 = arrayBufferToBase64(arrayBuffer);
+        await writeBase64ToDevice(`daily-sales-summary-${dateStr}.pdf`, base64, 'application/pdf');
+        return;
+      } catch (error) {
+        console.warn('Native save failed, falling back to browser download', error);
+      }
+    }
     doc.save(`daily-sales-summary-${dateStr}.pdf`);
   } catch (error) {
     console.error("Error generating PDF:", error);
@@ -277,7 +342,7 @@ export const exportDailySummaryToPDF = (data: DailySalesSummaryData, businessNam
   }
 };
 
-export const exportDailySummaryToExcel = (data: DailySalesSummaryData, businessName: string) => {
+export const exportDailySummaryToExcel = async (data: DailySalesSummaryData, businessName: string) => {
   try {
     const wb = XLSX.utils.book_new();
     
@@ -317,6 +382,15 @@ export const exportDailySummaryToExcel = (data: DailySalesSummaryData, businessN
     
     XLSX.utils.book_append_sheet(wb, ws, 'Daily Summary');
     const dateStr = data.date ? format(new Date(data.date), "yyyy-MM-dd") : format(new Date(), "yyyy-MM-dd");
+    if (Capacitor.isNativePlatform()) {
+      try {
+        const base64 = XLSX.write(wb, { bookType: 'xlsx', type: 'base64' });
+        await writeBase64ToDevice(`daily-sales-summary-${dateStr}.xlsx`, base64, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        return;
+      } catch (error) {
+        console.warn('Native save failed, falling back to browser download', error);
+      }
+    }
     XLSX.writeFile(wb, `daily-sales-summary-${dateStr}.xlsx`);
   } catch (error) {
     console.error("Error generating Excel:", error);

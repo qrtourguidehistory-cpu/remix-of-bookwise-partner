@@ -223,7 +223,7 @@ export default function DailySalesSummary() {
         transactionSummary: transactionSummary || [],
         cashMovement: cashMovement || [],
       };
-      exportDailySummaryToPDF(exportData, getBusinessName());
+      await exportDailySummaryToPDF(exportData, getBusinessName());
       toast.success(language === "es" ? "PDF exportado exitosamente" : "PDF exported successfully");
     } catch (error) {
       console.error("Export PDF error:", error);
@@ -238,7 +238,7 @@ export default function DailySalesSummary() {
         transactionSummary: transactionSummary || [],
         cashMovement: cashMovement || [],
       };
-      exportDailySummaryToExcel(exportData, getBusinessName());
+      await exportDailySummaryToExcel(exportData, getBusinessName());
       toast.success(language === "es" ? "Excel exportado exitosamente" : "Excel exported successfully");
     } catch (error) {
       console.error("Export Excel error:", error);
