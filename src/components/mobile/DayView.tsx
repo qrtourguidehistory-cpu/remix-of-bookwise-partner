@@ -251,38 +251,37 @@ export function DayView({ date, filters, appointmentToOpen, onAppointmentOpened 
     }
   };
 
-  // Load business hours for the day
+  // Fixed timeline from 7:00 AM to 11:30 PM as requested
   useEffect(() => {
-    const loadBusinessHours = async () => {
-      if (!profile?.business_id) return;
+    // Always use fixed hours: 7:00 AM (420 min) to 11:30 PM (1410 min)
+    setTimelineStartMinutes(7 * 60); // 7:00 AM = 420 minutes
+    setTimelineEndMinutes(23 * 60 + 30); // 11:30 PM = 1410 minutes
+    setPixelsPerHour(80);
+  }, []);
+
+  // Auto-scroll to current time on load
+  useEffect(() => {
+    const scrollToCurrentTime = () => {
+      const now = new Date();
+      const currentMinutes = now.getHours() * 60 + now.getMinutes();
       
-      const dayOfWeek = date.getDay();
-      const { data } = await supabase
-        .from("business_hours")
-        .select("*")
-        .eq("business_id", profile.business_id)
-        .eq("day_of_week", dayOfWeek)
-        .single();
-      
-      if (data && data.is_open && data.start_time && data.end_time) {
-        setBusinessHours(data);
-        const start = parseTimeToMinutes(data.start_time);
-        const end = parseTimeToMinutes(data.end_time);
-        setTimelineStartMinutes(start);
-        setTimelineEndMinutes(end);
-        // Keep a consistent px/hour; user can scroll vertically
-        setPixelsPerHour(80);
-      } else {
-        // Default to 8:00 AM - 8:00 PM if no business hours
-        setBusinessHours(null);
-        setTimelineStartMinutes(8 * 60);
-        setTimelineEndMinutes(20 * 60);
-        setPixelsPerHour(80);
+      // Only scroll if current time is within visible range
+      if (currentMinutes >= timelineStartMinutes && currentMinutes <= timelineEndMinutes) {
+        const scrollContainer = document.querySelector('[data-timeline-container]');
+        if (scrollContainer) {
+          const totalDuration = timelineEndMinutes - timelineStartMinutes;
+          const containerHeight = ((totalDuration) / 60) * pixelsPerHour;
+          const scrollPosition = ((currentMinutes - timelineStartMinutes) / totalDuration) * containerHeight;
+          // Scroll with some offset to show context above current time
+          scrollContainer.scrollTop = Math.max(0, scrollPosition - 100);
+        }
       }
     };
     
-    loadBusinessHours();
-  }, [date, profile?.business_id]);
+    // Small delay to ensure DOM is ready
+    const timer = setTimeout(scrollToCurrentTime, 100);
+    return () => clearTimeout(timer);
+  }, [date, timelineStartMinutes, timelineEndMinutes, pixelsPerHour]);
 
   // Get all appointments sorted by start time (for timeline rendering)
   const sortedAppointments = [...appointments].sort((a, b) => {
@@ -463,8 +462,11 @@ export function DayView({ date, filters, appointmentToOpen, onAppointmentOpened 
             })}
           </div>
 
-          {/* Timeline container */}
-          <div className="flex-1 relative">
+          {/* Timeline container with scroll */}
+          <div 
+            className="flex-1 relative overflow-y-auto max-h-[calc(100vh-200px)]"
+            data-timeline-container
+          >
             <div
               className="relative border border-border rounded-lg bg-muted/20 overflow-hidden"
               style={{ 

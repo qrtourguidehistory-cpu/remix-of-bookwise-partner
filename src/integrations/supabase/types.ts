@@ -600,6 +600,84 @@ export type Database = {
         }
         Relationships: []
       }
+      client_credits: {
+        Row: {
+          amount: number
+          appointment_id: string | null
+          business_id: string
+          client_id: string | null
+          created_at: string | null
+          currency: string | null
+          id: string
+          notes: string | null
+          paid_amount: number
+          status: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          amount?: number
+          appointment_id?: string | null
+          business_id: string
+          client_id?: string | null
+          created_at?: string | null
+          currency?: string | null
+          id?: string
+          notes?: string | null
+          paid_amount?: number
+          status?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          amount?: number
+          appointment_id?: string | null
+          business_id?: string
+          client_id?: string | null
+          created_at?: string | null
+          currency?: string | null
+          id?: string
+          notes?: string | null
+          paid_amount?: number
+          status?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "client_credits_appointment_id_fkey"
+            columns: ["appointment_id"]
+            isOneToOne: false
+            referencedRelation: "appointments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "client_credits_business_id_fkey"
+            columns: ["business_id"]
+            isOneToOne: false
+            referencedRelation: "businesses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "client_credits_business_id_fkey"
+            columns: ["business_id"]
+            isOneToOne: false
+            referencedRelation: "establishments"
+            referencedColumns: ["establishment_id"]
+          },
+          {
+            foreignKeyName: "client_credits_business_id_fkey"
+            columns: ["business_id"]
+            isOneToOne: false
+            referencedRelation: "establishments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "client_credits_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       client_notifications: {
         Row: {
           action_url: string | null

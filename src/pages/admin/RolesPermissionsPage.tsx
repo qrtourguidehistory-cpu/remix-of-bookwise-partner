@@ -1,283 +1,496 @@
-import { useState, useEffect } from "react";
-import { supabase } from "@/lib/supabaseClient";
-import { useAuth } from "@/contexts/AuthContext";
-import { toast } from "sonner";
+import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import MobileLayout from "@/components/mobile/MobileLayout";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Card } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Shield, UserPlus, Users, Trash2 } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Shield, FileText, BookOpen, ArrowLeft, ExternalLink } from "lucide-react";
+import { useLanguage } from "@/contexts/LanguageContext";
 
 export default function RolesPermissionsPage() {
-  const { profile, user } = useAuth();
-  const [teamMembers, setTeamMembers] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [inviteEmail, setInviteEmail] = useState("");
-  const [inviteRole, setInviteRole] = useState<"admin" | "manager" | "staff">("staff");
-  const [inviting, setInviting] = useState(false);
+  const navigate = useNavigate();
+  const { language } = useLanguage();
+  const [activeTab, setActiveTab] = useState("privacy");
 
-  useEffect(() => {
-    loadTeamMembers();
-  }, [profile]);
+  const privacyPolicyContent = language === "es" ? `
+# Política de Privacidad
 
-  const loadTeamMembers = async () => {
-    if (!profile?.business_id) return;
+Última actualización: Enero 2026
 
-    try {
-      // Get all profiles in this business
-      const { data: profiles, error: profilesError } = await supabase
-        .from("profiles")
-        .select("id, full_name")
-        .eq("business_id", profile.business_id);
+## 1. Información que Recopilamos
 
-      if (profilesError) throw profilesError;
+Recopilamos información que usted nos proporciona directamente, incluyendo:
+- Nombre y datos de contacto del negocio
+- Información de clientes (nombre, teléfono, email)
+- Datos de citas y servicios
+- Información de pagos y transacciones
 
-      // Get roles for these users
-      const userIds = profiles?.map((p) => p.id) || [];
-      const { data: roles, error: rolesError } = await supabase
-        .from("user_roles")
-        .select("*")
-        .in("user_id", userIds);
+## 2. Uso de la Información
 
-      if (rolesError) throw rolesError;
+Utilizamos la información recopilada para:
+- Proporcionar y mantener nuestros servicios
+- Enviar recordatorios de citas
+- Procesar pagos y transacciones
+- Mejorar nuestros servicios
+- Comunicaciones relacionadas con el servicio
 
-      // Combine data
-      const members = profiles?.map((p) => ({
-        ...p,
-        role: roles?.find((r) => r.user_id === p.id)?.role || "staff",
-      }));
+## 3. Compartir Información
 
-      setTeamMembers(members || []);
-    } catch (error: any) {
-      console.error("Error loading team members:", error);
-      toast.error("Error loading team members");
-    } finally {
-      setLoading(false);
-    }
-  };
+No vendemos ni alquilamos su información personal. Solo compartimos datos cuando:
+- Es necesario para proporcionar el servicio
+- Usted da su consentimiento
+- Es requerido por ley
 
-  const handleRoleChange = async (userId: string, newRole: "admin" | "manager" | "staff") => {
-    try {
-      const { error } = await supabase
-        .from("user_roles")
-        .update({ role: newRole })
-        .eq("user_id", userId);
+## 4. Seguridad de Datos
 
-      if (error) throw error;
-      toast.success("Role updated successfully");
-      loadTeamMembers();
-    } catch (error: any) {
-      toast.error("Error updating role");
-      console.error(error);
-    }
-  };
+Implementamos medidas de seguridad para proteger su información:
+- Encriptación de datos en tránsito y en reposo
+- Acceso restringido a datos personales
+- Auditorías de seguridad regulares
 
-  const handleInvite = async () => {
-    if (!profile?.business_id || !inviteEmail.trim()) {
-      toast.error("Please enter a valid email");
-      return;
-    }
+## 5. Sus Derechos
 
-    setInviting(true);
-    try {
-      // For now, just show a message
-      // In production, you'd call an edge function to send email invitation
-      toast.success(`Invitation email would be sent to ${inviteEmail}`);
-      toast.info("Email invitations feature requires edge function setup");
-      setInviteEmail("");
-    } catch (error: any) {
-      toast.error("Error sending invitation");
-      console.error(error);
-    } finally {
-      setInviting(false);
-    }
-  };
+Usted tiene derecho a:
+- Acceder a sus datos personales
+- Corregir información inexacta
+- Solicitar eliminación de datos
+- Exportar sus datos
 
-  const handleRemoveMember = async (userId: string) => {
-    if (userId === user?.id) {
-      toast.error("You cannot remove yourself");
-      return;
-    }
+## 6. Contacto
 
-    if (!confirm("Are you sure you want to remove this team member?")) return;
+Para preguntas sobre privacidad, contáctenos en:
+soporte@miturnow.com
+  ` : `
+# Privacy Policy
 
-    try {
-      await supabase.from("user_roles").delete().eq("user_id", userId);
-      await supabase.from("profiles").update({ business_id: null }).eq("id", userId);
+Last updated: January 2026
 
-      toast.success("Team member removed");
-      loadTeamMembers();
-    } catch (error: any) {
-      toast.error("Error removing team member");
-      console.error(error);
-    }
-  };
+## 1. Information We Collect
 
-  const getRoleBadgeColor = (role: string) => {
-    switch (role) {
-      case "admin":
-        return "bg-red-500/10 text-red-500 border-red-500/20";
-      case "manager":
-        return "bg-blue-500/10 text-blue-500 border-blue-500/20";
-      default:
-        return "bg-gray-500/10 text-gray-500 border-gray-500/20";
-    }
-  };
+We collect information you provide directly, including:
+- Business name and contact details
+- Client information (name, phone, email)
+- Appointment and service data
+- Payment and transaction information
+
+## 2. Use of Information
+
+We use collected information to:
+- Provide and maintain our services
+- Send appointment reminders
+- Process payments and transactions
+- Improve our services
+- Service-related communications
+
+## 3. Information Sharing
+
+We do not sell or rent your personal information. We only share data when:
+- Necessary to provide the service
+- You give consent
+- Required by law
+
+## 4. Data Security
+
+We implement security measures to protect your information:
+- Encryption of data in transit and at rest
+- Restricted access to personal data
+- Regular security audits
+
+## 5. Your Rights
+
+You have the right to:
+- Access your personal data
+- Correct inaccurate information
+- Request data deletion
+- Export your data
+
+## 6. Contact
+
+For privacy questions, contact us at:
+support@miturnow.com
+  `;
+
+  const termsContent = language === "es" ? `
+# Términos y Condiciones
+
+Última actualización: Enero 2026
+
+## 1. Aceptación de Términos
+
+Al utilizar Mí Turnow Partner, usted acepta estos términos y condiciones.
+
+## 2. Descripción del Servicio
+
+Mí Turnow Partner es una plataforma de gestión de citas que permite:
+- Programar y administrar citas
+- Gestionar clientes y servicios
+- Procesar pagos
+- Enviar notificaciones y recordatorios
+
+## 3. Responsabilidades del Usuario
+
+Usted se compromete a:
+- Proporcionar información veraz y actualizada
+- Mantener la confidencialidad de su cuenta
+- No usar el servicio para fines ilegales
+- Respetar la privacidad de sus clientes
+
+## 4. Pagos y Facturación
+
+- Los precios están sujetos a cambios con aviso previo
+- Las facturas se emiten mensualmente
+- El impago puede resultar en suspensión del servicio
+
+## 5. Propiedad Intelectual
+
+Todo el contenido, marcas y software son propiedad de Mí Turnow o sus licenciantes.
+
+## 6. Limitación de Responsabilidad
+
+No somos responsables por:
+- Pérdidas indirectas o consecuentes
+- Interrupciones temporales del servicio
+- Acciones de terceros
+
+## 7. Terminación
+
+Podemos suspender o terminar su acceso por violación de estos términos.
+
+## 8. Modificaciones
+
+Nos reservamos el derecho de modificar estos términos con notificación previa.
+  ` : `
+# Terms and Conditions
+
+Last updated: January 2026
+
+## 1. Acceptance of Terms
+
+By using Mí Turnow Partner, you accept these terms and conditions.
+
+## 2. Service Description
+
+Mí Turnow Partner is an appointment management platform that allows:
+- Scheduling and managing appointments
+- Managing clients and services
+- Processing payments
+- Sending notifications and reminders
+
+## 3. User Responsibilities
+
+You agree to:
+- Provide accurate and up-to-date information
+- Maintain account confidentiality
+- Not use the service for illegal purposes
+- Respect your clients' privacy
+
+## 4. Payments and Billing
+
+- Prices are subject to change with prior notice
+- Invoices are issued monthly
+- Non-payment may result in service suspension
+
+## 5. Intellectual Property
+
+All content, trademarks, and software are property of Mí Turnow or its licensors.
+
+## 6. Limitation of Liability
+
+We are not responsible for:
+- Indirect or consequential losses
+- Temporary service interruptions
+- Third-party actions
+
+## 7. Termination
+
+We may suspend or terminate your access for violation of these terms.
+
+## 8. Modifications
+
+We reserve the right to modify these terms with prior notification.
+  `;
+
+  const usageGuideContent = language === "es" ? `
+# Guía de Uso
+
+## Primeros Pasos
+
+### 1. Configurar tu Negocio
+- Ve a Configuración > Perfil Público
+- Completa la información de tu negocio
+- Añade tu logo y horarios de atención
+
+### 2. Agregar Servicios
+- Ve a la sección de Servicios
+- Toca el botón + para agregar
+- Define nombre, duración y precio
+
+### 3. Agregar Personal
+- Ve a Personal
+- Añade miembros del equipo
+- Configura sus horarios disponibles
+
+## Gestión de Citas
+
+### Crear una Cita
+1. Abre el calendario
+2. Toca en la hora deseada
+3. Selecciona cliente, servicio y personal
+4. Confirma la cita
+
+### Estados de Citas
+- **Confirmada**: Cita programada
+- **Iniciada**: Servicio en progreso
+- **Completada**: Servicio finalizado
+- **Cancelada**: Cita cancelada
+- **No-show**: Cliente no se presentó
+
+## Gestión de Clientes
+
+### Agregar Cliente
+1. Ve a Clientes
+2. Toca el botón +
+3. Ingresa nombre, teléfono y email
+
+### Notas de Cliente
+- Puedes agregar notas de alergias
+- Registra preferencias especiales
+- Bloquea clientes problemáticos
+
+## Ventas y Reportes
+
+### Registrar Venta
+1. Abre una cita completada
+2. Ve a Checkout
+3. Agrega productos adicionales si aplica
+4. Procesa el pago
+
+### Ver Reportes
+- Ve a Reportes y Análisis
+- Selecciona el período deseado
+- Exporta en PDF, Excel o CSV
+
+## Configuraciones Importantes
+
+### Notificaciones
+- Activa recordatorios automáticos
+- Personaliza plantillas de SMS
+
+### Métodos de Pago
+- Configura los métodos que aceptas
+- Define instrucciones para cada uno
+
+## Soporte
+
+¿Necesitas ayuda? Contáctanos:
+- Email: soporte@miturnow.com
+- Horario: Lunes a Viernes, 9am - 6pm
+  ` : `
+# Usage Guide
+
+## Getting Started
+
+### 1. Set Up Your Business
+- Go to Settings > Public Profile
+- Complete your business information
+- Add your logo and business hours
+
+### 2. Add Services
+- Go to the Services section
+- Tap the + button to add
+- Define name, duration, and price
+
+### 3. Add Staff
+- Go to Staff
+- Add team members
+- Configure their available schedules
+
+## Appointment Management
+
+### Create an Appointment
+1. Open the calendar
+2. Tap on the desired time
+3. Select client, service, and staff
+4. Confirm the appointment
+
+### Appointment Statuses
+- **Confirmed**: Scheduled appointment
+- **Started**: Service in progress
+- **Completed**: Service finished
+- **Cancelled**: Appointment cancelled
+- **No-show**: Client didn't show up
+
+## Client Management
+
+### Add Client
+1. Go to Clients
+2. Tap the + button
+3. Enter name, phone, and email
+
+### Client Notes
+- You can add allergy notes
+- Record special preferences
+- Block problematic clients
+
+## Sales and Reports
+
+### Record Sale
+1. Open a completed appointment
+2. Go to Checkout
+3. Add additional products if applicable
+4. Process the payment
+
+### View Reports
+- Go to Reports & Analytics
+- Select the desired period
+- Export to PDF, Excel, or CSV
+
+## Important Settings
+
+### Notifications
+- Enable automatic reminders
+- Customize SMS templates
+
+### Payment Methods
+- Configure accepted methods
+- Define instructions for each
+
+## Support
+
+Need help? Contact us:
+- Email: support@miturnow.com
+- Hours: Monday to Friday, 9am - 6pm
+  `;
 
   return (
     <MobileLayout>
       <div className="border-b border-border px-4 py-3 mb-4 sticky top-[57px] bg-card z-30">
         <div className="flex items-center gap-3">
-          <Button variant="ghost" size="sm" onClick={() => window.history.back()}>
-            ← Back
+          <Button variant="ghost" size="sm" onClick={() => navigate(-1)}>
+            <ArrowLeft className="h-4 w-4 mr-1" />
+            {language === "es" ? "Volver" : "Back"}
           </Button>
-          <h2 className="text-lg font-semibold">Roles & Permissions</h2>
+          <h2 className="text-lg font-semibold">
+            {language === "es" ? "Legal y Ayuda" : "Legal & Help"}
+          </h2>
         </div>
       </div>
 
-      <div className="p-4">
-        <Tabs defaultValue="team" className="space-y-4">
-          <TabsList className="grid w-full grid-cols-2">
-            <TabsTrigger value="team">Team Members</TabsTrigger>
-            <TabsTrigger value="invite">Invite</TabsTrigger>
+      <div className="p-4 pb-24">
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
+          <TabsList className="grid w-full grid-cols-3">
+            <TabsTrigger value="privacy" className="text-xs sm:text-sm">
+              <Shield className="h-4 w-4 mr-1 hidden sm:inline" />
+              {language === "es" ? "Privacidad" : "Privacy"}
+            </TabsTrigger>
+            <TabsTrigger value="terms" className="text-xs sm:text-sm">
+              <FileText className="h-4 w-4 mr-1 hidden sm:inline" />
+              {language === "es" ? "Términos" : "Terms"}
+            </TabsTrigger>
+            <TabsTrigger value="guide" className="text-xs sm:text-sm">
+              <BookOpen className="h-4 w-4 mr-1 hidden sm:inline" />
+              {language === "es" ? "Guía" : "Guide"}
+            </TabsTrigger>
           </TabsList>
 
-          <TabsContent value="team" className="space-y-4">
-            {loading ? (
-              <div className="text-center py-8 text-muted-foreground">Loading...</div>
-            ) : teamMembers.length === 0 ? (
-              <Card className="p-8 text-center">
-                <Users className="w-12 h-12 mx-auto mb-4 text-muted-foreground" />
-                <h3 className="font-semibold mb-2">No team members yet</h3>
-                <p className="text-sm text-muted-foreground">
-                  Invite team members to get started
-                </p>
-              </Card>
-            ) : (
-              <div className="space-y-3">
-                {teamMembers.map((member) => (
-                  <Card key={member.id} className="p-4">
-                    <div className="flex items-center justify-between mb-3">
-                      <div className="flex-1">
-                        <h3 className="font-semibold">{member.full_name || "Unnamed User"}</h3>
-                        {member.id === user?.id && (
-                          <p className="text-xs text-muted-foreground">(You)</p>
-                        )}
-                      </div>
-                      <Badge className={getRoleBadgeColor(member.role)}>
-                        {member.role}
-                      </Badge>
-                    </div>
-
-                    {member.id !== user?.id && (
-                      <div className="flex gap-2">
-                        <Select
-                          value={member.role}
-                          onValueChange={(value: any) => handleRoleChange(member.id, value)}
-                        >
-                          <SelectTrigger className="flex-1">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="admin">Admin</SelectItem>
-                            <SelectItem value="manager">Manager</SelectItem>
-                            <SelectItem value="staff">Staff</SelectItem>
-                          </SelectContent>
-                        </Select>
-
-                        <Button
-                          variant="destructive"
-                          size="sm"
-                          onClick={() => handleRemoveMember(member.id)}
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </Button>
-                      </div>
-                    )}
-                  </Card>
-                ))}
-              </div>
-            )}
-
-            {/* Permissions Matrix */}
-            <Card className="p-4 mt-6">
-              <div className="flex items-center gap-2 mb-4">
-                <Shield className="w-5 h-5 text-primary" />
-                <h3 className="font-semibold">Permission Matrix</h3>
-              </div>
-              <div className="space-y-2 text-sm">
-                <div className="grid grid-cols-4 gap-2 font-semibold pb-2 border-b">
-                  <div>Permission</div>
-                  <div className="text-center">Admin</div>
-                  <div className="text-center">Manager</div>
-                  <div className="text-center">Staff</div>
-                </div>
-                {[
-                  { label: "Settings", admin: "✓", manager: "✗", staff: "✗" },
-                  { label: "Manage Staff", admin: "✓", manager: "✓", staff: "✗" },
-                  { label: "View Reports", admin: "✓", manager: "✓", staff: "✗" },
-                  { label: "Manage Clients", admin: "✓", manager: "✓", staff: "✓" },
-                  { label: "Create Sales", admin: "✓", manager: "✓", staff: "✓" },
-                  { label: "View Calendar", admin: "✓", manager: "✓", staff: "Own" },
-                ].map((perm) => (
-                  <div key={perm.label} className="grid grid-cols-4 gap-2 py-1">
-                    <div className="text-muted-foreground">{perm.label}</div>
-                    <div className="text-center">{perm.admin}</div>
-                    <div className="text-center">{perm.manager}</div>
-                    <div className="text-center">{perm.staff}</div>
+          <TabsContent value="privacy">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Shield className="h-5 w-5 text-primary" />
+                  {language === "es" ? "Política de Privacidad" : "Privacy Policy"}
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <ScrollArea className="h-[60vh]">
+                  <div className="prose prose-sm dark:prose-invert max-w-none">
+                    {privacyPolicyContent.split('\n').map((line, i) => {
+                      if (line.startsWith('# ')) {
+                        return <h1 key={i} className="text-xl font-bold mt-4 mb-2">{line.replace('# ', '')}</h1>;
+                      } else if (line.startsWith('## ')) {
+                        return <h2 key={i} className="text-lg font-semibold mt-4 mb-2">{line.replace('## ', '')}</h2>;
+                      } else if (line.startsWith('- ')) {
+                        return <li key={i} className="ml-4">{line.replace('- ', '')}</li>;
+                      } else if (line.trim()) {
+                        return <p key={i} className="mb-2">{line}</p>;
+                      }
+                      return null;
+                    })}
                   </div>
-                ))}
-              </div>
+                </ScrollArea>
+              </CardContent>
             </Card>
           </TabsContent>
 
-          <TabsContent value="invite" className="space-y-4">
-            <Card className="p-6">
-              <div className="flex items-center gap-3 mb-6">
-                <UserPlus className="w-6 h-6 text-primary" />
-                <h3 className="font-semibold text-lg">Invite Team Member</h3>
-              </div>
+          <TabsContent value="terms">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <FileText className="h-5 w-5 text-primary" />
+                  {language === "es" ? "Términos y Condiciones" : "Terms and Conditions"}
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <ScrollArea className="h-[60vh]">
+                  <div className="prose prose-sm dark:prose-invert max-w-none">
+                    {termsContent.split('\n').map((line, i) => {
+                      if (line.startsWith('# ')) {
+                        return <h1 key={i} className="text-xl font-bold mt-4 mb-2">{line.replace('# ', '')}</h1>;
+                      } else if (line.startsWith('## ')) {
+                        return <h2 key={i} className="text-lg font-semibold mt-4 mb-2">{line.replace('## ', '')}</h2>;
+                      } else if (line.startsWith('- ')) {
+                        return <li key={i} className="ml-4">{line.replace('- ', '')}</li>;
+                      } else if (line.trim()) {
+                        return <p key={i} className="mb-2">{line}</p>;
+                      }
+                      return null;
+                    })}
+                  </div>
+                </ScrollArea>
+              </CardContent>
+            </Card>
+          </TabsContent>
 
-              <div className="space-y-4">
-                <div className="space-y-2">
-                  <Label>Email Address</Label>
-                  <Input
-                    type="email"
-                    placeholder="teammate@example.com"
-                    value={inviteEmail}
-                    onChange={(e) => setInviteEmail(e.target.value)}
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label>Role</Label>
-                  <Select
-                    value={inviteRole}
-                    onValueChange={(value: any) => setInviteRole(value)}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="admin">Admin - Full access</SelectItem>
-                      <SelectItem value="manager">Manager - No settings access</SelectItem>
-                      <SelectItem value="staff">Staff - Limited access</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <Button onClick={handleInvite} disabled={inviting} className="w-full">
-                  {inviting ? "Sending..." : "Send Invitation"}
-                </Button>
-
-                <p className="text-xs text-muted-foreground text-center">
-                  An invitation email will be sent with instructions to join your business
-                </p>
-              </div>
+          <TabsContent value="guide">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <BookOpen className="h-5 w-5 text-primary" />
+                  {language === "es" ? "Guía de Uso" : "Usage Guide"}
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <ScrollArea className="h-[60vh]">
+                  <div className="prose prose-sm dark:prose-invert max-w-none">
+                    {usageGuideContent.split('\n').map((line, i) => {
+                      if (line.startsWith('# ')) {
+                        return <h1 key={i} className="text-xl font-bold mt-4 mb-2">{line.replace('# ', '')}</h1>;
+                      } else if (line.startsWith('## ')) {
+                        return <h2 key={i} className="text-lg font-semibold mt-4 mb-2">{line.replace('## ', '')}</h2>;
+                      } else if (line.startsWith('### ')) {
+                        return <h3 key={i} className="text-base font-medium mt-3 mb-1">{line.replace('### ', '')}</h3>;
+                      } else if (line.startsWith('- ')) {
+                        return <li key={i} className="ml-4">{line.replace('- ', '')}</li>;
+                      } else if (line.match(/^\d+\./)) {
+                        return <li key={i} className="ml-4 list-decimal">{line.replace(/^\d+\./, '').trim()}</li>;
+                      } else if (line.includes('**')) {
+                        const parts = line.split('**');
+                        return (
+                          <p key={i} className="mb-1">
+                            {parts.map((part, j) => 
+                              j % 2 === 1 ? <strong key={j}>{part}</strong> : part
+                            )}
+                          </p>
+                        );
+                      } else if (line.trim()) {
+                        return <p key={i} className="mb-2">{line}</p>;
+                      }
+                      return null;
+                    })}
+                  </div>
+                </ScrollArea>
+              </CardContent>
             </Card>
           </TabsContent>
         </Tabs>

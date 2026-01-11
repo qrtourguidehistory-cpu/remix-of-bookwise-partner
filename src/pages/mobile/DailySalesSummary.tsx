@@ -216,52 +216,49 @@ export default function DailySalesSummary() {
     return (profile?.businesses?.business_name) || "Business";
   };
 
-  const handleExportPDF = () => {
-    if (transactionSummary.length === 0 || cashMovement.length === 0) {
-      toast.error(language === "es" ? "No hay datos para exportar" : "No data to export");
-      return;
+  const handleExportPDF = async () => {
+    try {
+      const exportData = {
+        date: format(selectedDate, "PPP", { locale: dateLocale }),
+        transactionSummary: transactionSummary || [],
+        cashMovement: cashMovement || [],
+      };
+      exportDailySummaryToPDF(exportData, getBusinessName());
+      toast.success(language === "es" ? "PDF exportado exitosamente" : "PDF exported successfully");
+    } catch (error) {
+      console.error("Export PDF error:", error);
+      toast.error(language === "es" ? "Error al exportar PDF" : "Error exporting PDF");
     }
-
-    const exportData = {
-      date: format(selectedDate, "PPP", { locale: dateLocale }),
-      transactionSummary,
-      cashMovement,
-    };
-
-    exportDailySummaryToPDF(exportData, getBusinessName());
-    toast.success(language === "es" ? "PDF exportado exitosamente" : "PDF exported successfully");
   };
 
-  const handleExportExcel = () => {
-    if (transactionSummary.length === 0 || cashMovement.length === 0) {
-      toast.error(language === "es" ? "No hay datos para exportar" : "No data to export");
-      return;
+  const handleExportExcel = async () => {
+    try {
+      const exportData = {
+        date: format(selectedDate, "PPP", { locale: dateLocale }),
+        transactionSummary: transactionSummary || [],
+        cashMovement: cashMovement || [],
+      };
+      exportDailySummaryToExcel(exportData, getBusinessName());
+      toast.success(language === "es" ? "Excel exportado exitosamente" : "Excel exported successfully");
+    } catch (error) {
+      console.error("Export Excel error:", error);
+      toast.error(language === "es" ? "Error al exportar Excel" : "Error exporting Excel");
     }
-
-    const exportData = {
-      date: format(selectedDate, "PPP", { locale: dateLocale }),
-      transactionSummary,
-      cashMovement,
-    };
-
-    exportDailySummaryToExcel(exportData, getBusinessName());
-    toast.success(language === "es" ? "Excel exportado exitosamente" : "Excel exported successfully");
   };
 
-  const handleExportCSV = () => {
-    if (transactionSummary.length === 0 || cashMovement.length === 0) {
-      toast.error(language === "es" ? "No hay datos para exportar" : "No data to export");
-      return;
+  const handleExportCSV = async () => {
+    try {
+      const exportData = {
+        date: format(selectedDate, "PPP", { locale: dateLocale }),
+        transactionSummary: transactionSummary || [],
+        cashMovement: cashMovement || [],
+      };
+      exportDailySummaryToCSV(exportData, getBusinessName());
+      toast.success(language === "es" ? "CSV exportado exitosamente" : "CSV exported successfully");
+    } catch (error) {
+      console.error("Export CSV error:", error);
+      toast.error(language === "es" ? "Error al exportar CSV" : "Error exporting CSV");
     }
-
-    const exportData = {
-      date: format(selectedDate, "PPP", { locale: dateLocale }),
-      transactionSummary,
-      cashMovement,
-    };
-
-    exportDailySummaryToCSV(exportData, getBusinessName());
-    toast.success(language === "es" ? "CSV exportado exitosamente" : "CSV exported successfully");
   };
 
   const formatCurrency = (amount: number) => {
