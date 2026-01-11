@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { format, addDays } from "date-fns";
 import { supabase } from "@/lib/supabaseClient";
 import { AppointmentDialog } from "./AppointmentDialog";
@@ -96,6 +96,16 @@ export function DayView({ date, filters, appointmentToOpen, onAppointmentOpened 
   const [timelineStartMinutes, setTimelineStartMinutes] = useState<number>(7 * 60); // 7:00 AM default
   const [timelineEndMinutes, setTimelineEndMinutes] = useState<number>(23 * 60); // 11:00 PM default
   const [pixelsPerHour, setPixelsPerHour] = useState<number>(80); // consistent look (like reference)
+
+  // Refs for synchronizing scroll between time labels and timeline
+  const labelsRef = useRef<HTMLDivElement | null>(null);
+  const timelineRef = useRef<HTMLDivElement | null>(null);
+
+  const handleTimelineScroll = (e: React.UIEvent<HTMLDivElement>) => {
+    if (labelsRef.current) {
+      labelsRef.current.scrollTop = e.currentTarget.scrollTop;
+    }
+  };
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -267,13 +277,15 @@ export function DayView({ date, filters, appointmentToOpen, onAppointmentOpened 
       
       // Only scroll if current time is within visible range
       if (currentMinutes >= timelineStartMinutes && currentMinutes <= timelineEndMinutes) {
-        const scrollContainer = document.querySelector('[data-timeline-container]');
+        const scrollContainer = timelineRef.current;
+        const labelsContainer = labelsRef.current;
         if (scrollContainer) {
           const totalDuration = timelineEndMinutes - timelineStartMinutes;
           const containerHeight = ((totalDuration) / 60) * pixelsPerHour;
           const scrollPosition = ((currentMinutes - timelineStartMinutes) / totalDuration) * containerHeight;
-          // Scroll with some offset to show context above current time
-          scrollContainer.scrollTop = Math.max(0, scrollPosition - 100);
+          const pos = Math.max(0, scrollPosition - 100);
+          scrollContainer.scrollTop = pos;
+          if (labelsContainer) labelsContainer.scrollTop = pos;
         }
       }
     };
@@ -441,7 +453,11 @@ export function DayView({ date, filters, appointmentToOpen, onAppointmentOpened 
         {/* Timeline View - Continuous timeline instead of fixed slots */}
         <div className="flex gap-1">
           {/* Time labels column */}
-          <div className="w-12 flex-shrink-0">
+          <div 
+            className="w-12 flex-shrink-0 overflow-y-auto max-h-[calc(100vh-200px)]"
+            ref={labelsRef}
+            data-time-labels
+          >
             {generateTimelineMinutes(
               Math.floor(timelineStartMinutes / 60),
               Math.ceil(timelineEndMinutes / 60),
@@ -466,6 +482,8 @@ export function DayView({ date, filters, appointmentToOpen, onAppointmentOpened 
           <div 
             className="flex-1 relative overflow-y-auto max-h-[calc(100vh-200px)]"
             data-timeline-container
+            ref={timelineRef}
+            onScroll={handleTimelineScroll}
           >
             <div
               className="relative border border-border rounded-lg bg-muted/20 overflow-hidden"
