@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { supabase } from "@/lib/supabaseClient";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { useAuth } from "@/contexts/AuthContext";
-import { exportSalesToPDF, exportSalesToExcel, SalesReportData } from "@/lib/exportUtils";
+import { exportSalesToPDF, exportSalesToExcel, exportSalesToCSV, SalesReportData } from "@/lib/exportUtils";
 import { format } from "date-fns";
 import { toast } from "sonner";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -56,34 +56,64 @@ export default function MobileSales() {
     }
   };
 
-  const handleExportPDF = () => {
-    const reportData: SalesReportData[] = sales.map(sale => ({
-      date: format(new Date(sale.sale_date), "PP"),
-      client: sale.client_name,
-      service: sale.service_name,
-      staff: sale.staff_id || "N/A",
-      amount: (Number(sale.price_usd) || 0) + (Number(sale.tip_amount) || 0),
-      paymentMethod: sale.payment_method || "N/A"
-    }));
-    
-    const businessName = profile?.business_id || "Business";
-    exportSalesToPDF(reportData, businessName);
-    toast.success("PDF exported successfully");
+  const handleExportPDF = async () => {
+    try {
+      const reportData: SalesReportData[] = sales.map(sale => ({
+        date: format(new Date(sale.sale_date), "PP"),
+        client: sale.client_name,
+        service: sale.service_name,
+        staff: sale.staff_id || "N/A",
+        amount: (Number(sale.price_usd) || 0) + (Number(sale.tip_amount) || 0),
+        paymentMethod: sale.payment_method || "N/A"
+      }));
+      
+      const businessName = profile?.businesses?.business_name || profile?.business_id || "Business";
+      await exportSalesToPDF(reportData, businessName);
+      toast.success(language === "es" ? "PDF exportado exitosamente" : "PDF exported successfully");
+    } catch (error) {
+      console.error("Export PDF error:", error);
+      toast.error(language === "es" ? "Error al exportar PDF" : "Error exporting PDF");
+    }
   };
 
-  const handleExportExcel = () => {
-    const reportData: SalesReportData[] = sales.map(sale => ({
-      date: format(new Date(sale.sale_date), "PP"),
-      client: sale.client_name,
-      service: sale.service_name,
-      staff: sale.staff_id || "N/A",
-      amount: (Number(sale.price_usd) || 0) + (Number(sale.tip_amount) || 0),
-      paymentMethod: sale.payment_method || "N/A"
-    }));
-    
-    const businessName = profile?.business_id || "Business";
-    exportSalesToExcel(reportData, businessName);
-    toast.success("Excel exported successfully");
+  const handleExportExcel = async () => {
+    try {
+      const reportData: SalesReportData[] = sales.map(sale => ({
+        date: format(new Date(sale.sale_date), "PP"),
+        client: sale.client_name,
+        service: sale.service_name,
+        staff: sale.staff_id || "N/A",
+        amount: (Number(sale.price_usd) || 0) + (Number(sale.tip_amount) || 0),
+        paymentMethod: sale.payment_method || "N/A"
+      }));
+      
+      const businessName = profile?.businesses?.business_name || profile?.business_id || "Business";
+      await exportSalesToExcel(reportData, businessName);
+      toast.success(language === "es" ? "Excel exportado exitosamente" : "Excel exported successfully");
+    } catch (error) {
+      console.error("Export Excel error:", error);
+      toast.error(language === "es" ? "Error al exportar Excel" : "Error exporting Excel");
+    }
+  };
+
+  const handleExportCSV = async () => {
+    try {
+      const reportData: SalesReportData[] = sales.map(sale => ({
+        date: format(new Date(sale.sale_date), "PP"),
+        client: sale.client_name,
+        service: sale.service_name,
+        staff: sale.staff_id || "N/A",
+        amount: (Number(sale.price_usd) || 0) + (Number(sale.tip_amount) || 0),
+        paymentMethod: sale.payment_method || "N/A"
+      }));
+      
+      const businessName = profile?.businesses?.business_name || profile?.business_id || "Business";
+      await exportSalesToCSV(reportData, businessName);
+      toast.success(language === "es" ? "CSV exportado exitosamente" : "CSV exported successfully");
+    } catch (error) {
+      console.error("Export CSV error:", error);
+      toast.error(language === "es" ? "Error al exportar CSV" : "Error exporting CSV");
+    }
   };
 
   return (
@@ -106,6 +136,9 @@ export default function MobileSales() {
                 <DropdownMenuItem onClick={handleExportExcel}>
                   Export as Excel
                 </DropdownMenuItem>
+                <DropdownMenuItem onClick={handleExportCSV}>
+                  Export as CSV
+                </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
             <Button onClick={() => navigate("/admin/sales/new")} size="sm">
@@ -116,7 +149,7 @@ export default function MobileSales() {
         </div>
 
         {/* Daily Sales Summary Button */}
-        <Card className="mb-4 cursor-pointer hover:bg-muted/50 transition-colors" onClick={() => navigate("/admin/sales/summary")}>
+        <Card className="mb-4 cursor-pointer hover:bg-muted/50 transition-colors" onClick={() => navigate("/admin/reports")}>
           <div className="p-4 flex items-center justify-between">
             <div className="flex items-center gap-3">
               <div className="p-2 rounded-full bg-primary/10">

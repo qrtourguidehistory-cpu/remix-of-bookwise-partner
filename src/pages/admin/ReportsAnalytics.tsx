@@ -9,10 +9,15 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { useState, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/lib/supabaseClient";
 import { subDays, startOfDay, endOfDay } from "date-fns";
+import { exportAnalyticsToPDF, exportAnalyticsToExcel, exportAnalyticsToCSV, AnalyticsReportData } from "@/lib/exportUtils";
+import { toast } from "sonner";
+import { exportAnalyticsToPDF, exportAnalyticsToExcel, exportAnalyticsToCSV, AnalyticsReportData } from "@/lib/exportUtils";
+import { toast } from "sonner";
 
 interface RevenueData {
   total: number;
@@ -338,6 +343,66 @@ export default function ReportsAnalytics() {
     }).format(amount);
   };
 
+  const handleExportPDF = async () => {
+    try {
+      const exportData: AnalyticsReportData = {
+        period: period === "7days" ? "Last 7 days" : period === "30days" ? "Last 30 days" : period === "90days" ? "Last 90 days" : "This year",
+        revenue,
+        serviceRevenue,
+        staffPerformance,
+        popularServices,
+        operationalMetrics
+      };
+      
+      const businessName = profile?.businesses?.business_name || "Business";
+      await exportAnalyticsToPDF(exportData, businessName);
+      toast.success("PDF exported successfully");
+    } catch (error) {
+      console.error("Export PDF error:", error);
+      toast.error("Error exporting PDF");
+    }
+  };
+
+  const handleExportExcel = async () => {
+    try {
+      const exportData: AnalyticsReportData = {
+        period: period === "7days" ? "Last 7 days" : period === "30days" ? "Last 30 days" : period === "90days" ? "Last 90 days" : "This year",
+        revenue,
+        serviceRevenue,
+        staffPerformance,
+        popularServices,
+        operationalMetrics
+      };
+      
+      const businessName = profile?.businesses?.business_name || "Business";
+      await exportAnalyticsToExcel(exportData, businessName);
+      toast.success("Excel exported successfully");
+    } catch (error) {
+      console.error("Export Excel error:", error);
+      toast.error("Error exporting Excel");
+    }
+  };
+
+  const handleExportCSV = async () => {
+    try {
+      const exportData: AnalyticsReportData = {
+        period: period === "7days" ? "Last 7 days" : period === "30days" ? "Last 30 days" : period === "90days" ? "Last 90 days" : "This year",
+        revenue,
+        serviceRevenue,
+        staffPerformance,
+        popularServices,
+        operationalMetrics
+      };
+      
+      const businessName = profile?.businesses?.business_name || "Business";
+      await exportAnalyticsToCSV(exportData, businessName);
+      toast.success("CSV exported successfully");
+    } catch (error) {
+      console.error("Export CSV error:", error);
+      toast.error("Error exporting CSV");
+    }
+  };
+
   if (loading) {
     return (
       <AdminLayout>
@@ -368,10 +433,25 @@ export default function ReportsAnalytics() {
                 <SelectItem value="year">This year</SelectItem>
               </SelectContent>
             </Select>
-            <Button variant="outline">
-              <Download className="h-4 w-4 mr-2" />
-              Export Report
-            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline">
+                  <Download className="h-4 w-4 mr-2" />
+                  Export Report
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent>
+                <DropdownMenuItem onClick={handleExportPDF}>
+                  Export as PDF
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={handleExportExcel}>
+                  Export as Excel
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={handleExportCSV}>
+                  Export as CSV
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         </div>
 

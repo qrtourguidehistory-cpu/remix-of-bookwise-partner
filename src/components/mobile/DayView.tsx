@@ -93,19 +93,41 @@ export function DayView({ date, filters, appointmentToOpen, onAppointmentOpened 
   const [draggedAppointment, setDraggedAppointment] = useState<any>(null);
   const [timeFormat, setTimeFormat] = useState<'12h' | '24h'>('12h');
   const [businessHours, setBusinessHours] = useState<any>(null);
+  const SLOT_MINUTES = 30; // 30-minute intervals
+  const SLOT_HEIGHT = 60; // px per 30-minute slot (fixed)
+
+  const minTime = '07:00';
+  const maxTime = '24:00';
+
   const [timelineStartMinutes, setTimelineStartMinutes] = useState<number>(7 * 60); // 7:00 AM default
-  const [timelineEndMinutes, setTimelineEndMinutes] = useState<number>(23 * 60); // 11:00 PM default
-  const [pixelsPerHour, setPixelsPerHour] = useState<number>(80); // consistent look (like reference)
+  const [timelineEndMinutes, setTimelineEndMinutes] = useState<number>(24 * 60); // 24:00 default (inclusive end)
+  const [pixelsPerHour, setPixelsPerHour] = useState<number>(SLOT_HEIGHT * 2); // derived from SLOT_HEIGHT (fixed 30-min slot height)
 
-  // Refs for synchronizing scroll between time labels and timeline
-  const labelsRef = useRef<HTMLDivElement | null>(null);
-  const timelineRef = useRef<HTMLDivElement | null>(null);
+  // Force recalculation after render to work around Android WebView clipping of last pixels
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      const c = scrollContainerRef.current as any;
+      if (!c) return;
+      // If the calendar implementation exposes refresh(), call it
+      try {
+        c?.refresh?.();
+        c?.recalculate?.();
+      } catch (e) {
+        // ignore
+      }
+      // Force browser reflow as backup
+      const prev = c.style.display;
+      c.style.display = 'none';
+      // Force layout read
+      // eslint-disable-next-line @typescript-eslint/no-unused-expressions
+      c.offsetHeight;
+      c.style.display = prev || '';
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [timelineStartMinutes, timelineEndMinutes]);
 
-  const handleTimelineScroll = (e: React.UIEvent<HTMLDivElement>) => {
-    if (labelsRef.current) {
-      labelsRef.current.scrollTop = e.currentTarget.scrollTop;
-    }
-  };
+  // Single ref for the shared scroll container (both time labels and timeline scroll together)
+  const scrollContainerRef = useRef<HTMLDivElement | null>(null);
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -261,12 +283,12 @@ export function DayView({ date, filters, appointmentToOpen, onAppointmentOpened 
     }
   };
 
-  // Fixed timeline from 7:00 AM to 11:30 PM as requested
+  // Fixed timeline from 7:00 AM to 24:00 (inclusive end) to ensure the final 30-min slot is rendered (Android WebView quirk)
   useEffect(() => {
-    // Always use fixed hours: 7:00 AM (420 min) to 11:30 PM (1410 min)
+    // Enforce strict range: 7:00 AM (420) to 24:00 (1440) and fixed slot height
     setTimelineStartMinutes(7 * 60); // 7:00 AM = 420 minutes
-    setTimelineEndMinutes(23 * 60 + 30); // 11:30 PM = 1410 minutes
-    setPixelsPerHour(80);
+    setTimelineEndMinutes(24 * 60); // 24:00 = 1440 minutes -> inclusive end to include final slot
+    setPixelsPerHour(SLOT_HEIGHT * 2); // ensure fixed slot height (60px per 30-min)
   }, []);
 
   // Auto-scroll to current time on load
@@ -277,15 +299,14 @@ export function DayView({ date, filters, appointmentToOpen, onAppointmentOpened 
       
       // Only scroll if current time is within visible range
       if (currentMinutes >= timelineStartMinutes && currentMinutes <= timelineEndMinutes) {
-        const scrollContainer = timelineRef.current;
-        const labelsContainer = labelsRef.current;
+        const scrollContainer = scrollContainerRef.current;
         if (scrollContainer) {
           const totalDuration = timelineEndMinutes - timelineStartMinutes;
-          const containerHeight = ((totalDuration) / 60) * pixelsPerHour;
+          const slotCountLocal = Math.max(1, Math.ceil(totalDuration / SLOT_MINUTES) + 1); // +1 safety slot
+          const containerHeight = slotCountLocal * SLOT_HEIGHT;
           const scrollPosition = ((currentMinutes - timelineStartMinutes) / totalDuration) * containerHeight;
-          const pos = Math.max(0, scrollPosition - 100);
+          const pos = Math.max(0, scrollPosition - 200);
           scrollContainer.scrollTop = pos;
-          if (labelsContainer) labelsContainer.scrollTop = pos;
         }
       }
     };
@@ -302,13 +323,54 @@ export function DayView({ date, filters, appointmentToOpen, onAppointmentOpened 
     return aMin - bMin;
   });
 
+  // Number of 30-minute slots in the timeline (used to calculate consistent heights)
+  // Last valid slot ENDS at 11:30 PM (1380), so last slot STARTS at 11:00 PM (1320)
+  // Calculate slots based on: slots from 420 (7:00 AM) to 1320 (11:00 PM) inclusive
+  // Rule: startTime <= slot < endTime (endTime exclusive for slots)
+  const lastValidSlotEnd = 23 * 60 + 30; // 11:30 PM = 1380 minutes (exclusive end)
+  const slotCount = useMemo(() => {
+    const lastSlotStart = lastValidSlotEnd - SLOT_MINUTES; // 1320 (11:00 PM)
+    const totalMinutes = lastSlotStart - timelineStartMinutes;
+    // Number of slots from 420 to 1320 inclusive: (1320 - 420) / 30 + 1 = 31 slots
+    return Math.max(1, Math.floor(totalMinutes / SLOT_MINUTES) + 1);
+  }, [timelineStartMinutes]);
+  const timelineTotalHeight = slotCount * SLOT_HEIGHT;
+
+  // Debug state (visible only when localStorage.debugDayView === '1')
+  const [debugInfo, setDebugInfo] = useState({ slotCount, timelineTotalHeight, containerClientHeight: 0, containerScrollHeight: 0, linesRendered: 0 });
+  const debugMode = typeof window !== 'undefined' && localStorage.getItem('debugDayView') === '1';
+
+  useEffect(() => {
+    if (!debugMode) return;
+    const update = () => {
+      const c = scrollContainerRef.current as HTMLDivElement | null;
+      const lines = document.querySelectorAll('[data-timeline-line]');
+      setDebugInfo({
+        slotCount,
+        timelineTotalHeight,
+        containerClientHeight: c?.clientHeight || 0,
+        containerScrollHeight: c?.scrollHeight || 0,
+        linesRendered: lines.length
+      });
+    };
+    update();
+    const obs = new ResizeObserver(update);
+    if (scrollContainerRef.current) obs.observe(scrollContainerRef.current);
+    window.addEventListener('resize', update);
+    return () => {
+      obs.disconnect();
+      window.removeEventListener('resize', update);
+    };
+  }, [debugMode, slotCount, timelineTotalHeight]);
+
   const handleTimelineClick = (e: React.MouseEvent<HTMLDivElement>) => {
     const rect = e.currentTarget.getBoundingClientRect();
     const clickY = e.clientY - rect.top;
     const containerHeight = rect.height;
     
-    // Calculate which time was clicked
-    const dayDuration = timelineEndMinutes - timelineStartMinutes;
+    // Calculate which time was clicked using the same grid range as appointments
+    const gridEndMinutes = 23 * 60 + 30; // 11:30 PM = 1380 minutes (same as grid)
+    const dayDuration = gridEndMinutes - timelineStartMinutes; // 1380 - 420 = 960 minutes
     const clickedMinutes = timelineStartMinutes + (clickY / containerHeight) * dayDuration;
     
     // Round to nearest 15 minutes for convenience
@@ -451,85 +513,138 @@ export function DayView({ date, filters, appointmentToOpen, onAppointmentOpened 
     >
       <div className="p-2">
         {/* Timeline View - Continuous timeline instead of fixed slots */}
-        <div className="flex gap-1">
-          {/* Time labels column */}
+        {/* Single scroll container for both time labels and timeline grid */}
+        {/* max-h accounts for: header (~100px) + bottom nav (76px) + safe area */}
+        <div 
+          className="flex gap-1 overflow-y-auto"
+          style={{ 
+            maxHeight: 'calc(100vh - 100px - var(--bottom-nav-height, 76px) - max(16px, env(safe-area-inset-bottom, 0px), var(--app-safe-bottom, 0px)))',
+            paddingBottom: 'calc(var(--bottom-nav-height, 76px) + max(16px, env(safe-area-inset-bottom, 0px), var(--app-safe-bottom, 0px)) + 16px)'
+          }}
+          ref={scrollContainerRef}
+        >
+          {/* Time labels column - NO scroll (scroll handled by parent) */}
           <div 
-            className="w-12 flex-shrink-0 overflow-y-auto max-h-[calc(100vh-200px)]"
-            ref={labelsRef}
+            className="w-12 flex-shrink-0"
             data-time-labels
           >
-            {generateTimelineMinutes(
-              Math.floor(timelineStartMinutes / 60),
-              Math.ceil(timelineEndMinutes / 60),
-              60 // Show every hour
-            ).map((minutes) => {
-              const timeStr = minutesToTime(minutes);
-              const formatted = formatTime(timeStr, timeFormat);
-              const hourHeight = pixelsPerHour;
-              return (
-                <div
-                  key={minutes}
-                  className="text-xs text-muted-foreground font-medium border-b border-border flex items-center"
-                  style={{ height: `${hourHeight}px` }}
-                >
-                  {formatted}
-                </div>
-              );
-            })}
+            <div className="relative" style={{ minHeight: `${timelineTotalHeight}px`, height: `${timelineTotalHeight}px` }}>
+              {generateTimelineMinutes(
+                timelineStartMinutes / 60,
+                23.5, // Generate up to 23.5 hours (1410) to include 11:00 PM marker
+                30 // Show every 30 minutes
+              ).filter(minutes => minutes <= 23 * 60 + 30).map((minutes) => { 
+                const timeStr = minutesToTime(minutes);
+                const formatted = formatTime(timeStr, timeFormat);
+                // Use the same grid end (1380) for consistent positioning with appointments
+                const gridEndMinutes = 23 * 60 + 30; // 11:30 PM = 1380 minutes
+                const topPercent = ((minutes - timelineStartMinutes) / (gridEndMinutes - timelineStartMinutes)) * 100;
+                return (
+                  <div
+                    key={minutes}
+                    className="text-xs text-muted-foreground font-medium"
+                    style={{ position: 'absolute', left: 0, right: 0, top: `${topPercent}%` }}
+                  >
+                    {formatted}
+                  </div>
+                );
+              })}
+            </div>
           </div>
 
-          {/* Timeline container with scroll */}
+          {/* Timeline container - NO scroll (scroll handled by parent) */}
           <div 
-            className="flex-1 relative overflow-y-auto max-h-[calc(100vh-200px)]"
+            className="flex-1 relative"
             data-timeline-container
-            ref={timelineRef}
-            onScroll={handleTimelineScroll}
+            data-min-time={minTime}
+            data-max-time={maxTime}
           >
             <div
-              className="relative border border-border rounded-lg bg-muted/20 overflow-hidden"
+              className="relative border border-border rounded-lg bg-muted/20 overflow-visible"
               style={{ 
-                minHeight: `${((timelineEndMinutes - timelineStartMinutes) / 60) * pixelsPerHour}px`,
-                height: `${((timelineEndMinutes - timelineStartMinutes) / 60) * pixelsPerHour}px`,
-                paddingBottom: 'calc(220px + env(safe-area-inset-bottom))' // allow extra scroll space for legend/footer overlap and safe-area
+                minHeight: `${timelineTotalHeight}px`,
+                height: `${timelineTotalHeight}px`,
+                // Add padding-bottom to ensure appointments at late times (10PM-11:30PM) are fully visible above footer
+                paddingBottom: 'calc(var(--bottom-nav-height, 76px) + max(16px, env(safe-area-inset-bottom, 0px), var(--app-safe-bottom, 0px)) + 24px)',
+                boxSizing: 'content-box'
               }}
               
               onClick={handleTimelineClick}
             >
-              {/* Hour markers */}
-              {generateTimelineMinutes(
-                Math.floor(timelineStartMinutes / 60),
-                Math.ceil(timelineEndMinutes / 60),
-                60
-              ).map((minutes) => {
-                const topPercent = ((minutes - timelineStartMinutes) / (timelineEndMinutes - timelineStartMinutes)) * 100;
+              {/* Background layer to ensure the white grid covers full timeline area + footer padding */}
+              <div 
+                className="absolute bg-white pointer-events-none" 
+                style={{ 
+                  top: 0, 
+                  left: 0, 
+                  right: 0, 
+                  bottom: 0,
+                  zIndex: 0 
+                }} 
+              />
+
+              {/* Precise absolute 30-minute markers (overlay) to guarantee lines exist up to the final slot) */}
+              {generateTimelineMinutes(timelineStartMinutes / 60, 23.5, SLOT_MINUTES).filter(minutes => minutes <= 23 * 60 + 30).map((minutes) => {
+                // Use the same grid end (1380) for consistent positioning with appointments
+                const gridEndMinutes = 23 * 60 + 30; // 11:30 PM = 1380 minutes
+                const topPercent = ((minutes - timelineStartMinutes) / (gridEndMinutes - timelineStartMinutes)) * 100;
+                const lastValidSlotEnd = 23 * 60 + 30; // 11:30 PM = 1380 minutes (last slot ends here)
+                // Last slot starts at 1320 (11:00 PM), ends at 1380 (11:30 PM)
+                // Mark the final line at 1380 (end of last slot)
+                const isFinal = minutes === lastValidSlotEnd;
+                const isHour = minutes % 60 === 0;
                 return (
                   <div
-                    key={minutes}
-                    className="absolute left-0 right-0 border-t border-border/50"
-                    style={{
-                      top: `${topPercent}%`
-                    }}
+                    key={`line-${minutes}`}
+                    className={`absolute left-0 right-0 ${isHour ? 'border-t border-border/60' : 'border-t border-border/20'}`}
+                    style={isFinal ? { top: 'calc(100% - 1px)', height: '2px', zIndex: 2, opacity: 0.95 } : { top: `${topPercent}%`, height: '1px', zIndex: 1 }}
                   />
+                );
+              })} 
+
+              {/* Slot rows (30-minute fixed height) used for spacing/interaction */}
+              {Array.from({ length: slotCount }).map((_, i) => {
+                const slotStart = timelineStartMinutes + i * SLOT_MINUTES;
+                const isHour = slotStart % 60 === 0;
+                const slotTimeStr = minutesToTime(slotStart);
+                const slotTimeFormatted = formatTime(slotTimeStr, timeFormat);
+
+                return (
+                  <div
+                    key={`slot-${i}`}
+                    className={`${isHour ? '' : ''} w-full cursor-pointer`}
+                    style={{ height: `${SLOT_HEIGHT}px`, zIndex: 0 }}
+                    onClick={(e) => {
+                      // Prevent parent handlers (timeline click) from firing
+                      e.stopPropagation();
+                      setSelectedTime(slotTimeFormatted);
+                      setSelectedAppointment(null);
+                      setDialogOpen(true);
+                    }}
+                    role="button"
+                    aria-label={`Añadir cita ${slotTimeFormatted}`}
+                    tabIndex={0}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        setSelectedTime(slotTimeFormatted);
+                        setSelectedAppointment(null);
+                        setDialogOpen(true);
+                      }
+                    }}
+                  >
+                    <div className="h-full flex items-center px-3 text-xs text-muted-foreground/60">
+                      <div className="w-full h-full rounded-md border border-dashed border-border/30 flex items-center justify-center pointer-events-none">
+                        <span className="select-none">Añadir</span>
+                      </div>
+                    </div>
+                  </div>
                 );
               })}
 
-              {/* 15-minute markers (lighter) */}
-              {generateTimelineMinutes(
-                Math.floor(timelineStartMinutes / 60),
-                Math.ceil(timelineEndMinutes / 60),
-                15
-              ).map((minutes) => {
-                const topPercent = ((minutes - timelineStartMinutes) / (timelineEndMinutes - timelineStartMinutes)) * 100;
-                return (
-                  <div
-                    key={`15-${minutes}`}
-                    className="absolute left-0 right-0 border-t border-border/20"
-                    style={{
-                      top: `${topPercent}%`
-                    }}
-                  />
-                );
-              })}
+              {/* Final bottom line for end of timeline (e.g., 11:30pm) */}
+              <div className="absolute left-0 right-0 border-t border-border/60" style={{ bottom: 0, zIndex: 1 }} />
 
               {/* Render all appointments at their exact positions with overlap handling */}
               {useMemo(() => {
@@ -538,27 +653,35 @@ export function DayView({ date, filters, appointmentToOpen, onAppointmentOpened 
                   end_time: apt.end_time || calcEndTime(apt.start_time, apt.services?.duration_minutes || 30)
                 })));
 
-                const containerHeight = ((timelineEndMinutes - timelineStartMinutes) / 60) * pixelsPerHour;
-                
+                // Use the same time range as the grid: from 420 (7:00 AM) to 1380 (11:30 PM)
+                // This ensures appointments align perfectly with grid lines
+                const gridEndMinutes = 23 * 60 + 30; // 11:30 PM = 1380 minutes (same as lastValidSlotEnd)
+                const gridDuration = gridEndMinutes - timelineStartMinutes; // 1380 - 420 = 960 minutes
+                const containerHeight = timelineTotalHeight; // Use the actual grid height
+
                 return layouts.map(({ appointment, left, width, column, totalColumns }) => {
+                  // Calculate position using the same range as the grid (not 1440)
                   const position = calculateAppointmentPosition(
                     appointment.start_time,
                     appointment.end_time || calcEndTime(appointment.start_time, appointment.services?.duration_minutes || 30),
                     timelineStartMinutes,
-                    timelineEndMinutes,
+                    gridEndMinutes, // Use 1380 instead of 1440
                     containerHeight
                   );
 
+                  // Render each appointment inside an inner wrapper to guarantee it's visually inside the white grid area
                   return (
-                    <DraggableAppointment
-                      key={appointment.id}
-                      appointment={appointment}
-                      onEdit={handleAppointmentClick}
-                      isActive={activeId === appointment.id}
-                      position={position}
-                      layout={{ left, width, column, totalColumns }}
-                      timeFormat={timeFormat}
-                    />
+                    <div key={`apt-wrap-${appointment.id}`} style={{ position: 'absolute', top: `${position.top}px`, height: `${position.height}px`, left: `${left}%`, width: `calc(${width}% - 2px)`, zIndex: 2 }}>
+                      <DraggableAppointment
+                        key={appointment.id}
+                        appointment={appointment}
+                        onEdit={handleAppointmentClick}
+                        isActive={activeId === appointment.id}
+                        position={{ top: 0, height: position.height }}
+                        layout={{ left, width, column, totalColumns }}
+                        timeFormat={timeFormat}
+                      />
+                    </div>
                   );
                 });
               }, [sortedAppointments, timelineStartMinutes, timelineEndMinutes, pixelsPerHour, activeId])}

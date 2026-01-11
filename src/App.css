@@ -40,3 +40,8 @@
 .read-the-docs {
   color: #888;
 }
+
+/* Ensure the timeline has a real bottom padding to avoid Android WebView clipping the last slot */
+[data-timeline-container] {
+  padding-bottom: 120px !important;
+}

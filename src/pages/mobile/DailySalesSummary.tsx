@@ -39,6 +39,7 @@ export default function DailySalesSummary() {
   const [summary, setSummary] = useState<any>(null);
   const [transactionSummary, setTransactionSummary] = useState<TransactionSummary[]>([]);
   const [cashMovement, setCashMovement] = useState<CashMovement[]>([]);
+  const [creditSummary, setCreditSummary] = useState<{ qty: number; total: number }>({ qty: 0, total: 0 });
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
@@ -65,10 +66,10 @@ export default function DailySalesSummary() {
 
       if (salesError) throw salesError;
 
-      // Load appointments for the day (completed services)
+      // Load appointments for the day (completed services) and include service pricing
       const { data: appointments, error: appointmentsError } = await (supabase
         .from("appointments")
-        .select("id, service_id, payment_amount, status")
+        .select("id, service_id, payment_amount, payment_method, status, services!appointments_service_id_fkey(name, price, price_usd)")
         .eq("business_id", profile.business_id)
         .eq("appointment_date", dateStr)
         .eq("status", "completed") as any);
@@ -84,6 +85,17 @@ export default function DailySalesSummary() {
       const servicesTotal = (appointments as any[])?.reduce(
         (sum: number, a: any) => sum + (Number(a.payment_amount || 0)), 0
       ) || 0;
+
+      // Calculate credit (appointments marked as credit: no payment_method && no payment_amount)
+      const creditAppointments = (appointments as any[])?.filter(a => !a.payment_method && !a.payment_amount) || [];
+      const creditQty = creditAppointments.length;
+      const creditTotal = creditAppointments.reduce((sum: number, a: any) => {
+        const price = Number(a.services?.price_usd ?? a.services?.price ?? 0);
+        return sum + price;
+      }, 0);
+
+      // expose credit summary for UI
+      setCreditSummary({ qty: creditQty, total: creditTotal });
 
       // Calculate Service Add-ons
       const serviceAddonsQty = addonServices.length;
@@ -152,6 +164,13 @@ export default function DailySalesSummary() {
           salesQty: serviceAddonsQty,
           refundQty: 0,
           grossTotal: serviceAddonsTotal,
+        },
+        // Add credit summary for appointments taken on credit (pending)
+        {
+          itemType: language === "es" ? "Créditos (pendientes)" : "Credit (pending)",
+          salesQty: creditQty,
+          refundQty: 0,
+          grossTotal: creditTotal,
         },
       ];
 
@@ -427,6 +446,24 @@ export default function DailySalesSummary() {
                 </table>
               </div>
             </div>
+            {/* Pending Credits summary (appointments on credit) */}
+            {creditSummary.qty > 0 && (
+              <div className="mt-4">
+                <div className="border rounded-lg overflow-hidden bg-card p-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="font-medium">{language === 'es' ? 'Créditos pendientes' : 'Pending credits'}</p>
+                      <p className="text-sm text-muted-foreground">{creditSummary.qty} {language === 'es' ? 'venta(s) a crédito' : 'credit sale(s)'} • {formatCurrency(creditSummary.total)}</p>
+                    </div>
+                    <div>
+                      <Button variant="ghost" size="sm" onClick={() => navigate('/admin/clients/credits')}>
+                        {language === 'es' ? 'Ver créditos' : 'View credits'}
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>

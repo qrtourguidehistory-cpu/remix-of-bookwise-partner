@@ -6,7 +6,6 @@ import { DayView } from "@/components/mobile/DayView";
 import { WeekView } from "@/components/mobile/WeekView";
 import { MonthView } from "@/components/mobile/MonthView";
 import { StaffCalendarView } from "@/components/mobile/StaffCalendarView";
-import { CalendarLegend } from "@/components/mobile/CalendarLegend";
 import { TutorialTip } from "@/components/mobile/TutorialTip";
 import { ApprovalSuccessBanner } from "@/components/mobile/ApprovalSuccessBanner";
 import { useTutorialTips } from "@/hooks/useTutorialTips";
@@ -125,10 +124,7 @@ export default function MobileCalendar() {
       {view === "month" && <MonthView date={currentDate} onDateSelect={handleDateSelect} />}
       {view === "staff" && <StaffCalendarView date={currentDate} filters={filters} />}
       
-      {/* Legend */}
-      <div className="px-4 pb-4">
-        <CalendarLegend />
-      </div>
+
       
       {/* Floating button to return to today - only show when not on today */}
       {!isToday && (

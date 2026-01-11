@@ -97,7 +97,7 @@ export const hasTimeConflict = (
 /**
  * Generate a continuous timeline for a day
  * @param startHour - Hour to start (0-23)
- * @param endHour - Hour to end (0-23)
+ * @param endHour - Hour to end (0-24). Use 24 to include the final slot (end is inclusive) to ensure the last interval is rendered in clients such as Android WebView.
  * @param intervalMinutes - Interval for visual grid (default: 15 for finer granularity)
  * @returns Array of minute values from start to end
  */
@@ -240,7 +240,7 @@ export const calculateOverlappingLayout = (
     totalColumns: number;
   }> = [];
 
-  const GAP_PERCENT = 1; // a tiny gap between columns (percent)
+  const GAP_PERCENT = 0.3; // Minimal gap between columns for wider appointment cards (percent)
 
   for (const cluster of clusters) {
     // Greedy column assignment for interval graphs
@@ -269,7 +269,8 @@ export const calculateOverlappingLayout = (
     const totalColumns = Math.max(1, columnsEnd.length);
     const totalGaps = totalColumns > 1 ? (totalColumns - 1) * GAP_PERCENT : 0;
     const available = 100 - totalGaps;
-    const width = available / totalColumns;
+    // When only one appointment, use full width; otherwise distribute with minimal gap
+    const width = totalColumns === 1 ? 98 : available / totalColumns;
 
     for (const { appointment, column } of assignments) {
       const left = column * (width + GAP_PERCENT);
