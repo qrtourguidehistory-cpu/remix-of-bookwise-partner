@@ -206,8 +206,8 @@ export default function SettingsPage() {
       items: [
         {
           icon: Shield,
-          label: language === "es" ? "Roles y Permisos" : "Roles & Permissions",
-          description: language === "es" ? "Gestionar acceso del equipo" : "Manage team access",
+          label: language === "es" ? "Legal y Ayuda" : "Legal & Help",
+          description: language === "es" ? "Políticas, términos y guía de uso" : "Policies, terms and usage guide",
           path: "/admin/roles",
           color: "text-gray-500"
         },
@@ -217,13 +217,6 @@ export default function SettingsPage() {
           description: language === "es" ? "Administrar clientes bloqueados" : "Manage blocked clients",
           path: "/admin/blocked-clients",
           color: "text-red-500"
-        },
-        {
-          icon: Users,
-          label: language === "es" ? "Permisos del Dispositivo" : "Device Permissions",
-          description: language === "es" ? "Cámara, ubicación y notificaciones" : "Camera, location and notifications",
-          path: "/admin/permissions",
-          color: "text-blue-500"
         },
         {
           icon: ShieldOff,

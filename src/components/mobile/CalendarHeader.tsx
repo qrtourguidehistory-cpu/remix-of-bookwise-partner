@@ -209,35 +209,35 @@ export function CalendarHeader({ currentDate, onDateChange, view, onViewChange, 
         </div>
       </div>
 
-      {/* Search Bar */}
-      {activeFiltersCount > 0 && (
-        <div className="px-4 pb-2">
-          <div className="flex items-center gap-2">
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder="Buscar cliente, servicio o personal..."
-                value={filters.searchQuery}
-                onChange={(e) => onFiltersChange({ ...filters, searchQuery: e.target.value })}
-                className="pl-10 pr-10"
-              />
-              {filters.searchQuery && (
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="absolute right-1 top-1/2 -translate-y-1/2 h-7 w-7"
-                  onClick={() => onFiltersChange({ ...filters, searchQuery: "" })}
-                >
-                  <X className="h-4 w-4" />
-                </Button>
-              )}
-            </div>
+      {/* Search Bar - Always visible */}
+      <div className="px-4 pb-2">
+        <div className="flex items-center gap-2">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Buscar cliente, servicio o personal..."
+              value={filters.searchQuery}
+              onChange={(e) => onFiltersChange({ ...filters, searchQuery: e.target.value })}
+              className="pl-10 pr-10"
+            />
+            {filters.searchQuery && (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="absolute right-1 top-1/2 -translate-y-1/2 h-7 w-7"
+                onClick={() => onFiltersChange({ ...filters, searchQuery: "" })}
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            )}
+          </div>
+          {activeFiltersCount > 0 && (
             <Button variant="outline" size="sm" onClick={clearAllFilters}>
               Limpiar
             </Button>
-          </div>
+          )}
         </div>
-      )}
+      </div>
 
       <Sheet open={filterOpen} onOpenChange={setFilterOpen}>
         <SheetContent side="bottom" className="bg-card h-[85vh]">

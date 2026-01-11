@@ -210,134 +210,156 @@ export interface DailySalesSummaryData {
 }
 
 export const exportDailySummaryToPDF = (data: DailySalesSummaryData, businessName: string) => {
-  const doc = new jsPDF();
-  
-  // Add title
-  doc.setFontSize(18);
-  doc.text(`${businessName} - Daily Sales Summary`, 14, 20);
-  
-  // Add date
-  doc.setFontSize(10);
-  doc.text(`Date: ${data.date}`, 14, 28);
-  
-  // Add generation date
-  doc.setFontSize(8);
-  doc.text(`Generated: ${format(new Date(), "PPP")}`, 14, 34);
-  
-  let startY = 45;
-  
-  // Transaction Summary Table
-  doc.setFontSize(12);
-  doc.text("Transaction Summary", 14, startY);
-  startY += 8;
-  
-  autoTable(doc, {
-    startY: startY,
-    head: [['Item Type', 'Sales Qty', 'Refund Qty', 'Gross Total']],
-    body: data.transactionSummary.map(item => [
-      item.itemType,
-      item.salesQty.toString(),
-      item.refundQty.toString(),
-      `DOP ${item.grossTotal.toFixed(2)}`
-    ]),
-    theme: 'grid',
-    headStyles: { fillColor: [147, 135, 245] },
-  });
-  
-  startY = (doc as any).lastAutoTable.finalY + 15;
-  
-  // Cash Movement Summary Table
-  doc.setFontSize(12);
-  doc.text("Cash Movement Summary", 14, startY);
-  startY += 8;
-  
-  autoTable(doc, {
-    startY: startY,
-    head: [['Payment Type', 'Payments Collected', 'Refunds Paid']],
-    body: data.cashMovement.map(item => [
-      item.paymentType,
-      `DOP ${item.paymentsCollected.toFixed(2)}`,
-      `DOP ${item.refundsPaid.toFixed(2)}`
-    ]),
-    theme: 'grid',
-    headStyles: { fillColor: [147, 135, 245] },
-  });
-  
-  // Save the PDF
-  doc.save(`daily-sales-summary-${format(new Date(data.date), "yyyy-MM-dd")}.pdf`);
+  try {
+    const doc = new jsPDF();
+    
+    // Add title
+    doc.setFontSize(18);
+    doc.text(`${businessName} - Daily Sales Summary`, 14, 20);
+    
+    // Add date
+    doc.setFontSize(10);
+    doc.text(`Date: ${data.date}`, 14, 28);
+    
+    // Add generation date
+    doc.setFontSize(8);
+    doc.text(`Generated: ${format(new Date(), "PPP")}`, 14, 34);
+    
+    let startY = 45;
+    
+    // Transaction Summary Table
+    doc.setFontSize(12);
+    doc.text("Transaction Summary", 14, startY);
+    startY += 8;
+    
+    if (data.transactionSummary && data.transactionSummary.length > 0) {
+      autoTable(doc, {
+        startY: startY,
+        head: [['Item Type', 'Sales Qty', 'Refund Qty', 'Gross Total']],
+        body: data.transactionSummary.map(item => [
+          item.itemType || '-',
+          String(item.salesQty || 0),
+          String(item.refundQty || 0),
+          `DOP ${(item.grossTotal || 0).toFixed(2)}`
+        ]),
+        theme: 'grid',
+        headStyles: { fillColor: [147, 135, 245] },
+      });
+      
+      startY = (doc as any).lastAutoTable.finalY + 15;
+    }
+    
+    // Cash Movement Summary Table
+    doc.setFontSize(12);
+    doc.text("Cash Movement Summary", 14, startY);
+    startY += 8;
+    
+    if (data.cashMovement && data.cashMovement.length > 0) {
+      autoTable(doc, {
+        startY: startY,
+        head: [['Payment Type', 'Payments Collected', 'Refunds Paid']],
+        body: data.cashMovement.map(item => [
+          item.paymentType || '-',
+          `DOP ${(item.paymentsCollected || 0).toFixed(2)}`,
+          `DOP ${(item.refundsPaid || 0).toFixed(2)}`
+        ]),
+        theme: 'grid',
+        headStyles: { fillColor: [147, 135, 245] },
+      });
+    }
+    
+    // Save the PDF
+    const dateStr = data.date ? format(new Date(data.date), "yyyy-MM-dd") : format(new Date(), "yyyy-MM-dd");
+    doc.save(`daily-sales-summary-${dateStr}.pdf`);
+  } catch (error) {
+    console.error("Error generating PDF:", error);
+    throw new Error("Failed to generate PDF. Please try again.");
+  }
 };
 
 export const exportDailySummaryToExcel = (data: DailySalesSummaryData, businessName: string) => {
-  const wb = XLSX.utils.book_new();
-  
-  // Transaction Summary Sheet
-  const transactionData = [
-    [`${businessName} - Daily Sales Summary`],
-    [`Date: ${data.date}`],
-    [`Generated: ${format(new Date(), "PPP")}`],
-    [],
-    ['Transaction Summary'],
-    ['Item Type', 'Sales Qty', 'Refund Qty', 'Gross Total'],
-    ...data.transactionSummary.map(item => [
-      item.itemType,
-      item.salesQty,
-      item.refundQty,
-      item.grossTotal
-    ]),
-    [],
-    ['Cash Movement Summary'],
-    ['Payment Type', 'Payments Collected', 'Refunds Paid'],
-    ...data.cashMovement.map(item => [
-      item.paymentType,
-      item.paymentsCollected,
-      item.refundsPaid
-    ])
-  ];
-  
-  const ws = XLSX.utils.aoa_to_sheet(transactionData);
-  
-  // Set column widths
-  ws['!cols'] = [
-    { wch: 30 }, // Item Type / Payment Type
-    { wch: 15 }, // Sales Qty / Payments Collected
-    { wch: 15 }, // Refund Qty / Refunds Paid
-    { wch: 15 }  // Gross Total
-  ];
-  
-  XLSX.utils.book_append_sheet(wb, ws, 'Daily Summary');
-  XLSX.writeFile(wb, `daily-sales-summary-${format(new Date(data.date), "yyyy-MM-dd")}.xlsx`);
+  try {
+    const wb = XLSX.utils.book_new();
+    
+    // Transaction Summary Sheet
+    const transactionData = [
+      [`${businessName} - Daily Sales Summary`],
+      [`Date: ${data.date || 'N/A'}`],
+      [`Generated: ${format(new Date(), "PPP")}`],
+      [],
+      ['Transaction Summary'],
+      ['Item Type', 'Sales Qty', 'Refund Qty', 'Gross Total'],
+      ...(data.transactionSummary || []).map(item => [
+        item.itemType || '-',
+        item.salesQty || 0,
+        item.refundQty || 0,
+        item.grossTotal || 0
+      ]),
+      [],
+      ['Cash Movement Summary'],
+      ['Payment Type', 'Payments Collected', 'Refunds Paid'],
+      ...(data.cashMovement || []).map(item => [
+        item.paymentType || '-',
+        item.paymentsCollected || 0,
+        item.refundsPaid || 0
+      ])
+    ];
+    
+    const ws = XLSX.utils.aoa_to_sheet(transactionData);
+    
+    // Set column widths
+    ws['!cols'] = [
+      { wch: 30 }, // Item Type / Payment Type
+      { wch: 15 }, // Sales Qty / Payments Collected
+      { wch: 15 }, // Refund Qty / Refunds Paid
+      { wch: 15 }  // Gross Total
+    ];
+    
+    XLSX.utils.book_append_sheet(wb, ws, 'Daily Summary');
+    const dateStr = data.date ? format(new Date(data.date), "yyyy-MM-dd") : format(new Date(), "yyyy-MM-dd");
+    XLSX.writeFile(wb, `daily-sales-summary-${dateStr}.xlsx`);
+  } catch (error) {
+    console.error("Error generating Excel:", error);
+    throw new Error("Failed to generate Excel. Please try again.");
+  }
 };
 
 export const exportDailySummaryToCSV = (data: DailySalesSummaryData, businessName: string) => {
-  // Create CSV content
-  let csvContent = `${businessName} - Daily Sales Summary\n`;
-  csvContent += `Date: ${data.date}\n`;
-  csvContent += `Generated: ${format(new Date(), "PPP")}\n\n`;
-  
-  // Transaction Summary
-  csvContent += `Transaction Summary\n`;
-  csvContent += `Item Type,Sales Qty,Refund Qty,Gross Total\n`;
-  data.transactionSummary.forEach(item => {
-    csvContent += `${item.itemType},${item.salesQty},${item.refundQty},DOP ${item.grossTotal.toFixed(2)}\n`;
-  });
-  
-  csvContent += `\n`;
-  
-  // Cash Movement Summary
-  csvContent += `Cash Movement Summary\n`;
-  csvContent += `Payment Type,Payments Collected,Refunds Paid\n`;
-  data.cashMovement.forEach(item => {
-    csvContent += `${item.paymentType},DOP ${item.paymentsCollected.toFixed(2)},DOP ${item.refundsPaid.toFixed(2)}\n`;
-  });
-  
-  // Create blob and download
-  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-  const link = document.createElement('a');
-  const url = URL.createObjectURL(blob);
-  link.setAttribute('href', url);
-  link.setAttribute('download', `daily-sales-summary-${format(new Date(data.date), "yyyy-MM-dd")}.csv`);
-  link.style.visibility = 'hidden';
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
+  try {
+    // Create CSV content
+    let csvContent = `${businessName} - Daily Sales Summary\n`;
+    csvContent += `Date: ${data.date || 'N/A'}\n`;
+    csvContent += `Generated: ${format(new Date(), "PPP")}\n\n`;
+    
+    // Transaction Summary
+    csvContent += `Transaction Summary\n`;
+    csvContent += `Item Type,Sales Qty,Refund Qty,Gross Total\n`;
+    (data.transactionSummary || []).forEach(item => {
+      csvContent += `${item.itemType || '-'},${item.salesQty || 0},${item.refundQty || 0},DOP ${(item.grossTotal || 0).toFixed(2)}\n`;
+    });
+    
+    csvContent += `\n`;
+    
+    // Cash Movement Summary
+    csvContent += `Cash Movement Summary\n`;
+    csvContent += `Payment Type,Payments Collected,Refunds Paid\n`;
+    (data.cashMovement || []).forEach(item => {
+      csvContent += `${item.paymentType || '-'},DOP ${(item.paymentsCollected || 0).toFixed(2)},DOP ${(item.refundsPaid || 0).toFixed(2)}\n`;
+    });
+    
+    // Create blob and download
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    link.setAttribute('href', url);
+    const dateStr = data.date ? format(new Date(data.date), "yyyy-MM-dd") : format(new Date(), "yyyy-MM-dd");
+    link.setAttribute('download', `daily-sales-summary-${dateStr}.csv`);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  } catch (error) {
+    console.error("Error generating CSV:", error);
+    throw new Error("Failed to generate CSV. Please try again.");
+  }
 };
