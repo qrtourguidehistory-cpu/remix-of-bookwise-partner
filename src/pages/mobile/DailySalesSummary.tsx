@@ -86,13 +86,39 @@ export default function DailySalesSummary() {
         (sum: number, a: any) => sum + (Number(a.payment_amount || 0)), 0
       ) || 0;
 
-      // Calculate credit (appointments marked as credit: no payment_method && no payment_amount)
-      const creditAppointments = (appointments as any[])?.filter(a => !a.payment_method && !a.payment_amount) || [];
-      const creditQty = creditAppointments.length;
-      const creditTotal = creditAppointments.reduce((sum: number, a: any) => {
-        const price = Number(a.services?.price_usd ?? a.services?.price ?? 0);
-        return sum + price;
-      }, 0);
+      // Load credits from client_credits table for the selected date
+      // First, get appointment IDs for the selected date
+      const nextDateStr = format(new Date(selectedDate.getTime() + 24 * 60 * 60 * 1000), "yyyy-MM-dd");
+      
+      const { data: dateAppointments, error: dateAppointmentsError } = await supabase
+        .from("appointments")
+        .select("id")
+        .eq("business_id", profile.business_id)
+        .gte("appointment_date", dateStr)
+        .lt("appointment_date", nextDateStr)
+        .eq("status", "completed");
+
+      const dateAppointmentIds = (dateAppointments || []).map((apt: any) => apt.id);
+
+      // Now load credits for those appointments
+      let creditQty = 0;
+      let creditTotal = 0;
+      
+      if (dateAppointmentIds.length > 0) {
+        const { data: credits, error: creditsError } = await supabase
+          .from("client_credits")
+          .select("id, amount, status, appointment_id")
+          .eq("business_id", profile.business_id)
+          .in("appointment_id", dateAppointmentIds)
+          .in("status", ["pending", "partial"]);
+
+        if (!creditsError && credits) {
+          creditQty = credits.length;
+          creditTotal = credits.reduce((sum: number, credit: any) => {
+            return sum + Number(credit.amount || 0);
+          }, 0);
+        }
+      }
 
       // expose credit summary for UI
       setCreditSummary({ qty: creditQty, total: creditTotal });
@@ -453,7 +479,7 @@ export default function DailySalesSummary() {
                   <div className="flex items-center justify-between">
                     <div>
                       <p className="font-medium">{language === 'es' ? 'Créditos pendientes' : 'Pending credits'}</p>
-                      <p className="text-sm text-muted-foreground">{creditSummary.qty} {language === 'es' ? 'venta(s) a crédito' : 'credit sale(s)'} • {formatCurrency(creditSummary.total)}</p>
+                      <p className="text-sm text-muted-foreground">{creditSummary.qty} {language === 'es' ? 'venta(s) a crédito' : 'credit sale(s)'} • <span className="font-semibold text-orange-600">{formatCurrency(creditSummary.total)}</span></p>
                     </div>
                     <div>
                       <Button variant="ghost" size="sm" onClick={() => navigate('/admin/clients/credits')}>

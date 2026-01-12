@@ -207,7 +207,7 @@ export default function MobileSales() {
                       <div className="text-sm text-muted-foreground">{sale.service_name}</div>
                     </div>
                     <div className="text-right">
-                      <div className="text-lg font-bold text-green-500">
+                      <div className={`text-lg font-bold ${sale.payment_method === 'credit' ? 'text-orange-600' : 'text-green-500'}`}>
                         ${(parseFloat(sale.price_usd) + parseFloat(sale.tip_amount || 0)).toFixed(2)}
                       </div>
                       {sale.price_mxn > 0 && (
@@ -221,7 +221,7 @@ export default function MobileSales() {
                     <span>
                       {new Date(sale.sale_date).toLocaleDateString()} {sale.sale_time}
                     </span>
-                    <span className="capitalize">{sale.payment_method}</span>
+                    <span className={`capitalize ${sale.payment_method === 'credit' ? 'font-semibold text-orange-600' : ''}`}>{sale.payment_method}</span>
                   </div>
                 </Card>
               ))

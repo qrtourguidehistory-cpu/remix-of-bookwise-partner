@@ -22,6 +22,7 @@ interface RevenueData {
   cash: number;
   card: number;
   online: number;
+  credit: number;
 }
 
 interface ServiceRevenue {
@@ -52,6 +53,7 @@ export default function ReportsAnalytics() {
     cash: 0,
     card: 0,
     online: 0,
+    credit: 0,
   });
   const [serviceRevenue, setServiceRevenue] = useState<ServiceRevenue[]>([]);
   const [staffPerformance, setStaffPerformance] = useState<StaffPerformance[]>([]);
@@ -110,12 +112,41 @@ export default function ReportsAnalytics() {
 
       if (salesError) throw salesError;
 
+      // Fetch credits data
+      // First, get appointment IDs for the date range
+      const { data: appointmentsInRange, error: appointmentsInRangeError } = await supabase
+        .from("appointments")
+        .select("id")
+        .eq("business_id", profile.business_id)
+        .gte("appointment_date", start.split("T")[0])
+        .lte("appointment_date", end.split("T")[0])
+        .eq("status", "completed");
+
+      const appointmentIds = (appointmentsInRange || []).map((apt: any) => apt.id);
+      
+      let creditTotal = 0;
+      if (appointmentIds.length > 0) {
+        const { data: credits, error: creditsError } = await supabase
+          .from("client_credits")
+          .select("amount")
+          .eq("business_id", profile.business_id)
+          .in("appointment_id", appointmentIds)
+          .in("status", ["pending", "partial"]);
+
+        if (!creditsError && credits) {
+          creditTotal = credits.reduce((sum: number, credit: any) => {
+            return sum + Number(credit.amount || 0);
+          }, 0);
+        }
+      }
+
       // Calculate revenue
       const revenueData: RevenueData = {
         total: 0,
         cash: 0,
         card: 0,
         online: 0,
+        credit: creditTotal,
       };
 
       (sales || []).forEach((sale) => {
@@ -129,6 +160,9 @@ export default function ReportsAnalytics() {
           revenueData.online += amount;
         }
       });
+
+      // Include credit in total
+      revenueData.total += creditTotal;
 
       setRevenue(revenueData);
 
@@ -460,7 +494,7 @@ export default function ReportsAnalytics() {
           </CardHeader>
           <CardContent>
             <div className="space-y-6">
-              <div className="grid gap-4 md:grid-cols-4">
+              <div className="grid gap-4 md:grid-cols-5">
                 <div className="space-y-2">
                   <p className="text-sm text-muted-foreground">Total Revenue</p>
                   <p className="text-2xl font-bold">{formatCurrency(revenue.total)}</p>
@@ -495,6 +529,16 @@ export default function ReportsAnalytics() {
                   <p className="text-sm text-muted-foreground">
                     {revenue.total > 0
                       ? Math.round((revenue.online / revenue.total) * 100)
+                      : 0}
+                    % of total
+                  </p>
+                </div>
+                <div className="space-y-2">
+                  <p className="text-sm text-muted-foreground">Credit Payments</p>
+                  <p className="text-2xl font-bold text-orange-600">{formatCurrency(revenue.credit)}</p>
+                  <p className="text-sm text-muted-foreground">
+                    {revenue.total > 0
+                      ? Math.round((revenue.credit / revenue.total) * 100)
                       : 0}
                     % of total
                   </p>

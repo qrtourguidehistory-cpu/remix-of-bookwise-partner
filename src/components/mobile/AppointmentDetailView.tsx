@@ -528,13 +528,25 @@ export function AppointmentDetailView({
     }
 
     if (isCredit) {
-      // Note: client_credits table doesn't exist yet, just log for now
-      console.log("Credit payment requested but client_credits table not implemented yet", {
-        business_id: profile.business_id,
-        client_id: appointment.client_id,
-        appointment_id: appointment.id,
-        amount: total,
-      });
+      // Create a client credit record
+      const { error: creditError } = await supabase
+        .from("client_credits")
+        .insert({
+          business_id: profile.business_id,
+          client_id: appointment.client_id || null,
+          appointment_id: appointment.id,
+          amount: total,
+          currency: "DOP",
+          status: "pending",
+          notes: language === "es" ? `Crédito por cita ${appointment.id}` : `Credit for appointment ${appointment.id}`,
+        });
+
+      if (creditError) {
+        console.error("Error creating credit:", creditError);
+        toast.error(creditError.message || (language === "es" ? "Error al registrar crédito" : "Error recording credit"));
+        return;
+      }
+
       toast.success(language === "es" ? "Crédito registrado" : "Credit recorded");
     } else {
       // Create a sale record (so it shows in Sales)

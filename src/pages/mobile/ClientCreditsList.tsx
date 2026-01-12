@@ -7,17 +7,17 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useNavigate } from "react-router-dom";
 import { useLanguage } from "@/contexts/LanguageContext";
-import { Search, Receipt, ArrowLeft, CreditCard, DollarSign, ChevronRight } from "lucide-react";
+import { Search, Receipt, ArrowLeft, CreditCard, DollarSign, ChevronRight, Check } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/lib/supabaseClient";
 import { format } from "date-fns";
 import { es, enUS } from "date-fns/locale";
 import { toast } from "sonner";
+import { AppointmentDetailView } from "@/components/mobile/AppointmentDetailView";
 
 interface ClientCredit {
   id: string;
   amount: number;
-  paid_amount: number;
   currency: string;
   status: string;
   notes: string | null;
@@ -33,8 +33,20 @@ interface ClientCredit {
   appointments?: {
     id: string;
     appointment_date: string;
+    client_name: string | null;
+    guest_name: string | null;
+    user_id: string | null;
+    start_time: string;
+    end_time: string;
     services?: {
       name: string;
+    } | null;
+    staff?: {
+      full_name: string;
+    } | null;
+    businesses?: {
+      business_name: string;
+      address: string | null;
     } | null;
   } | null;
 }
@@ -46,6 +58,9 @@ export default function ClientCreditsList() {
   const [searchQuery, setSearchQuery] = useState("");
   const [credits, setCredits] = useState<ClientCredit[]>([]);
   const [loading, setLoading] = useState(true);
+  const [selectedAppointment, setSelectedAppointment] = useState<any>(null);
+  const [detailViewOpen, setDetailViewOpen] = useState(false);
+  const [reserverNames, setReserverNames] = useState<Record<string, string>>({});
 
   const dateLocale = language === "es" ? es : enUS;
 
@@ -63,7 +78,18 @@ export default function ClientCreditsList() {
         .select(`
           *,
           clients (id, full_name, email, phone),
-          appointments (id, appointment_date, services:service_id (name))
+          appointments!appointment_id (
+            id, 
+            appointment_date, 
+            client_name,
+            guest_name,
+            user_id,
+            start_time,
+            end_time,
+            services!appointments_service_id_fkey (name),
+            staff!appointments_staff_id_fkey (full_name),
+            businesses!appointments_business_id_fkey (business_name, address)
+          )
         `)
         .eq("business_id", profile.business_id)
         .in("status", ["pending", "partial"])
@@ -71,6 +97,51 @@ export default function ClientCreditsList() {
 
       if (error) throw error;
       setCredits(data || []);
+      
+      // Fetch reserver names for appointments with user_id
+      const reserverNamesMap: Record<string, string> = {};
+      for (const credit of (data || [])) {
+        if (credit.appointments?.user_id && !reserverNamesMap[credit.appointments.user_id]) {
+          const userId = credit.appointments.user_id;
+          
+          // Try client_profiles first
+          const { data: clientProfileData } = await supabase
+            .from("client_profiles" as any)
+            .select("full_name")
+            .eq("id", userId)
+            .maybeSingle() as any;
+          
+          if (clientProfileData?.full_name) {
+            reserverNamesMap[userId] = clientProfileData.full_name;
+            continue;
+          }
+          
+          // Try clients table by user_id
+          const { data: clientData } = await supabase
+            .from("clients")
+            .select("full_name")
+            .eq("user_id", userId)
+            .eq("business_id", profile.business_id)
+            .maybeSingle();
+          
+          if (clientData?.full_name) {
+            reserverNamesMap[userId] = clientData.full_name;
+            continue;
+          }
+          
+          // Try profiles table (partners/staff)
+          const { data: profileData } = await supabase
+            .from("profiles")
+            .select("full_name")
+            .eq("id", userId)
+            .maybeSingle();
+          
+          if (profileData?.full_name) {
+            reserverNamesMap[userId] = profileData.full_name;
+          }
+        }
+      }
+      setReserverNames(reserverNamesMap);
     } catch (error) {
       console.error("Error loading credits:", error);
       toast.error(language === "es" ? "Error al cargar créditos" : "Error loading credits");
@@ -81,11 +152,21 @@ export default function ClientCreditsList() {
 
   const filteredCredits = credits.filter((credit) => {
     const searchLower = searchQuery.toLowerCase();
-    const clientName = credit.clients?.full_name || "";
+    const clientName = credit.clients?.full_name || 
+                      credit.appointments?.client_name || 
+                      credit.appointments?.guest_name || 
+                      "";
     const clientEmail = credit.clients?.email || "";
+    const appointmentName = credit.appointments?.client_name || 
+                           credit.appointments?.guest_name || 
+                           "";
+    const reserverName = credit.appointments?.user_id ? reserverNames[credit.appointments.user_id] : "";
+    
     return (
       clientName.toLowerCase().includes(searchLower) ||
-      clientEmail.toLowerCase().includes(searchLower)
+      clientEmail.toLowerCase().includes(searchLower) ||
+      appointmentName.toLowerCase().includes(searchLower) ||
+      reserverName.toLowerCase().includes(searchLower)
     );
   });
 
@@ -93,9 +174,15 @@ export default function ClientCreditsList() {
   const creditsByClient = filteredCredits.reduce((acc, credit) => {
     const clientId = credit.client_id || "unknown";
     if (!acc[clientId]) {
+      // Get client name - prefer clients relation, then appointment client_name/guest_name
+      const clientName = credit.clients?.full_name || 
+                        credit.appointments?.client_name || 
+                        credit.appointments?.guest_name || 
+                        (language === "es" ? "Cliente desconocido" : "Unknown client");
+      
       acc[clientId] = {
         clientId: credit.client_id,
-        clientName: credit.clients?.full_name || language === "es" ? "Cliente desconocido" : "Unknown client",
+        clientName,
         clientEmail: credit.clients?.email || "",
         clientPhone: credit.clients?.phone || "",
         credits: [],
@@ -103,10 +190,11 @@ export default function ClientCreditsList() {
         totalPaid: 0,
       };
     }
-    acc[clientId].credits.push(credit);
-    acc[clientId].totalAmount += Number(credit.amount || 0);
-    acc[clientId].totalPaid += Number(credit.paid_amount || 0);
-    return acc;
+      acc[clientId].credits.push(credit);
+      acc[clientId].totalAmount += Number(credit.amount || 0);
+      // Since we only show pending and partial credits, totalPaid is 0 for all
+      // (pending = not paid, partial = partially paid but still shows in list)
+      return acc;
   }, {} as Record<string, {
     clientId: string | null;
     clientName: string;
@@ -121,6 +209,63 @@ export default function ClientCreditsList() {
     (sum, client) => sum + (client.totalAmount - client.totalPaid), 
     0
   );
+
+  const handleViewReceipt = async (credit: ClientCredit) => {
+    if (!credit.appointment_id) {
+      toast.error(language === "es" ? "No hay cita asociada" : "No appointment associated");
+      return;
+    }
+
+    // Fetch full appointment data
+    try {
+      const { data, error } = await supabase
+        .from("appointments")
+        .select(`
+          *,
+          clients!appointments_client_id_fkey(id, user_id, full_name, email, phone),
+          services!appointments_service_id_fkey(name, duration_minutes, price, price_usd, price_mxn),
+          staff!appointments_staff_id_fkey(full_name, email, phone),
+          businesses!appointments_business_id_fkey(business_name, address)
+        `)
+        .eq("id", credit.appointment_id)
+        .eq("business_id", profile?.business_id)
+        .single();
+
+      if (error) throw error;
+      setSelectedAppointment(data);
+      setDetailViewOpen(true);
+    } catch (error) {
+      console.error("Error loading appointment:", error);
+      toast.error(language === "es" ? "Error al cargar la cita" : "Error loading appointment");
+    }
+  };
+
+  const handleMarkAsPaid = async (creditId: string) => {
+    if (!profile?.business_id) return;
+
+    try {
+      const updateData: any = { status: "paid" };
+      // Only add paid_at if the column exists (it might not in all schemas)
+      try {
+        updateData.paid_at = new Date().toISOString();
+      } catch (e) {
+        // Ignore if paid_at doesn't exist
+      }
+
+      const { error } = await supabase
+        .from("client_credits")
+        .update(updateData)
+        .eq("id", creditId)
+        .eq("business_id", profile.business_id);
+
+      if (error) throw error;
+      toast.success(language === "es" ? "Marcado como pagado" : "Marked as paid");
+      loadCredits();
+    } catch (error) {
+      console.error("Error marking as paid:", error);
+      toast.error(language === "es" ? "Error al marcar como pagado" : "Error marking as paid");
+    }
+  };
 
   const getStatusBadge = (status: string) => {
     switch (status) {
@@ -246,26 +391,80 @@ export default function ClientCreditsList() {
                   </div>
 
                   {/* Credit details */}
-                  <div className="mt-4 space-y-2 border-t pt-3">
-                    {client.credits.slice(0, 3).map((credit) => (
-                      <div key={credit.id} className="flex items-center justify-between text-sm">
-                        <div className="flex items-center gap-2">
-                          {getStatusBadge(credit.status)}
-                          <span className="text-muted-foreground">
-                            {credit.appointments?.services?.name || 
-                              (language === "es" ? "Servicio" : "Service")}
-                          </span>
+                  <div className="mt-4 space-y-3 border-t pt-3">
+                    {client.credits.map((credit) => {
+                      // Get appointment name (a nombre de)
+                      const appointmentName = credit.appointments?.client_name || 
+                                            credit.appointments?.guest_name || 
+                                            "";
+                      
+                      // Get reserver name (reserved by)
+                      const reserverName = credit.appointments?.user_id 
+                        ? reserverNames[credit.appointments.user_id] 
+                        : "";
+                      
+                      // Get service name
+                      const serviceName = credit.appointments?.services?.name || 
+                                         (language === "es" ? "Servicio" : "Service");
+                      
+                      // Get appointment date
+                      const appointmentDate = credit.appointments?.appointment_date 
+                        ? format(new Date(credit.appointments.appointment_date), "d MMM yyyy", { locale: dateLocale })
+                        : "";
+
+                      return (
+                        <div key={credit.id} className="space-y-2 p-3 bg-muted/30 rounded-lg">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              {getStatusBadge(credit.status)}
+                              <span className="text-muted-foreground">{serviceName}</span>
+                            </div>
+                            <span className="font-medium">
+                              DOP {Number(credit.amount).toLocaleString("es-DO", { minimumFractionDigits: 0 })}
+                            </span>
+                          </div>
+                          
+                          {appointmentName && (
+                            <div className="text-xs text-muted-foreground">
+                              <span className="font-medium">{language === "es" ? "A nombre de:" : "Name on appointment:"}</span> {appointmentName}
+                            </div>
+                          )}
+                          
+                          {reserverName && (
+                            <div className="text-xs text-muted-foreground">
+                              <span className="font-medium">{language === "es" ? "Reservado por:" : "Reserved by:"}</span> {reserverName}
+                            </div>
+                          )}
+                          
+                          {appointmentDate && (
+                            <div className="text-xs text-muted-foreground">
+                              <span className="font-medium">{language === "es" ? "Fecha:" : "Date:"}</span> {appointmentDate}
+                            </div>
+                          )}
+                          
+                          <div className="flex gap-2 pt-2">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="flex-1"
+                              onClick={() => handleViewReceipt(credit)}
+                            >
+                              <Receipt className="h-4 w-4 mr-2" />
+                              {language === "es" ? "Ver recibo" : "View receipt"}
+                            </Button>
+                            <Button
+                              variant="default"
+                              size="sm"
+                              className="flex-1"
+                              onClick={() => handleMarkAsPaid(credit.id)}
+                            >
+                              <Check className="h-4 w-4 mr-2" />
+                              {language === "es" ? "Marcar pagado" : "Mark paid"}
+                            </Button>
+                          </div>
                         </div>
-                        <span className="font-medium">
-                          DOP {(Number(credit.amount) - Number(credit.paid_amount)).toLocaleString("es-DO", { minimumFractionDigits: 0 })}
-                        </span>
-                      </div>
-                    ))}
-                    {client.credits.length > 3 && (
-                      <p className="text-xs text-muted-foreground text-center pt-1">
-                        +{client.credits.length - 3} {language === "es" ? "más" : "more"}
-                      </p>
-                    )}
+                      );
+                    })}
                   </div>
                 </CardContent>
               </Card>
@@ -273,6 +472,13 @@ export default function ClientCreditsList() {
           </div>
         )}
       </div>
+
+      {/* Appointment Detail View for Receipt */}
+      <AppointmentDetailView
+        open={detailViewOpen}
+        onOpenChange={setDetailViewOpen}
+        appointment={selectedAppointment}
+      />
     </MobileLayout>
   );
 }
