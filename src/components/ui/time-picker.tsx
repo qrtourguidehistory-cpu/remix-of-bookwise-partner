@@ -113,11 +113,14 @@ export function TimePicker({ value, onChange, className, placeholder = "Seleccio
     setSavedPeriod(tempPeriod);
     
     // Convert to 24h format and call onChange
-    let hour24 = tempHour;
-    if (tempPeriod === "PM" && tempHour !== 12) {
-      hour24 = tempHour + 12;
-    } else if (tempPeriod === "AM" && tempHour === 12) {
-      hour24 = 0;
+    // FIX: Correct conversion from 12-hour to 24-hour format
+    let hour24: number;
+    if (tempPeriod === "AM") {
+      // AM: 12:xx AM = 00:xx, 1-11 AM = 01-11
+      hour24 = tempHour === 12 ? 0 : tempHour;
+    } else {
+      // PM: 12:xx PM = 12:xx, 1-11 PM = 13-23
+      hour24 = tempHour === 12 ? 12 : tempHour + 12;
     }
     
     const time24h = `${String(hour24).padStart(2, "0")}:${String(tempMinute).padStart(2, "0")}:00`;
