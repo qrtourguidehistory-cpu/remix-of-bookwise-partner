@@ -6,6 +6,7 @@ import { useNavigate } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/lib/supabaseClient";
 import { useAuth } from "@/contexts/AuthContext";
+import { generateTimeSlotsFromBusinessHours, convertTo24Hour } from "@/lib/timeFormat";
 import { ServiceStep } from "@/components/mobile/booking/ServiceStep";
 import { StaffStep } from "@/components/mobile/booking/StaffStep";
 import { DateStep } from "@/components/mobile/booking/DateStep";
@@ -119,10 +120,45 @@ export default function BookingFlow() {
   };
 
   const filterAvailableTimes = async () => {
-    if (!selectedStaff || !selectedDate) return;
+    if (!selectedStaff || !selectedDate || !profile?.business_id) return;
 
     const dayOfWeek = selectedDate.getDay();
 
+    // 1. Consultar business_hours primero
+    const { data: businessHoursData } = await supabase
+      .from("business_hours")
+      .select("*")
+      .eq("business_id", profile.business_id)
+      .eq("day_of_week", dayOfWeek)
+      .maybeSingle();
+
+    // Verificar si el negocio está cerrado ese día
+    const isClosed = businessHoursData?.is_closed !== undefined 
+      ? businessHoursData.is_closed 
+      : (businessHoursData?.is_open !== undefined ? !businessHoursData.is_open : false);
+    
+    if (isClosed) {
+      setAvailableTimes([]);
+      return;
+    }
+
+    // Obtener los horarios del negocio (o usar valores por defecto si no hay)
+    const businessStartTime = businessHoursData?.open_time || businessHoursData?.start_time || "08:30:00";
+    const businessEndTime = businessHoursData?.close_time || businessHoursData?.end_time || "20:00:00";
+    
+    // Convertir a formato HH:MM (sin segundos) si viene con segundos
+    const startTime24 = businessStartTime.substring(0, 5);
+    const endTime24 = businessEndTime.substring(0, 5);
+
+    // 2. Generar slots basados en business_hours
+    const businessTimeSlots = generateTimeSlotsFromBusinessHours(
+      startTime24,
+      endTime24,
+      '12h',
+      30
+    );
+
+    // 3. Consultar staff_schedules para filtrar más
     const { data: schedules } = await supabase
       .from("staff_schedules")
       .select("*")
@@ -143,20 +179,96 @@ export default function BookingFlow() {
       return;
     }
 
+    // 4. Filtrar slots por staff_schedules si existen
+    let availableSlots = businessTimeSlots;
+    
     if (schedules && schedules.length > 0) {
       const schedule = schedules[0];
-      const startTime = schedule.start_time;
-      const endTime = schedule.end_time;
+      const staffStartTime = schedule.start_time;
+      const staffEndTime = schedule.end_time;
 
-      const available = TIME_SLOTS.filter((time) => {
+      availableSlots = businessTimeSlots.filter((time) => {
         const timeValue = time.toLowerCase().replace(/\s/g, "");
-        return timeValue >= startTime && timeValue <= endTime;
+        return timeValue >= staffStartTime && timeValue <= staffEndTime;
       });
-
-      setAvailableTimes(available);
-    } else {
-      setAvailableTimes(TIME_SLOTS);
     }
+
+    // 5. Excluir breaks del negocio (business_hours)
+    // IMPORTANTE: Los breaks SOLO excluyen slots, NUNCA redefinen el startTime
+    // El rango SIEMPRE es open_time → close_time
+    if (businessHoursData?.break_start && businessHoursData?.break_end) {
+      const breakStart = businessHoursData.break_start.substring(0, 5);
+      const breakEnd = businessHoursData.break_end.substring(0, 5);
+      
+      // Validar que el break no esté mal guardado (00:30 en lugar de 12:30)
+      // Si break_start es 00:30 (medianoche), probablemente es un error
+      const breakStartMinutes = timeToMinutes(breakStart);
+      const breakEndMinutes = timeToMinutes(breakEnd);
+      const openMinutes = timeToMinutes(startTime24);
+      const closeMinutes = timeToMinutes(endTime24);
+      
+      // Validar: break_start debe estar después de open_time
+      // Si break_start es muy temprano (antes de las 6 AM), probablemente es un error
+      // Si break_start es 00:30 y open_time es 08:30, es claramente un error
+      const isValidBreak = breakStartMinutes >= openMinutes && 
+                          breakStartMinutes < closeMinutes &&
+                          breakEndMinutes > breakStartMinutes &&
+                          breakEndMinutes <= closeMinutes &&
+                          breakStartMinutes >= 6 * 60; // No antes de las 6 AM
+      
+      if (isValidBreak) {
+        // Solo excluir breaks válidos
+        availableSlots = availableSlots.filter((time) => {
+          const time24 = convertTo24Hour(time).substring(0, 5);
+          const timeMinutes = timeToMinutes(time24);
+          
+          // Excluir si está dentro del break (solo si el break es válido)
+          return !(timeMinutes >= breakStartMinutes && timeMinutes < breakEndMinutes);
+        });
+      }
+      // Si el break es inválido, ignorarlo (no excluir slots)
+    }
+
+    // 6. Excluir breaks del staff si existen
+    // IMPORTANTE: Validar breaks del staff también
+    if (schedules && schedules.length > 0) {
+      const schedule = schedules[0];
+      if (schedule.break_start && schedule.break_end) {
+        const staffBreakStart = schedule.break_start.substring(0, 5);
+        const staffBreakEnd = schedule.break_end.substring(0, 5);
+        
+        const staffBreakStartMinutes = timeToMinutes(staffBreakStart);
+        const staffBreakEndMinutes = timeToMinutes(staffBreakEnd);
+        const staffStartMinutes = timeToMinutes(schedule.start_time.substring(0, 5));
+        const staffEndMinutes = timeToMinutes(schedule.end_time.substring(0, 5));
+        
+        // Validar: break del staff debe estar dentro del horario del staff
+        const isValidStaffBreak = staffBreakStartMinutes >= staffStartMinutes &&
+                                  staffBreakStartMinutes < staffEndMinutes &&
+                                  staffBreakEndMinutes > staffBreakStartMinutes &&
+                                  staffBreakEndMinutes <= staffEndMinutes &&
+                                  staffBreakStartMinutes >= 6 * 60; // No antes de las 6 AM
+        
+        if (isValidStaffBreak) {
+          availableSlots = availableSlots.filter((time) => {
+            const time24 = convertTo24Hour(time).substring(0, 5);
+            const timeMinutes = timeToMinutes(time24);
+            
+            // Excluir si está dentro del break del staff (solo si es válido)
+            return !(timeMinutes >= staffBreakStartMinutes && timeMinutes < staffBreakEndMinutes);
+          });
+        }
+        // Si el break del staff es inválido, ignorarlo
+      }
+    }
+
+    setAvailableTimes(availableSlots);
+  };
+
+  // Helper: Convertir tiempo a minutos desde medianoche
+  const timeToMinutes = (time24: string): number => {
+    const [hours, minutes] = time24.split(':').map(Number);
+    return hours * 60 + minutes;
   };
 
   const parseTime = (timeStr: string): { hours: number; minutes: number } | null => {
