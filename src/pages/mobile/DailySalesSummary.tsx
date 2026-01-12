@@ -272,7 +272,7 @@ export default function DailySalesSummary() {
         transactionSummary: transactionSummary || [],
         cashMovement: cashMovement || [],
       };
-      exportDailySummaryToCSV(exportData, getBusinessName());
+      await exportDailySummaryToCSV(exportData, getBusinessName());
       toast.success(language === "es" ? "CSV exportado exitosamente" : "CSV exported successfully");
     } catch (error) {
       console.error("Export CSV error:", error);

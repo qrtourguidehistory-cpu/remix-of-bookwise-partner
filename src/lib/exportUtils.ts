@@ -3,67 +3,85 @@ import autoTable from "jspdf-autotable";
 import * as XLSX from "xlsx";
 import { format } from "date-fns";
 import { Capacitor } from "@capacitor/core";
+import { Filesystem, Directory, Encoding } from "@capacitor/filesystem";
+import { Share } from "@capacitor/share";
 
 /**
  * Helper: convert ArrayBuffer to base64
  */
-function arrayBufferToBase64(buffer: ArrayBuffer) {
+function arrayBufferToBase64(buffer: ArrayBuffer): string {
   let binary = '';
   const bytes = new Uint8Array(buffer);
   const len = bytes.byteLength;
   for (let i = 0; i < len; i++) {
     binary += String.fromCharCode(bytes[i]);
   }
-  return typeof window !== 'undefined' && window.btoa ? window.btoa(binary) : Buffer.from(binary, 'binary').toString('base64');
+  return typeof window !== 'undefined' && window.btoa ? window.btoa(binary) : binary;
 }
 
 /**
- * Helper: write base64 to device file system on native (Android/iOS) using Capacitor Filesystem + Share
+ * Helper: download file on web (desktop browser)
  */
-async function writeBase64ToDevice(filename: string, base64Data: string, mimeType: string) {
+function downloadOnWeb(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  link.style.display = 'none';
+  document.body.appendChild(link);
+  link.click();
+  setTimeout(() => {
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  }, 100);
+}
+
+/**
+ * Helper: save and share file on native mobile (Android/iOS) using Capacitor
+ */
+async function saveAndShareOnMobile(base64Data: string, filename: string, mimeType: string): Promise<void> {
   if (!Capacitor.isNativePlatform()) {
     throw new Error('Not running on native platform');
   }
 
-  const { Filesystem, FilesystemDirectory } = await new Function('return import("@capacitor/filesystem")')();
-  const { Share } = await new Function('return import("@capacitor/share")')();
+  try {
+    // Write file to cache directory (always accessible)
+    const result = await Filesystem.writeFile({
+      path: filename,
+      data: base64Data,
+      directory: Directory.Cache,
+      recursive: true
+    });
 
-  // Try multiple write locations for better compatibility across Android versions
-  const attempts = [
-    { path: filename, directory: FilesystemDirectory.External },
-    { path: `Download/${filename}`, directory: FilesystemDirectory.External },
-    { path: filename, directory: FilesystemDirectory.Documents }
-  ];
+    const fileUri = result.uri;
+    console.log('File written to:', fileUri);
 
-  let lastError: any = null;
-  for (const attempt of attempts) {
-    try {
-      const result = await Filesystem.writeFile({
-        path: attempt.path,
-        data: base64Data,
-        directory: attempt.directory,
-        recursive: true
-      });
-
-      const fileUri = (result as any).uri || attempt.path;
-      try {
-        await Share.share({
-          title: filename,
-          url: fileUri
-        });
-      } catch (shareErr) {
-        console.warn('Share failed, but file was written:', shareErr, fileUri);
-      }
-
-      return { success: true, uri: fileUri };
-    } catch (err) {
-      lastError = err;
-      console.warn('Write attempt failed for', attempt, err);
-    }
+    // Use Share API to let user save/share the file
+    await Share.share({
+      title: filename,
+      text: `Archivo exportado: ${filename}`,
+      url: fileUri,
+      dialogTitle: 'Guardar o compartir archivo'
+    });
+  } catch (error) {
+    console.error('Error saving file on mobile:', error);
+    throw error;
   }
+}
 
-  console.error('All write attempts failed:', lastError);
-  throw lastError || new Error('Failed to write file to device');
+/**
+ * Universal export helper - handles both web and mobile
+ */
+async function universalExport(blob: Blob, filename: string, mimeType: string): Promise<void> {
+  if (Capacitor.isNativePlatform()) {
+    // Convert blob to base64 for mobile
+    const arrayBuffer = await blob.arrayBuffer();
+    const base64 = arrayBufferToBase64(arrayBuffer);
+    await saveAndShareOnMobile(base64, filename, mimeType);
+  } else {
+    // Web download
+    downloadOnWeb(blob, filename);
+  }
 }
 
 export interface SalesReportData {
@@ -121,25 +139,10 @@ export const exportSalesToPDF = async (data: SalesReportData[], businessName: st
     footStyles: { fillColor: [240, 240, 240], textColor: [0, 0, 0], fontStyle: 'bold' }
   });
   
-  // Save the PDF (use blob download for better mobile compatibility)
+  // Save the PDF
   const filename = `sales-report-${format(new Date(), "yyyy-MM-dd")}.pdf`;
-  try {
-    const pdfBlob = doc.output('blob');
-    const url = URL.createObjectURL(pdfBlob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = filename;
-    link.style.display = 'none';
-    document.body.appendChild(link);
-    link.click();
-    setTimeout(() => {
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
-    }, 100);
-  } catch (error) {
-    console.warn('Blob download failed, falling back to direct save', error);
-    doc.save(filename);
-  }
+  const pdfBlob = doc.output('blob');
+  await universalExport(pdfBlob, filename, 'application/pdf');
 };
 
 export const exportSalesToExcel = async (data: SalesReportData[], businessName: string, startDate?: string, endDate?: string) => {
@@ -184,65 +187,37 @@ export const exportSalesToExcel = async (data: SalesReportData[], businessName: 
   // Add worksheet to workbook
   XLSX.utils.book_append_sheet(wb, ws, 'Sales Report');
   
-  // Save file (use blob download for better mobile compatibility)
+  // Save file
   const filename = `sales-report-${format(new Date(), "yyyy-MM-dd")}.xlsx`;
-  try {
-    const excelArray = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
-    const blob = new Blob([excelArray], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = filename;
-    link.style.display = 'none';
-    document.body.appendChild(link);
-    link.click();
-    setTimeout(() => {
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
-    }, 100);
-  } catch (error) {
-    console.warn('Blob download failed, falling back to direct save', error);
-    XLSX.writeFile(wb, filename);
-  }
+  const excelArray = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+  const blob = new Blob([excelArray], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+  await universalExport(blob, filename, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
 };
 
 export const exportSalesToCSV = async (data: SalesReportData[], businessName: string, startDate?: string, endDate?: string) => {
-  try {
-    // Create CSV content
-    let csvContent = `${businessName} - Sales Report\n`;
-    if (startDate && endDate) {
-      csvContent += `Period: ${startDate} to ${endDate}\n`;
-    }
-    csvContent += `Generated: ${format(new Date(), "PPP")}\n\n`;
-    
-    // Header
-    csvContent += `Date,Client,Service,Staff,Amount,Payment Method\n`;
-    
-    // Data rows
-    data.forEach(item => {
-      csvContent += `${item.date},${item.client},${item.service},${item.staff},$${item.amount.toFixed(2)},${item.paymentMethod}\n`;
-    });
-    
-    // Total
-    const totalAmount = data.reduce((sum, item) => sum + item.amount, 0);
-    csvContent += `\nTotal:,,,$${totalAmount.toFixed(2)},\n`;
-    
-    // Create blob and download (support mobile export)
-    const filename = `sales-report-${format(new Date(), "yyyy-MM-dd")}.csv`;
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = filename;
-    link.style.display = 'none';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
-  } catch (error) {
-    console.error("Error generating CSV:", error);
-    throw error;
+  // Create CSV content
+  let csvContent = `${businessName} - Sales Report\n`;
+  if (startDate && endDate) {
+    csvContent += `Period: ${startDate} to ${endDate}\n`;
   }
+  csvContent += `Generated: ${format(new Date(), "PPP")}\n\n`;
+  
+  // Header
+  csvContent += `Date,Client,Service,Staff,Amount,Payment Method\n`;
+  
+  // Data rows
+  data.forEach(item => {
+    csvContent += `${item.date},${item.client},${item.service},${item.staff},$${item.amount.toFixed(2)},${item.paymentMethod}\n`;
+  });
+  
+  // Total
+  const totalAmount = data.reduce((sum, item) => sum + item.amount, 0);
+  csvContent += `\nTotal:,,,$${totalAmount.toFixed(2)},\n`;
+  
+  // Save file
+  const filename = `sales-report-${format(new Date(), "yyyy-MM-dd")}.csv`;
+  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+  await universalExport(blob, filename, 'text/csv');
 };
 
 // Reports & Analytics Export Interfaces
@@ -376,25 +351,10 @@ export const exportAnalyticsToPDF = async (data: AnalyticsReportData, businessNa
     headStyles: { fillColor: [147, 135, 245] }
   });
   
-  // Save the PDF (use blob download for better mobile compatibility)
+  // Save the PDF
   const filename = `analytics-report-${format(new Date(), "yyyy-MM-dd")}.pdf`;
-  try {
-    const pdfBlob = doc.output('blob');
-    const url = URL.createObjectURL(pdfBlob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = filename;
-    link.style.display = 'none';
-    document.body.appendChild(link);
-    link.click();
-    setTimeout(() => {
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
-    }, 100);
-  } catch (error) {
-    console.warn('Blob download failed, falling back to direct save', error);
-    doc.save(filename);
-  }
+  const pdfBlob = doc.output('blob');
+  await universalExport(pdfBlob, filename, 'application/pdf');
 };
 
 export const exportAnalyticsToExcel = async (data: AnalyticsReportData, businessName: string) => {
@@ -438,26 +398,11 @@ export const exportAnalyticsToExcel = async (data: AnalyticsReportData, business
   
   XLSX.utils.book_append_sheet(wb, ws, 'Analytics Report');
   
-  // Save file (use blob download for better mobile compatibility)
+  // Save file
   const filename = `analytics-report-${format(new Date(), "yyyy-MM-dd")}.xlsx`;
-  try {
-    const excelArray = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
-    const blob = new Blob([excelArray], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = filename;
-    link.style.display = 'none';
-    document.body.appendChild(link);
-    link.click();
-    setTimeout(() => {
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
-    }, 100);
-  } catch (error) {
-    console.warn('Blob download failed, falling back to direct save', error);
-    XLSX.writeFile(wb, filename);
-  }
+  const excelArray = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+  const blob = new Blob([excelArray], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+  await universalExport(blob, filename, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
 };
 
 export const exportAnalyticsToCSV = async (data: AnalyticsReportData, businessName: string) => {
@@ -498,20 +443,10 @@ export const exportAnalyticsToCSV = async (data: AnalyticsReportData, businessNa
     csvContent += `Avg Service Duration,${data.operationalMetrics.avgServiceDuration} min\n`;
     csvContent += `Peak Booking Time,${data.operationalMetrics.peakBookingTime}\n`;
     
-    // Create blob and download (use blob download for better mobile compatibility)
+    // Save file
     const filename = `analytics-report-${format(new Date(), "yyyy-MM-dd")}.csv`;
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = filename;
-    link.style.display = 'none';
-    document.body.appendChild(link);
-    link.click();
-    setTimeout(() => {
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
-    }, 100);
+    await universalExport(blob, filename, 'text/csv');
   } catch (error) {
     console.error("Error generating CSV:", error);
     throw error;
@@ -678,19 +613,10 @@ export const exportDailySummaryToPDF = async (data: DailySalesSummaryData, busin
       });
     }
     
-    // Save the PDF (use native filesystem on device if possible)
+    // Save the PDF
     const dateStr = data.date ? format(new Date(data.date), "yyyy-MM-dd") : format(new Date(), "yyyy-MM-dd");
-    if (Capacitor.isNativePlatform()) {
-      try {
-        const arrayBuffer = doc.output('arraybuffer') as ArrayBuffer;
-        const base64 = arrayBufferToBase64(arrayBuffer);
-        await writeBase64ToDevice(`daily-sales-summary-${dateStr}.pdf`, base64, 'application/pdf');
-        return;
-      } catch (error) {
-        console.warn('Native save failed, falling back to browser download', error);
-      }
-    }
-    doc.save(`daily-sales-summary-${dateStr}.pdf`);
+    const pdfBlob = doc.output('blob');
+    await universalExport(pdfBlob, `daily-sales-summary-${dateStr}.pdf`, 'application/pdf');
   } catch (error) {
     console.error("Error generating PDF:", error);
     throw new Error("Failed to generate PDF. Please try again.");
@@ -737,23 +663,16 @@ export const exportDailySummaryToExcel = async (data: DailySalesSummaryData, bus
     
     XLSX.utils.book_append_sheet(wb, ws, 'Daily Summary');
     const dateStr = data.date ? format(new Date(data.date), "yyyy-MM-dd") : format(new Date(), "yyyy-MM-dd");
-    if (Capacitor.isNativePlatform()) {
-      try {
-        const base64 = XLSX.write(wb, { bookType: 'xlsx', type: 'base64' });
-        await writeBase64ToDevice(`daily-sales-summary-${dateStr}.xlsx`, base64, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-        return;
-      } catch (error) {
-        console.warn('Native save failed, falling back to browser download', error);
-      }
-    }
-    XLSX.writeFile(wb, `daily-sales-summary-${dateStr}.xlsx`);
+    const excelArray = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+    const blob = new Blob([excelArray], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    await universalExport(blob, `daily-sales-summary-${dateStr}.xlsx`, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
   } catch (error) {
     console.error("Error generating Excel:", error);
     throw new Error("Failed to generate Excel. Please try again.");
   }
 };
 
-export const exportDailySummaryToCSV = (data: DailySalesSummaryData, businessName: string) => {
+export const exportDailySummaryToCSV = async (data: DailySalesSummaryData, businessName: string) => {
   try {
     // Create CSV content
     let csvContent = `${businessName} - Daily Sales Summary\n`;
@@ -776,17 +695,10 @@ export const exportDailySummaryToCSV = (data: DailySalesSummaryData, businessNam
       csvContent += `${item.paymentType || '-'},DOP ${(item.paymentsCollected || 0).toFixed(2)},DOP ${(item.refundsPaid || 0).toFixed(2)}\n`;
     });
     
-    // Create blob and download
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement('a');
-    const url = URL.createObjectURL(blob);
-    link.setAttribute('href', url);
+    // Save file
     const dateStr = data.date ? format(new Date(data.date), "yyyy-MM-dd") : format(new Date(), "yyyy-MM-dd");
-    link.setAttribute('download', `daily-sales-summary-${dateStr}.csv`);
-    link.style.visibility = 'hidden';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    await universalExport(blob, `daily-sales-summary-${dateStr}.csv`, 'text/csv');
   } catch (error) {
     console.error("Error generating CSV:", error);
     throw new Error("Failed to generate CSV. Please try again.");

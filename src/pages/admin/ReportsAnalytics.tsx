@@ -16,8 +16,6 @@ import { supabase } from "@/lib/supabaseClient";
 import { subDays, startOfDay, endOfDay } from "date-fns";
 import { exportAnalyticsToPDF, exportAnalyticsToExcel, exportAnalyticsToCSV, AnalyticsReportData } from "@/lib/exportUtils";
 import { toast } from "sonner";
-import { exportAnalyticsToPDF, exportAnalyticsToExcel, exportAnalyticsToCSV, AnalyticsReportData } from "@/lib/exportUtils";
-import { toast } from "sonner";
 
 interface RevenueData {
   total: number;
