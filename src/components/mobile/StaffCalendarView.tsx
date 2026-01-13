@@ -396,7 +396,11 @@ export function StaffCalendarView({ date, filters }: StaffCalendarViewProps) {
         return;
       }
 
-      toast.success("Estado actualizado");
+      // Toast con ID único para evitar duplicados
+      toast.success("Estado actualizado", {
+        id: `status-updated-${selectedAppointment.id}-${Date.now()}`,
+        duration: 4000,
+      });
       
       // Notify next client when appointment is started
       if (dbStatus === "started") {

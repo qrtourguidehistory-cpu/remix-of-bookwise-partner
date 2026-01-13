@@ -340,7 +340,11 @@ export function WeekView({ date, filters }: WeekViewProps) {
               });
             }
 
-            toast.success("Estado actualizado correctamente");
+            // Toast con ID único para evitar duplicados
+            toast.success("Estado actualizado correctamente", {
+              id: `status-updated-${selectedAppointment.id}-${Date.now()}`,
+              duration: 4000,
+            });
             fetchAppointments();
             setSelectedAppointment({ ...selectedAppointment, status });
           } catch (err: any) {

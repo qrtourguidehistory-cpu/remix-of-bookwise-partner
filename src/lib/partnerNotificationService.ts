@@ -28,37 +28,93 @@ export interface PartnerNotificationData {
 }
 
 /**
+ * Tipos operativos esenciales para Partner
+ * El Partner solo necesita notificaciones que requieren acción operativa
+ */
+const OPERATIVE_PARTNER_TYPES = [
+  'new_appointment',           // Nueva cita creada
+  'appointment_status_change',  // Cambio crítico de estado
+  'early_arrival_request',      // Solicitud especial (asistencia anticipada)
+  'early_arrival_approved',     // Aprobación de solicitud especial
+  'early_arrival_rejected',     // Rechazo de solicitud especial
+  'review_received',            // Review recibida (puede requerir respuesta)
+  'payment_received',           // Pago recibido (operativo)
+  'payment_reminder',           // Recordatorio de pago mensual (operativo)
+  'credit_payment',             // Pago de crédito (operativo)
+  'monthly_payment_reminder',   // Recordatorio mensual (operativo)
+] as const;
+
+/**
+ * Valida que el tipo de notificación sea operativo esencial para Partner
+ */
+function isOperativeType(type: string): boolean {
+  return OPERATIVE_PARTNER_TYPES.includes(type as any);
+}
+
+/**
  * Crear notificación para Partner
- * Se inserta en client_notifications con business_id
+ * ✅ CORRECCIÓN: Se inserta en 'notifications' (tabla de partners), NO en 'client_notifications'
+ * Maneja errores explícitamente y mapea tipos a valores permitidos
  */
 export async function createPartnerNotification(
   data: PartnerNotificationData
 ): Promise<{ success: boolean; error?: string }> {
   try {
-    const { error } = await supabase
-      .from('client_notifications')
-      .insert({
-        business_id: data.business_id,
-        user_id: data.user_id || null,
-        appointment_id: data.appointment_id || null,
-        client_id: data.client_id || null,
-        type: data.type,
-        title: data.title,
-        message: data.message,
-        read: false,
-        link: data.link || null,
-        meta: data.meta || null,
-      });
+    // Validar que el tipo sea operativo esencial para Partner
+    if (!isOperativeType(data.type)) {
+      console.warn(`⚠️ [PARTNER NOTIFICATION] Tipo no operativo ignorado: ${data.type}`);
+      return { success: false, error: `Tipo de notificación no operativo: ${data.type}` };
+    }
+
+    // La tabla notifications no tiene constraint de tipos, usamos el tipo interno directamente
+    const insertData = {
+      user_id: data.user_id || null,
+      type: data.type,
+      title: data.title,
+      message: data.message,
+      read: false,
+      link: data.link || null,
+    };
+
+    console.log(`📨 [PARTNER NOTIFICATION] Insertando en 'notifications':`, {
+      type: data.type,
+      user_id: data.user_id,
+      business_id: data.business_id,
+      appointment_id: data.appointment_id,
+    });
+
+    const { data: insertedData, error } = await supabase
+      .from('notifications')
+      .insert(insertData)
+      .select()
+      .single();
 
     if (error) {
-      console.error('Error creating partner notification:', error);
+      console.error('❌ [PARTNER NOTIFICATION] Error al insertar notificación:', {
+        error: error.message,
+        code: error.code,
+        details: error.details,
+        hint: error.hint,
+        type: data.type,
+        insertData,
+      });
       return { success: false, error: error.message };
     }
 
+    console.log(`✅ [PARTNER NOTIFICATION] Notificación creada exitosamente:`, {
+      id: insertedData?.id,
+      type: data.type,
+    });
+
     return { success: true };
   } catch (error: any) {
-    console.error('Error creating partner notification:', error);
-    return { success: false, error: error.message };
+    console.error('❌ [NOTIFICATION] Excepción al crear notificación:', {
+      error: error.message,
+      stack: error.stack,
+      originalType: data.type,
+      data,
+    });
+    return { success: false, error: error.message || 'Error desconocido al crear notificación' };
   }
 }
 
@@ -67,7 +123,7 @@ export async function createPartnerNotification(
  */
 export async function notifyNewAppointment(
   businessId: string,
-  userId: string,
+  userId: string, // Este es el profile.id, pero necesitamos obtener owner_id del negocio
   appointmentId: string,
   clientId: string,
   clientName: string,
@@ -75,9 +131,26 @@ export async function notifyNewAppointment(
   appointmentTime: string,
   language: 'es' | 'en' = 'es'
 ): Promise<void> {
+  // Obtener owner_id del negocio
+  let ownerId = userId;
+  try {
+    const { data: business } = await supabase
+      .from('businesses')
+      .select('owner_id')
+      .eq('id', businessId)
+      .single();
+    
+    if (business?.owner_id) {
+      ownerId = business.owner_id;
+    }
+  } catch (err) {
+    console.error('Error getting business owner_id:', err);
+    // Continuar con userId como fallback
+  }
+
   await createPartnerNotification({
     business_id: businessId,
-    user_id: userId,
+    user_id: ownerId,
     appointment_id: appointmentId,
     client_id: clientId,
     type: 'new_appointment',
@@ -96,7 +169,7 @@ export async function notifyNewAppointment(
  */
 export async function notifyAppointmentStatusChange(
   businessId: string,
-  userId: string,
+  userId: string, // Este es el profile.id, pero necesitamos obtener owner_id del negocio
   appointmentId: string,
   clientId: string,
   clientName: string,
@@ -104,6 +177,23 @@ export async function notifyAppointmentStatusChange(
   newStatus: string,
   language: 'es' | 'en' = 'es'
 ): Promise<void> {
+  // Obtener owner_id del negocio
+  let ownerId = userId;
+  try {
+    const { data: business } = await supabase
+      .from('businesses')
+      .select('owner_id')
+      .eq('id', businessId)
+      .single();
+    
+    if (business?.owner_id) {
+      ownerId = business.owner_id;
+    }
+  } catch (err) {
+    console.error('Error getting business owner_id:', err);
+    // Continuar con userId como fallback
+  }
+
   const statusLabels: Record<string, { es: string; en: string }> = {
     pending: { es: 'Pendiente', en: 'Pending' },
     confirmed: { es: 'Confirmada', en: 'Confirmed' },
@@ -118,7 +208,7 @@ export async function notifyAppointmentStatusChange(
 
   await createPartnerNotification({
     business_id: businessId,
-    user_id: userId,
+    user_id: ownerId,
     appointment_id: appointmentId,
     client_id: clientId,
     type: 'appointment_status_change',

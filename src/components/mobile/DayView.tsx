@@ -492,7 +492,11 @@ export function DayView({ date, filters, appointmentToOpen, onAppointmentOpened 
         return;
       }
 
-      toast.success("Estado actualizado");
+      // Toast con ID único para evitar duplicados
+      toast.success("Estado actualizado", {
+        id: `status-updated-${selectedAppointment.id}-${Date.now()}`,
+        duration: 4000,
+      });
 
       // Crear notificación para Partner sobre el cambio de status
       if (oldStatus !== dbStatus && profile?.business_id && profile?.id) {

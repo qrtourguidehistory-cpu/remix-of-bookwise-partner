@@ -49,34 +49,182 @@ export default function MobileLayout({ children }: MobileLayoutProps) {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [hasUnread, setHasUnread] = useState(false);
 
+  // Tipos de notificaciones operativas esenciales para Partner
+  // El Partner NO necesita todas las notificaciones del cliente
+  // Solo notificaciones que requieren acción operativa
+  const ALLOWED_PARTNER_TYPES = [
+    'new_appointment',           // Nueva cita creada
+    'appointment_status_change',  // Cambio crítico de estado
+    'early_arrival_request',      // Solicitud especial (asistencia anticipada)
+    'early_arrival_approved',     // Aprobación de solicitud especial
+    'early_arrival_rejected',     // Rechazo de solicitud especial
+    'review_received',            // Review recibida (puede requerir respuesta)
+    'payment_received',           // Pago recibido (operativo)
+    'payment_reminder',           // Recordatorio de pago mensual (operativo)
+    'credit_payment',             // Pago de crédito (operativo)
+    'monthly_payment_reminder',   // Recordatorio mensual (operativo)
+    // Tipos del sistema (approval, etc.)
+    'approval_approved',
+    'approval_rejected',
+  ] as const;
+
   useEffect(() => {
     if (!profile?.id) return;
 
     const isPartner = !!profile?.business_id;
 
     if (isPartner) {
-      // For partners: fetch and subscribe to business notifications
-      fetchNotifications();
-      
-      const channel = supabase
-        .channel('client-notifications-partner')
-        .on(
-          'postgres_changes',
-          {
-            event: '*',
-            schema: 'public',
-            table: 'client_notifications',
-            filter: `business_id=eq.${profile.business_id}`
-          },
-          () => {
-            fetchNotifications();
-            setHasUnread(true);
+      // ✅ CORRECCIÓN: Partner solo se suscribe a 'notifications', NO a 'client_notifications'
+      // Obtener owner_id del negocio (los triggers insertan con owner_id, no profile.id)
+      let ownerId: string | null = null;
+      let channel: ReturnType<typeof supabase.channel> | null = null;
+      let isSubscribed = false;
+
+      const setupRealtimeSubscription = async () => {
+        try {
+          // Obtener owner_id del negocio
+          const { data: business, error: businessError } = await supabase
+            .from('businesses')
+            .select('owner_id')
+            .eq('id', profile.business_id!)
+            .single();
+
+          if (businessError || !business?.owner_id) {
+            console.error('❌ [REALTIME] Error obteniendo owner_id:', businessError);
+            return;
           }
-        )
-        .subscribe();
+
+          ownerId = business.owner_id;
+          console.log('✅ [REALTIME] Owner ID obtenido:', ownerId);
+
+          // Cargar notificaciones iniciales con owner_id
+          await fetchNotifications(ownerId);
+
+          // Crear canal único para evitar duplicados
+          const channelName = `notifications-partner-${ownerId}-${Date.now()}`;
+          channel = supabase.channel(channelName, {
+            config: {
+              broadcast: { self: false },
+              presence: { key: ownerId },
+            },
+          });
+
+          // Suscribirse a cambios en tiempo real
+          channel
+            .on(
+              'postgres_changes',
+              {
+                event: 'INSERT',
+                schema: 'public',
+                table: 'notifications',
+                filter: `user_id=eq.${ownerId}`,
+              },
+              (payload) => {
+                console.log('🔔 [REALTIME] Nueva notificación recibida:', payload);
+                
+                // Fallback defensivo: Agregar directamente sin refetch completo
+                const newNotif = payload.new as any;
+                
+                // Validar que sea un tipo operativo esencial
+                if (!ALLOWED_PARTNER_TYPES.includes(newNotif.type)) {
+                  console.log(`⚠️ [REALTIME] Tipo ignorado: ${newNotif.type}`);
+                  return;
+                }
+
+                // Procesar y agregar la nueva notificación al estado
+                const timeAgo = formatDistanceToNow(new Date(newNotif.created_at), {
+                  addSuffix: false,
+                  locale: language === 'es' ? es : enUS,
+                });
+
+                let type: Notification['type'] = 'appointment';
+                if (newNotif.type === 'approval_rejected') {
+                  type = 'cancellation';
+                } else if (newNotif.type === 'approval_approved') {
+                  type = 'reminder';
+                }
+
+                const processedNotif: Notification = {
+                  id: newNotif.id,
+                  title: newNotif.title || (language === 'es' ? 'Notificación' : 'Notification'),
+                  message: newNotif.message || '',
+                  time: timeAgo,
+                  type,
+                  read: false,
+                  notificationId: newNotif.id,
+                  notificationTable: 'notifications',
+                  link: newNotif.link,
+                };
+
+                // Agregar al inicio del array (más reciente primero)
+                setNotifications((prev) => {
+                  // Evitar duplicados
+                  if (prev.some((n) => n.id === newNotif.id)) {
+                    console.log('⚠️ [REALTIME] Notificación duplicada ignorada:', newNotif.id);
+                    return prev;
+                  }
+                  return [processedNotif, ...prev];
+                });
+
+                setHasUnread(true);
+              }
+            )
+            .on(
+              'postgres_changes',
+              {
+                event: 'UPDATE',
+                schema: 'public',
+                table: 'notifications',
+                filter: `user_id=eq.${ownerId}`,
+              },
+              (payload) => {
+                console.log('🔔 [REALTIME] Notificación actualizada:', payload);
+                // Actualizar notificación existente (ej: marcada como leída)
+                const updatedNotif = payload.new as any;
+                setNotifications((prev) =>
+                  prev.map((n) =>
+                    n.id === updatedNotif.id
+                      ? { ...n, read: updatedNotif.read || false }
+                      : n
+                  )
+                );
+              }
+            )
+            .subscribe((status) => {
+              console.log('📡 [REALTIME] Estado de suscripción:', status);
+              if (status === 'SUBSCRIBED') {
+                isSubscribed = true;
+                console.log('✅ [REALTIME] Suscrito correctamente a notifications');
+              } else if (status === 'CHANNEL_ERROR') {
+                console.error('❌ [REALTIME] Error en canal:', status);
+              }
+            });
+
+          isSubscribed = true;
+        } catch (error) {
+          console.error('❌ [REALTIME] Error en setup:', error);
+        }
+      };
+
+      setupRealtimeSubscription();
+
+      // Manejo de ciclo de vida: Re-suscribirse al volver de background
+      const handleVisibilityChange = () => {
+        if (document.visibilityState === 'visible' && !isSubscribed && ownerId) {
+          console.log('🔄 [REALTIME] Re-suscribiendo después de volver de background');
+          setupRealtimeSubscription();
+        }
+      };
+
+      document.addEventListener('visibilitychange', handleVisibilityChange);
 
       return () => {
-        supabase.removeChannel(channel);
+        document.removeEventListener('visibilitychange', handleVisibilityChange);
+        if (channel) {
+          console.log('🧹 [REALTIME] Limpiando suscripción');
+          supabase.removeChannel(channel);
+          isSubscribed = false;
+        }
       };
     } else {
       // For clients: fetch and subscribe to user notifications
@@ -105,38 +253,32 @@ export default function MobileLayout({ children }: MobileLayoutProps) {
     }
   }, [profile?.business_id, profile?.id, language]);
 
-  const fetchNotifications = async () => {
+  const fetchNotifications = async (ownerId?: string) => {
     const isPartner = !!profile?.business_id;
 
     if (!isPartner || !profile?.id) return;
 
     try {
-      // For partners: fetch ALL notifications (historial completo) from both tables
-      // Fetch client_notifications for this business (appointment-related)
-      const { data: clientNotifs, error: clientNotifError } = await (supabase
-        .from('client_notifications' as any)
-        .select(`
-          id,
-          type,
-          title,
-          message,
-          read,
-          created_at,
-          appointment_id,
-          appointments (
-            id,
-            status,
-            appointment_date,
-            start_time,
-            clients (full_name)
-          )
-        `)
-        .eq('business_id', profile.business_id)
-        .order('created_at', { ascending: false })
-        .limit(500) as any); // Increased limit for full history
+      // Obtener owner_id si no se proporciona
+      let finalOwnerId = ownerId;
+      if (!finalOwnerId) {
+        const { data: business } = await supabase
+          .from('businesses')
+          .select('owner_id')
+          .eq('id', profile.business_id!)
+          .single();
+        finalOwnerId = business?.owner_id;
+      }
 
-      // Fetch notifications for this user (approval-related and other system notifications)
-      const { data: userNotifs, error: userNotifError } = await (supabase
+      if (!finalOwnerId) {
+        console.error('❌ [FETCH] No se pudo obtener owner_id');
+        return;
+      }
+
+      // ✅ CORRECCIÓN: Partner solo consulta la tabla 'notifications'
+      // ❌ NO consultar client_notifications (esas son para clientes)
+      // Usar owner_id en lugar de profile.id
+      const { data: partnerNotifs, error: partnerNotifError } = await (supabase
         .from('notifications' as any)
         .select(`
           id,
@@ -147,60 +289,49 @@ export default function MobileLayout({ children }: MobileLayoutProps) {
           created_at,
           link
         `)
-        .eq('user_id', profile.id)
+        .eq('user_id', finalOwnerId) // ✅ Usar owner_id, no profile.id
         .order('created_at', { ascending: false })
-        .limit(500) as any); // Increased limit for full history
+        .limit(500) as any);
 
-      if (clientNotifError) {
-        console.error('Error fetching client notifications:', clientNotifError);
-      }
-      if (userNotifError) {
-        console.error('Error fetching user notifications:', userNotifError);
+      if (partnerNotifError) {
+        console.error('Error fetching partner notifications:', partnerNotifError);
+        setNotifications([]);
+        return;
       }
 
-      // Process client_notifications
-      const clientNotifsProcessed: Notification[] = (clientNotifs || []).map((notif: any) => {
-        const apt = notif.appointments;
+      // Filtro defensivo: Solo procesar tipos operativos esenciales
+      const filteredNotifs = (partnerNotifs || []).filter((notif: any) => {
+        const notifType = notif.type || '';
+        const isAllowed = ALLOWED_PARTNER_TYPES.includes(notifType);
         
-        let type: Notification['type'] = 'appointment';
-        if (notif.type === 'cancellation' || notif.type === 'cancelled') {
-          type = 'cancellation';
-        } else if (notif.type === 'reminder' || notif.type === 'confirmation') {
-          type = 'reminder';
-        } else if (notif.type === 'new_appointment' || notif.type === 'early_arrival' || notif.type === 'early_arrival_request') {
-          type = 'appointment';
-        } else if (notif.type === 'review_response') {
-          type = 'reminder'; // Review responses are shown as reminders
-        } else if (notif.type === 'review_response') {
-          type = 'reminder'; // Review responses are shown as reminders
+        if (!isAllowed) {
+          console.log(`⚠️ [PARTNER NOTIFICATIONS] Tipo ignorado: ${notifType} - No es operativo esencial`);
         }
-
-        const timeAgo = formatDistanceToNow(new Date(notif.created_at), {
-          addSuffix: false,
-          locale: language === 'es' ? es : enUS
-        });
-
-        return {
-          id: notif.id,
-          title: notif.title || (language === 'es' ? 'Notificación' : 'Notification'),
-          message: notif.message || '',
-          time: timeAgo,
-          type,
-          appointmentId: apt?.id || notif.appointment_id,
-          appointmentDate: apt?.date || apt?.appointment_date,
-          read: notif.read || false,
-          notificationId: notif.id,
-          notificationTable: 'client_notifications',
-        };
+        
+        return isAllowed;
       });
 
-      // Process user notifications (approval, system notifications)
-      const userNotifsProcessed: Notification[] = (userNotifs || []).map((notif: any) => {
+      // Process partner notifications (solo tipos operativos esenciales)
+      const processedNotifs: Notification[] = filteredNotifs.map((notif: any) => {
+        // Mapear tipos de BD a tipos de UI para visualización
         let type: Notification['type'] = 'appointment';
-        if (notif.type === 'approval_approved') {
-          type = 'reminder'; // Use reminder type for approval notifications
-        } else if (notif.type === 'approval_rejected') {
+        if (notif.type === 'approval_rejected') {
           type = 'cancellation';
+        } else if (notif.type === 'approval_approved') {
+          type = 'reminder';
+        } else if (
+          notif.type === 'new_appointment' || 
+          notif.type === 'appointment_status_change' ||
+          notif.type === 'early_arrival_request' ||
+          notif.type === 'early_arrival_approved' ||
+          notif.type === 'early_arrival_rejected' ||
+          notif.type === 'review_received' ||
+          notif.type === 'payment_received' ||
+          notif.type === 'credit_payment' ||
+          notif.type === 'payment_reminder' ||
+          notif.type === 'monthly_payment_reminder'
+        ) {
+          type = 'appointment'; // Todos los tipos operativos se muestran como 'appointment'
         }
 
         const timeAgo = formatDistanceToNow(new Date(notif.created_at), {
@@ -221,16 +352,11 @@ export default function MobileLayout({ children }: MobileLayoutProps) {
         };
       });
 
-      // Combine and sort by created_at
-      const allNotifs = [...clientNotifsProcessed, ...userNotifsProcessed].sort((a, b) => {
-        // Sort by time (newest first) - approximate from time string
-        return 0; // Will be sorted by created_at in the query
-      });
-
-      setNotifications(allNotifs);
-      setHasUnread(allNotifs.some(n => !n.read));
+      setNotifications(processedNotifs);
+      setHasUnread(processedNotifs.some(n => !n.read));
     } catch (error) {
-      console.error('Error fetching notifications:', error);
+      console.error('Error fetching partner notifications:', error);
+      setNotifications([]);
     }
   };
 

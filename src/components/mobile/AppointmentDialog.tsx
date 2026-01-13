@@ -646,11 +646,14 @@ export function AppointmentDialog({
         cancelled: language === "es" ? "cancelada" : "cancelled",
       };
 
+      // Toast con ID único para evitar duplicados
       toast({
+        id: `status-updated-${appointment.id}-${Date.now()}`,
         title: language === "es" ? "Estado actualizado" : "Status updated",
         description: language === "es" 
           ? `La cita ha sido ${statusLabels[newStatus] || "actualizada"}`
           : `Appointment has been ${statusLabels[newStatus] || "updated"}`,
+        duration: 4000,
       });
       
       setFormData(prev => ({ ...prev, status: newStatus }));
