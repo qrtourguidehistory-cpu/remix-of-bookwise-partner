@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { format, addDays } from "date-fns";
 import { supabase } from "@/lib/supabaseClient";
 import { AppointmentDialog } from "./AppointmentDialog";
@@ -15,6 +15,7 @@ import { generateTimeSlotsFromBusinessHours, formatTime } from "@/lib/timeFormat
 import { toast } from "sonner";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { notifyNextClientWhenAppointmentStarted } from "@/lib/queueNotifications";
+import { useRealtimeAppointments } from "@/hooks/useRealtimeAppointments";
 
 interface StaffCalendarViewProps {
   date: Date;
@@ -75,11 +76,6 @@ export function StaffCalendarView({ date, filters }: StaffCalendarViewProps) {
   const [selectedTime, setSelectedTime] = useState<string | null>(null);
   const [selectedAppointment, setSelectedAppointment] = useState<any>(null);
 
-  useEffect(() => {
-    fetchData();
-    loadTimeFormat();
-  }, [date, filters, profile?.business_id]);
-
   // Update time slots when business hours or time format changes
   useEffect(() => {
     if (businessHours && businessHours.is_open && businessHours.start_time && businessHours.end_time) {
@@ -116,7 +112,7 @@ export function StaffCalendarView({ date, filters }: StaffCalendarViewProps) {
     }
   };
 
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     if (!profile?.business_id) return;
     
     const dateStr = format(date, "yyyy-MM-dd");
@@ -208,7 +204,15 @@ export function StaffCalendarView({ date, filters }: StaffCalendarViewProps) {
       // Set null if no business hours found - useEffect will handle fallback
       setBusinessHours(null);
     }
-  };
+  }, [date, filters, profile?.business_id, language]);
+
+  // Realtime hook to auto-refresh when appointments change
+  useRealtimeAppointments(fetchData);
+
+  useEffect(() => {
+    fetchData();
+    loadTimeFormat();
+  }, [fetchData, profile?.business_id]);
 
   const getAppointmentsForStaffAndTime = (staffId: string, timeSlot: string) => {
     return appointments.filter((apt) => {
@@ -394,8 +398,25 @@ export function StaffCalendarView({ date, filters }: StaffCalendarViewProps) {
 
       toast.success("Estado actualizado");
       
-      // Note: Notification to next client is handled automatically by database trigger
-      // when status changes to "started" - no need to call from frontend
+      // Notify next client when appointment is started
+      if (dbStatus === "started") {
+        try {
+          await notifyNextClientWhenAppointmentStarted({
+            businessId: profile.business_id,
+            currentAppointment: {
+              id: selectedAppointment.id,
+              appointment_date: selectedAppointment.appointment_date,
+              start_time: selectedAppointment.start_time,
+              end_time: selectedAppointment.end_time,
+              staff_id: selectedAppointment.staff_id,
+            },
+            language: language === "es" ? "es" : "en",
+          });
+        } catch (err) {
+          console.error("Error notifying next client:", err);
+          // Don't show error to user, just log it
+        }
+      }
       
       fetchData();
       setDetailViewOpen(false);

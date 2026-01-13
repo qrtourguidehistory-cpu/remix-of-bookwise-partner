@@ -27,6 +27,8 @@ export default function SaleForm() {
   const [clients, setClients] = useState<any[]>([]);
   const [services, setServices] = useState<any[]>([]);
   const [staff, setStaff] = useState<any[]>([]);
+  const [products, setProducts] = useState<any[]>([]);
+  const [selectedProducts, setSelectedProducts] = useState<Array<{product_id: string; quantity: number; unit_price: number}>>([]);
   const [formData, setFormData] = useState({
     client_type: "walk-in",
     client_id: "",
@@ -50,10 +52,11 @@ export default function SaleForm() {
   const fetchData = async () => {
     if (!profile?.business_id) return;
     
-    const [clientsRes, servicesRes, staffRes] = await Promise.all([
+    const [clientsRes, servicesRes, staffRes, productsRes] = await Promise.all([
       supabase.from("clients").select("*").eq("business_id", profile.business_id).order("full_name"),
       supabase.from("services").select("*").eq("business_id", profile.business_id).eq("is_active", true).order("name"),
       supabase.from("staff").select("*").eq("business_id", profile.business_id).eq("is_active", true).order("full_name"),
+      supabase.from("inventory").select("*").eq("business_id", profile.business_id).eq("is_active", true).order("name"),
     ]);
 
     const clientsList = clientsRes.data || [];
@@ -61,6 +64,7 @@ export default function SaleForm() {
 
     if (servicesRes.data) setServices(servicesRes.data);
     if (staffRes.data) setStaff(staffRes.data);
+    if (productsRes.data) setProducts(productsRes.data);
   };
 
   const handleServiceSelect = (serviceId: string) => {
@@ -104,21 +108,80 @@ export default function SaleForm() {
     }
 
     try {
+      // Calcular total de productos
+      let productsTotal = 0;
+      const inventoryUsed: Array<{product_id: string; product_name: string; quantity: number; unit_price: number; cost_price: number}> = [];
+      
+      for (const selected of selectedProducts) {
+        const product = products.find(p => p.id === selected.product_id);
+        if (product) {
+          const subtotal = selected.quantity * selected.unit_price;
+          productsTotal += subtotal;
+          inventoryUsed.push({
+            product_id: product.id,
+            product_name: product.name,
+            quantity: selected.quantity,
+            unit_price: selected.unit_price,
+            cost_price: product.cost_price || 0,
+          });
+          
+          // Actualizar stock del producto
+          const newStock = product.current_stock - selected.quantity;
+          if (newStock < 0) {
+            toast({
+              title: "Error",
+              description: language === "es" 
+                ? `Stock insuficiente para ${product.name}` 
+                : `Insufficient stock for ${product.name}`,
+              variant: "destructive",
+            });
+            setLoading(false);
+            return;
+          }
+          
+          // Actualizar stock
+          const { error: stockError } = await supabase
+            .from("inventory")
+            .update({ current_stock: newStock })
+            .eq("id", product.id);
+          
+          if (stockError) {
+            console.error("Error updating stock:", stockError);
+            // Continuar aunque falle la actualización de stock
+          }
+          
+          // Registrar movimiento de inventario
+          await supabase.from("inventory_movements").insert({
+            business_id: profile.business_id,
+            inventory_id: product.id,
+            movement_type: "out",
+            quantity: selected.quantity,
+            reference_type: "sale",
+            notes: `Venta a ${formData.client_name || "Walk-in"}`,
+          });
+        }
+      }
+      
+      // Calcular precio total (servicio + productos)
+      const servicePrice = parseFloat(formData.price_usd) || 0;
+      const totalPrice = servicePrice + productsTotal;
+      
       const saleData = {
         business_id: profile.business_id,
         client_id: formData.client_type === "existing" ? formData.client_id : null,
         client_name: formData.client_name || "Walk-in",
         client_type: formData.client_type,
         service_id: formData.service_id || null,
-        service_name: formData.service_name,
+        service_name: formData.service_name || (selectedProducts.length > 0 ? "Venta de productos" : ""),
         staff_id: formData.staff_id || null,
-        price_usd: parseFloat(formData.price_usd) || 0,
+        price_usd: totalPrice,
         price_mxn: parseFloat(formData.price_mxn) || 0,
         tip_amount: parseFloat(formData.tip_amount) || 0,
         payment_method: formData.payment_method,
         notes: formData.notes,
         sale_date: new Date().toISOString().split("T")[0],
         sale_time: new Date().toTimeString().split(" ")[0],
+        inventory_used: selectedProducts.length > 0 ? inventoryUsed : null,
       };
       
       const { error } = await supabase.from("sales").insert(saleData);

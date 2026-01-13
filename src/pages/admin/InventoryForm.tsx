@@ -87,8 +87,13 @@ export default function InventoryForm() {
 
       navigate("/admin/inventory");
     } catch (error: any) {
-      toast.error(isEditMode ? "Error updating product" : "Error adding product");
-      console.error(error);
+      console.error("Error saving product:", error);
+      toast.error(
+        isEditMode ? "Error updating product" : "Error adding product",
+        {
+          description: error.message || (language === "es" ? "Verifica que todos los campos requeridos estén completos" : "Verify all required fields are complete"),
+        }
+      );
     } finally {
       setLoading(false);
     }

@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { format, startOfWeek, addDays, isSameDay } from "date-fns";
 import { es } from "date-fns/locale";
 import { toast } from "sonner";
@@ -11,6 +11,7 @@ import { formatTime } from "@/lib/timeFormat";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Plus } from "lucide-react";
+import { useRealtimeAppointments } from "@/hooks/useRealtimeAppointments";
 
 interface WeekViewProps {
   date: Date;
@@ -45,18 +46,13 @@ export function WeekView({ date, filters }: WeekViewProps) {
   const weekStart = startOfWeek(date, { weekStartsOn: 1 });
   const weekDays = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
 
-  useEffect(() => {
-    if (profile?.business_id) {
-      fetchAppointments();
-    }
-  }, [date, filters, profile?.business_id]);
-
-  const fetchAppointments = async () => {
+  const fetchAppointments = useCallback(async () => {
     if (!profile?.business_id) return;
     
     setLoading(true);
-    const weekEnd = addDays(weekStart, 6);
-    const startDateStr = format(weekStart, "yyyy-MM-dd");
+    const currentWeekStart = startOfWeek(date, { weekStartsOn: 1 });
+    const weekEnd = addDays(currentWeekStart, 6);
+    const startDateStr = format(currentWeekStart, "yyyy-MM-dd");
     const endExclusiveStr = format(addDays(weekEnd, 1), "yyyy-MM-dd");
 
     let query = supabase
@@ -97,7 +93,16 @@ export function WeekView({ date, filters }: WeekViewProps) {
       setAppointments(data || []);
     }
     setLoading(false);
-  };
+  }, [date, filters, profile?.business_id]);
+
+  // Realtime hook to auto-refresh when appointments change
+  useRealtimeAppointments(fetchAppointments);
+
+  useEffect(() => {
+    if (profile?.business_id) {
+      fetchAppointments();
+    }
+  }, [fetchAppointments, profile?.business_id]);
 
   const getAppointmentsForDay = (day: Date) => {
     const dayStr = format(day, "yyyy-MM-dd");

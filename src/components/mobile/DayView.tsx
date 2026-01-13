@@ -470,6 +470,9 @@ export function DayView({ date, filters, appointmentToOpen, onAppointmentOpened 
     const dbStatus: ValidStatus = validStatuses.includes(status as ValidStatus) ? status as ValidStatus : 'confirmed';
     
     try {
+      // Obtener el status anterior
+      const oldStatus = selectedAppointment.status || "pending";
+      
       const { error, data } = await supabase
         .from("appointments")
         .update({ status: dbStatus as "pending" | "confirmed" | "completed" | "cancelled" | "no_show" })
@@ -490,9 +493,47 @@ export function DayView({ date, filters, appointmentToOpen, onAppointmentOpened 
       }
 
       toast.success("Estado actualizado");
+
+      // Crear notificación para Partner sobre el cambio de status
+      if (oldStatus !== dbStatus && profile?.business_id && profile?.id) {
+        try {
+          const { notifyAppointmentStatusChange } = await import("@/lib/partnerNotificationService");
+          const clientName = (selectedAppointment.clients as any)?.full_name || "Cliente";
+          await notifyAppointmentStatusChange(
+            profile.business_id,
+            profile.id,
+            selectedAppointment.id,
+            selectedAppointment.client_id || "",
+            clientName,
+            oldStatus,
+            dbStatus,
+            language === "es" ? "es" : "en"
+          );
+        } catch (err) {
+          console.error("Error creating status change notification:", err);
+          // No mostrar error al usuario, solo log
+        }
+      }
       
-      // Note: Notification to next client is handled automatically by database trigger
-      // when status changes to "started" - no need to call from frontend
+      // Notify next client when appointment is started
+      if (dbStatus === "started") {
+        try {
+          await notifyNextClientWhenAppointmentStarted({
+            businessId: profile.business_id,
+            currentAppointment: {
+              id: selectedAppointment.id,
+              appointment_date: selectedAppointment.appointment_date,
+              start_time: selectedAppointment.start_time,
+              end_time: selectedAppointment.end_time,
+              staff_id: selectedAppointment.staff_id,
+            },
+            language: language === "es" ? "es" : "en",
+          });
+        } catch (err) {
+          console.error("Error notifying next client:", err);
+          // Don't show error to user, just log it
+        }
+      }
       
       fetchAppointments();
       setDetailViewOpen(false);

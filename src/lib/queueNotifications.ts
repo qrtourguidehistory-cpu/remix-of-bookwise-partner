@@ -15,7 +15,7 @@ export async function notifyNextClientWhenAppointmentStarted(params: {
   language?: Language;
 }): Promise<
   | { ok: true; skipped?: false; nextAppointmentId: string }
-  | { ok: true; skipped: true; reason: "no_next" | "no_phone" | "missing_context" }
+  | { ok: true; skipped: true; reason: "no_next" | "no_phone" | "missing_context" | "no_user_id" }
   | { ok: false; reason: string }
 > {
   const language = params.language ?? "es";
@@ -33,7 +33,7 @@ export async function notifyNextClientWhenAppointmentStarted(params: {
       id,
       start_time,
       client_id,
-      clients!appointments_client_id_fkey(full_name, phone)
+      clients!appointments_client_id_fkey(id, user_id, full_name, phone, email)
     `
     )
     .eq("business_id", params.businessId)
@@ -54,9 +54,15 @@ export async function notifyNextClientWhenAppointmentStarted(params: {
 
   const clientName = nextAppointment.clients?.full_name ?? (language === "es" ? "Cliente" : "Client");
   const phone = nextAppointment.clients?.phone ?? null;
+  const clientUserId = nextAppointment.clients?.user_id ?? null;
 
-  if (!phone) return { ok: true, skipped: true, reason: "no_phone" };
+  // Message for notification in app
+  const notificationMessage =
+    language === "es"
+      ? `El staff inició una cita y eres el siguiente en turno. Por favor ve acercándote al establecimiento.`
+      : `Staff started an appointment and you're next in line. Please start heading to the establishment.`;
 
+  // Message for SMS (softer, more detailed)
   const dateText = (() => {
     try {
       return new Date(appointmentDate).toLocaleDateString(language === "es" ? "es-ES" : "en-US");
@@ -65,23 +71,47 @@ export async function notifyNextClientWhenAppointmentStarted(params: {
     }
   })();
 
-  // This is intentionally softer than the "next_in_queue" reminder copy ("puedes venir ahora"),
-  // because it's triggered when the previous appointment is marked as started (not completed).
-  const message =
+  const smsMessage =
     language === "es"
       ? `Hola ${clientName}, eres el siguiente. Por favor ve preparándote. Tu cita es el ${dateText} a las ${nextAppointment.start_time}.`
       : `Hi ${clientName}, you're next. Please get ready. Your appointment is on ${dateText} at ${nextAppointment.start_time}.`;
 
-  const { error: invokeError } = await supabase.functions.invoke("send-sms-reminder", {
-    body: {
-      to: phone,
-      message,
-      appointmentId: nextAppointment.id,
-      businessId: params.businessId,
-    },
-  });
+  // Create notification in client_notifications if user_id exists
+  if (clientUserId) {
+    const { error: notificationError } = await supabase
+      .from("client_notifications")
+      .insert({
+        user_id: clientUserId,
+        appointment_id: nextAppointment.id,
+        business_id: params.businessId,
+        type: "next_in_queue",
+        title: language === "es" ? "Eres el siguiente" : "You're next",
+        message: notificationMessage,
+        read: false,
+      });
 
-  if (invokeError) return { ok: false, reason: invokeError.message };
+    if (notificationError) {
+      console.error("Error creating client notification:", notificationError);
+      // Continue even if notification creation fails
+    }
+  }
+
+  // Send SMS if phone exists
+  if (phone) {
+    const { error: invokeError } = await supabase.functions.invoke("send-sms-reminder", {
+      body: {
+        to: phone,
+        message: smsMessage,
+        appointmentId: nextAppointment.id,
+        businessId: params.businessId,
+      },
+    });
+
+    if (invokeError) {
+      console.error("Error sending SMS:", invokeError);
+      // Continue even if SMS fails
+    }
+  }
 
   return { ok: true, nextAppointmentId: nextAppointment.id };
 }

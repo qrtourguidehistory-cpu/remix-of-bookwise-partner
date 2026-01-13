@@ -306,40 +306,8 @@ export default function MobileLayout({ children }: MobileLayoutProps) {
 
   const handleOpenNotifications = async () => {
     setNotificationsOpen(true);
-    
-    // Mark all unread notifications as read when opening the panel
-    const unreadNotifications = notifications.filter(n => !n.read && n.notificationId);
-    if (unreadNotifications.length > 0) {
-      try {
-        // Group by table to batch updates
-        const byTable: Record<string, string[]> = {};
-        unreadNotifications.forEach(notif => {
-          const table = notif.notificationTable || 'client_notifications';
-          if (!byTable[table]) {
-            byTable[table] = [];
-          }
-          if (notif.notificationId) {
-            byTable[table].push(notif.notificationId);
-          }
-        });
-
-        // Update each table
-        for (const [table, ids] of Object.entries(byTable)) {
-          await (supabase
-            .from(table as any)
-            .update({ read: true } as any)
-            .in('id', ids) as any);
-        }
-
-        // Update local state
-        setNotifications(prev => prev.map(n => ({ ...n, read: true })));
-        setHasUnread(false);
-      } catch (error) {
-        console.error('Error marking notifications as read:', error);
-      }
-    } else {
-      setHasUnread(false);
-    }
+    // NO marcar como leídas automáticamente - solo al hacer clic individual
+    // Esto asegura que el historial se mantenga visible
   };
 
   const openAppointmentDetail = (appointmentId: string, appointmentDate?: string) => {
@@ -353,8 +321,24 @@ export default function MobileLayout({ children }: MobileLayoutProps) {
   };
 
   const handleNotificationClick = async (notification: Notification) => {
-    // Note: Notifications are already marked as read when opening the panel
-    // This function only handles navigation
+    // Marcar como leída solo cuando el usuario hace clic en ella
+    if (!notification.read && notification.notificationId) {
+      try {
+        const table = notification.notificationTable || 'client_notifications';
+        await (supabase
+          .from(table as any)
+          .update({ read: true } as any)
+          .eq('id', notification.notificationId) as any);
+
+        // Update local state
+        setNotifications(prev => 
+          prev.map(n => n.id === notification.id ? { ...n, read: true } : n)
+        );
+        setHasUnread(notifications.some(n => n.id !== notification.id && !n.read));
+      } catch (error) {
+        console.error('Error marking notification as read:', error);
+      }
+    }
 
     // Handle navigation based on notification type
     if (notification.link) {
@@ -401,35 +385,40 @@ export default function MobileLayout({ children }: MobileLayoutProps) {
             <div className="space-y-3 mt-6 overflow-y-auto max-h-[55vh]">
               {notifications.length === 0 ? (
                 <div className="text-center py-8 text-muted-foreground">
-                  {language === 'es' ? 'No hay notificaciones recientes' : 'No recent notifications'}
+                  {language === 'es' ? 'No hay notificaciones' : 'No notifications'}
                 </div>
               ) : (
-                notifications.map((notification) => (
-                  <div 
-                    key={notification.id} 
-                    className={`p-4 border border-border rounded-lg ${
-                      notification.type === 'appointment' && notification.appointmentId 
-                        ? 'cursor-pointer hover:bg-accent/50 transition-colors' 
-                        : 'cursor-pointer'
-                    } ${notification.read ? 'opacity-75' : ''}`}
-                    onClick={() => handleNotificationClick(notification)}
-                  >
-                    <div className="flex items-start justify-between">
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2">
-                          <h4 className="font-semibold text-sm">{notification.title}</h4>
-                          {notification.read && (
-                            <Badge variant="secondary" className="text-xs">Leída</Badge>
-                          )}
+                <>
+                  {/* Mostrar todas las notificaciones, no solo las no leídas */}
+                  {notifications.map((notification) => (
+                    <div 
+                      key={notification.id} 
+                      className={`p-4 border border-border rounded-lg ${
+                        notification.type === 'appointment' && notification.appointmentId 
+                          ? 'cursor-pointer hover:bg-accent/50 transition-colors' 
+                          : 'cursor-pointer hover:bg-accent/50 transition-colors'
+                      } ${notification.read ? 'opacity-60 bg-muted/30' : 'bg-card border-primary/20'}`}
+                      onClick={() => handleNotificationClick(notification)}
+                    >
+                      <div className="flex items-start justify-between">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2">
+                            {!notification.read && (
+                              <span className="h-2 w-2 bg-primary rounded-full" />
+                            )}
+                            <h4 className={`font-semibold text-sm ${!notification.read ? 'font-bold' : ''}`}>
+                              {notification.title}
+                            </h4>
+                          </div>
+                          <p className="text-sm text-muted-foreground mt-1">{notification.message}</p>
                         </div>
-                        <p className="text-sm text-muted-foreground mt-1">{notification.message}</p>
+                        <Badge variant="outline" className="text-xs whitespace-nowrap ml-2">
+                          {notification.time}
+                        </Badge>
                       </div>
-                      <Badge variant="outline" className="text-xs whitespace-nowrap ml-2">
-                        {notification.time}
-                      </Badge>
                     </div>
-                  </div>
-                ))
+                  ))}
+                </>
               )}
             </div>
           </SheetContent>

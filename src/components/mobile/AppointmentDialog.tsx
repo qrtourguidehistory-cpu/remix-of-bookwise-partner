@@ -608,6 +608,9 @@ export function AppointmentDialog({
         throw new Error("Business ID is required");
       }
       
+      // Obtener el status anterior antes de actualizar
+      const oldStatus = appointment.status || "pending";
+      
       const { error } = await supabase
         .from("appointments")
         .update({ status: newStatus })
@@ -615,6 +618,26 @@ export function AppointmentDialog({
         .eq("business_id", profile.business_id);
 
       if (error) throw error;
+
+      // Crear notificación para Partner sobre el cambio de status
+      if (oldStatus !== newStatus && profile?.business_id && profile?.id) {
+        try {
+          const { notifyAppointmentStatusChange } = await import("@/lib/partnerNotificationService");
+          await notifyAppointmentStatusChange(
+            profile.business_id,
+            profile.id,
+            appointment.id,
+            appointment.client_id || "",
+            (appointment.clients as any)?.full_name || "Cliente",
+            oldStatus,
+            newStatus,
+            language === "es" ? "es" : "en"
+          );
+        } catch (err) {
+          console.error("Error creating status change notification:", err);
+          // No mostrar error al usuario, solo log
+        }
+      }
 
       const statusLabels: Record<string, string> = {
         confirmed: language === "es" ? "confirmada" : "confirmed",
@@ -632,8 +655,26 @@ export function AppointmentDialog({
       
       setFormData(prev => ({ ...prev, status: newStatus }));
       
-      // Note: Notification to next client is handled automatically by database trigger
-      // when status changes to "started" - no need to call from frontend
+      // Notify next client when appointment is started
+      if (newStatus === "started") {
+        try {
+          const { notifyNextClientWhenAppointmentStarted } = await import("@/lib/queueNotifications");
+          await notifyNextClientWhenAppointmentStarted({
+            businessId: profile.business_id,
+            currentAppointment: {
+              id: appointment.id,
+              appointment_date: appointment.appointment_date || appointment.date,
+              start_time: appointment.start_time,
+              end_time: appointment.end_time,
+              staff_id: appointment.staff_id,
+            },
+            language: language === "es" ? "es" : "en",
+          });
+        } catch (err) {
+          console.error("Error notifying next client:", err);
+          // Don't show error to user, just log it
+        }
+      }
       
       onSuccess?.();
     } catch (error) {

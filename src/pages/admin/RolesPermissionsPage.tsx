@@ -24,43 +24,65 @@ Recopilamos información que usted nos proporciona directamente, incluyendo:
 - Nombre y datos de contacto del negocio
 - Información de clientes (nombre, teléfono, email)
 - Datos de citas y servicios
-- Información de pagos y transacciones
+- Información de suscripción y facturación mensual
+
+**IMPORTANTE:** Mí Turnow NO procesa pagos de clientes del establecimiento. Solo procesamos la suscripción mensual del establecimiento mediante débito automático.
 
 ## 2. Uso de la Información
 
 Utilizamos la información recopilada para:
-- Proporcionar y mantener nuestros servicios
-- Enviar recordatorios de citas
-- Procesar pagos y transacciones
+- Proporcionar y mantener nuestros servicios de gestión de citas
+- Enviar recordatorios de citas a sus clientes
+- Procesar la suscripción mensual del establecimiento mediante PayPal o tarjeta de crédito/débito
 - Mejorar nuestros servicios
 - Comunicaciones relacionadas con el servicio
 
-## 3. Compartir Información
+## 3. Procesamiento de Pagos
+
+**Mí Turnow NO procesa pagos de clientes del establecimiento:**
+- Los pagos entre establecimiento y clientes se realizan directamente en el establecimiento
+- Mí Turnow NO tiene acceso a información de tarjetas de crédito de clientes del establecimiento
+- Mí Turnow NO almacena información de pagos de servicios prestados por el establecimiento
+- Solo procesamos la suscripción mensual del establecimiento mediante débito automático por PayPal o tarjeta de crédito/débito registrada
+
+## 4. Compartir Información
 
 No vendemos ni alquilamos su información personal. Solo compartimos datos cuando:
 - Es necesario para proporcionar el servicio
-- Usted da su consentimiento
-- Es requerido por ley
+- Usted da su consentimiento explícito
+- Es requerido por ley o orden judicial
 
-## 4. Seguridad de Datos
+## 5. Seguridad de Datos
 
 Implementamos medidas de seguridad para proteger su información:
-- Encriptación de datos en tránsito y en reposo
-- Acceso restringido a datos personales
+- Encriptación de datos en tránsito (TLS/SSL) y en reposo
+- Acceso restringido a datos personales mediante autenticación
 - Auditorías de seguridad regulares
+- Cumplimiento con estándares de seguridad de la industria
 
-## 5. Sus Derechos
+## 6. Sus Derechos
 
 Usted tiene derecho a:
 - Acceder a sus datos personales
 - Corregir información inexacta
-- Solicitar eliminación de datos
-- Exportar sus datos
+- Solicitar eliminación de datos (sujeto a retención legal)
+- Exportar sus datos en formato estándar
+- Revocar consentimiento en cualquier momento
 
-## 6. Contacto
+## 7. Limitación de Responsabilidad
 
-Para preguntas sobre privacidad, contáctenos en:
-soporte@miturnow.com
+Mí Turnow no se hace responsable por:
+- Pagos no procesados entre establecimiento y clientes (no procesamos estos pagos)
+- Disputas de pago entre establecimiento y clientes
+- Pérdidas de datos debido a uso indebido de la plataforma
+- Daños indirectos o consecuentes derivados del uso del servicio
+
+## 8. Contacto
+
+Para preguntas sobre privacidad, contáctenos:
+- Teléfono: +1 809-219-5141
+- Email: soporte@miturnow.com
+- Horario de atención: Lunes a Viernes, 9:00 AM - 6:00 PM (Hora del Este)
   ` : `
 # Privacy Policy
 
@@ -72,43 +94,65 @@ We collect information you provide directly, including:
 - Business name and contact details
 - Client information (name, phone, email)
 - Appointment and service data
-- Payment and transaction information
+- Subscription and monthly billing information
+
+**IMPORTANT:** Mí Turnow does NOT process payments from establishment clients. We only process the establishment's monthly subscription via automatic debit.
 
 ## 2. Use of Information
 
 We use collected information to:
-- Provide and maintain our services
-- Send appointment reminders
-- Process payments and transactions
+- Provide and maintain our appointment management services
+- Send appointment reminders to your clients
+- Process the establishment's monthly subscription via PayPal or credit/debit card
 - Improve our services
 - Service-related communications
 
-## 3. Information Sharing
+## 3. Payment Processing
+
+**Mí Turnow does NOT process payments from establishment clients:**
+- Payments between establishment and clients are made directly at the establishment
+- Mí Turnow does NOT have access to establishment clients' credit card information
+- Mí Turnow does NOT store payment information for services provided by the establishment
+- We only process the establishment's monthly subscription via automatic debit through PayPal or registered credit/debit card
+
+## 4. Information Sharing
 
 We do not sell or rent your personal information. We only share data when:
 - Necessary to provide the service
-- You give consent
-- Required by law
+- You give explicit consent
+- Required by law or court order
 
-## 4. Data Security
+## 5. Data Security
 
 We implement security measures to protect your information:
-- Encryption of data in transit and at rest
-- Restricted access to personal data
+- Encryption of data in transit (TLS/SSL) and at rest
+- Restricted access to personal data through authentication
 - Regular security audits
+- Compliance with industry security standards
 
-## 5. Your Rights
+## 6. Your Rights
 
 You have the right to:
 - Access your personal data
 - Correct inaccurate information
-- Request data deletion
-- Export your data
+- Request data deletion (subject to legal retention)
+- Export your data in standard format
+- Revoke consent at any time
 
-## 6. Contact
+## 7. Limitation of Liability
 
-For privacy questions, contact us at:
-support@miturnow.com
+Mí Turnow is not responsible for:
+- Unprocessed payments between establishment and clients (we do not process these payments)
+- Payment disputes between establishment and clients
+- Data loss due to misuse of the platform
+- Indirect or consequential damages arising from use of the service
+
+## 8. Contact
+
+For privacy questions, contact us:
+- Phone: +1 809-219-5141
+- Email: support@miturnow.com
+- Business hours: Monday to Friday, 9:00 AM - 6:00 PM (Eastern Time)
   `;
 
   const termsContent = language === "es" ? `
@@ -118,48 +162,101 @@ support@miturnow.com
 
 ## 1. Aceptación de Términos
 
-Al utilizar Mí Turnow Partner, usted acepta estos términos y condiciones.
+Al utilizar Mí Turnow Partner, usted acepta estos términos y condiciones en su totalidad. Si no está de acuerdo, no debe utilizar el servicio.
 
 ## 2. Descripción del Servicio
 
 Mí Turnow Partner es una plataforma de gestión de citas que permite:
 - Programar y administrar citas
 - Gestionar clientes y servicios
-- Procesar pagos
 - Enviar notificaciones y recordatorios
+- Gestionar inventario y ventas de productos
+
+**IMPORTANTE - PROCESAMIENTO DE PAGOS:**
+Mí Turnow NO procesa pagos de clientes del establecimiento. Los pagos entre establecimiento y clientes se realizan directamente en el establecimiento. Mí Turnow solo procesa la suscripción mensual del establecimiento mediante débito automático por PayPal o tarjeta de crédito/débito registrada.
 
 ## 3. Responsabilidades del Usuario
 
 Usted se compromete a:
-- Proporcionar información veraz y actualizada
-- Mantener la confidencialidad de su cuenta
-- No usar el servicio para fines ilegales
-- Respetar la privacidad de sus clientes
+- Proporcionar información veraz, completa y actualizada
+- Mantener la confidencialidad de su cuenta y credenciales
+- No usar el servicio para fines ilegales o fraudulentos
+- Respetar la privacidad de sus clientes y cumplir con leyes de protección de datos
+- Ser responsable de todos los pagos realizados desde su cuenta
+- Notificar inmediatamente cualquier uso no autorizado de su cuenta
 
-## 4. Pagos y Facturación
+## 4. Suscripción y Facturación
 
-- Los precios están sujetos a cambios con aviso previo
-- Las facturas se emiten mensualmente
-- El impago puede resultar en suspensión del servicio
+**Suscripción Mensual:**
+- La suscripción se cobra automáticamente cada mes mediante PayPal o tarjeta de crédito/débito registrada
+- Los precios están sujetos a cambios con aviso previo de 30 días
+- El impago puede resultar en suspensión inmediata del servicio
+- No hay reembolsos por períodos parciales de suscripción
+- Usted autoriza el débito automático mensual al aceptar estos términos
+
+**Pagos del Establecimiento:**
+- Mí Turnow NO procesa, almacena ni tiene acceso a pagos entre establecimiento y clientes
+- El establecimiento es responsable de procesar sus propios pagos de servicios
+- Mí Turnow no se hace responsable por disputas de pago entre establecimiento y clientes
 
 ## 5. Propiedad Intelectual
 
-Todo el contenido, marcas y software son propiedad de Mí Turnow o sus licenciantes.
+Todo el contenido, marcas, logos y software son propiedad exclusiva de Mí Turnow o sus licenciantes. Está prohibido:
+- Copiar, modificar o distribuir el software sin autorización
+- Usar las marcas sin permiso escrito
+- Realizar ingeniería inversa del software
 
-## 6. Limitación de Responsabilidad
+## 6. Limitación de Responsabilidad (Cláusula Anti-Demandas)
 
-No somos responsables por:
-- Pérdidas indirectas o consecuentes
-- Interrupciones temporales del servicio
-- Acciones de terceros
+**EXENCIÓN TOTAL DE RESPONSABILIDAD:**
 
-## 7. Terminación
+Mí Turnow, sus afiliados, directores, empleados y agentes NO serán responsables bajo ninguna circunstancia por:
 
-Podemos suspender o terminar su acceso por violación de estos términos.
+- **Pérdidas financieras:** Pérdidas de ingresos, beneficios, datos, oportunidades comerciales o daños indirectos, consecuentes o punitivos
+- **Pagos no procesados:** Disputas de pago entre establecimiento y clientes (no procesamos estos pagos)
+- **Interrupciones del servicio:** Pérdidas por interrupciones temporales, mantenimiento programado o no programado
+- **Acciones de terceros:** Daños causados por proveedores de servicios externos, clientes del establecimiento o terceros
+- **Uso indebido:** Daños resultantes del uso incorrecto o no autorizado del servicio
+- **Pérdida de datos:** Pérdida de datos debido a errores del usuario, fallos técnicos o causas fuera de nuestro control razonable
 
-## 8. Modificaciones
+**LÍMITE MÁXIMO DE RESPONSABILIDAD:**
 
-Nos reservamos el derecho de modificar estos términos con notificación previa.
+En ningún caso la responsabilidad total de Mí Turnow excederá el monto pagado por el usuario en los últimos 12 meses.
+
+**RENUNCIA DE GARANTÍAS:**
+
+El servicio se proporciona "TAL CUAL" y "SEGÚN DISPONIBILIDAD" sin garantías de ningún tipo, expresas o implícitas, incluyendo pero no limitado a garantías de comerciabilidad, idoneidad para un propósito particular o no infracción.
+
+## 7. Indemnización
+
+Usted acepta indemnizar, defender y eximir de responsabilidad a Mí Turnow, sus afiliados, directores, empleados y agentes de cualquier reclamo, demanda, pérdida, responsabilidad y gasto (incluyendo honorarios legales razonables) que surjan de:
+- Su uso del servicio
+- Violación de estos términos
+- Violación de derechos de terceros
+- Disputas con sus clientes relacionadas con pagos o servicios
+
+## 8. Terminación
+
+Podemos suspender o terminar su acceso inmediatamente sin previo aviso por:
+- Violación de estos términos
+- Uso fraudulento o ilegal del servicio
+- Impago de suscripción
+- Cualquier actividad que consideremos perjudicial para el servicio
+
+## 9. Modificaciones
+
+Nos reservamos el derecho de modificar estos términos en cualquier momento. Las modificaciones entrarán en vigor 30 días después de la notificación. El uso continuado del servicio después de la modificación constituye aceptación de los nuevos términos.
+
+## 10. Ley Aplicable y Jurisdicción
+
+Estos términos se rigen por las leyes de la República Dominicana. Cualquier disputa se resolverá exclusivamente en los tribunales competentes de la República Dominicana.
+
+## 11. Contacto
+
+Para consultas sobre estos términos:
+- Teléfono: +1 809-219-5141
+- Email: soporte@miturnow.com
+- Horario: Lunes a Viernes, 9:00 AM - 6:00 PM (Hora del Este)
   ` : `
 # Terms and Conditions
 
@@ -167,48 +264,101 @@ Last updated: January 2026
 
 ## 1. Acceptance of Terms
 
-By using Mí Turnow Partner, you accept these terms and conditions.
+By using Mí Turnow Partner, you fully accept these terms and conditions. If you do not agree, you must not use the service.
 
 ## 2. Service Description
 
 Mí Turnow Partner is an appointment management platform that allows:
 - Scheduling and managing appointments
 - Managing clients and services
-- Processing payments
 - Sending notifications and reminders
+- Managing inventory and product sales
+
+**IMPORTANT - PAYMENT PROCESSING:**
+Mí Turnow does NOT process payments from establishment clients. Payments between establishment and clients are made directly at the establishment. Mí Turnow only processes the establishment's monthly subscription via automatic debit through PayPal or registered credit/debit card.
 
 ## 3. User Responsibilities
 
 You agree to:
-- Provide accurate and up-to-date information
-- Maintain account confidentiality
-- Not use the service for illegal purposes
-- Respect your clients' privacy
+- Provide truthful, complete, and up-to-date information
+- Maintain confidentiality of your account and credentials
+- Not use the service for illegal or fraudulent purposes
+- Respect your clients' privacy and comply with data protection laws
+- Be responsible for all payments made from your account
+- Immediately notify any unauthorized use of your account
 
-## 4. Payments and Billing
+## 4. Subscription and Billing
 
-- Prices are subject to change with prior notice
-- Invoices are issued monthly
-- Non-payment may result in service suspension
+**Monthly Subscription:**
+- Subscription is automatically charged monthly via PayPal or registered credit/debit card
+- Prices are subject to change with 30 days prior notice
+- Non-payment may result in immediate service suspension
+- No refunds for partial subscription periods
+- You authorize automatic monthly debit by accepting these terms
+
+**Establishment Payments:**
+- Mí Turnow does NOT process, store, or have access to payments between establishment and clients
+- The establishment is responsible for processing its own service payments
+- Mí Turnow is not responsible for payment disputes between establishment and clients
 
 ## 5. Intellectual Property
 
-All content, trademarks, and software are property of Mí Turnow or its licensors.
+All content, trademarks, logos, and software are the exclusive property of Mí Turnow or its licensors. It is prohibited to:
+- Copy, modify, or distribute the software without authorization
+- Use trademarks without written permission
+- Reverse engineer the software
 
-## 6. Limitation of Liability
+## 6. Limitation of Liability (Anti-Lawsuit Clause)
 
-We are not responsible for:
-- Indirect or consequential losses
-- Temporary service interruptions
-- Third-party actions
+**TOTAL LIABILITY EXEMPTION:**
 
-## 7. Termination
+Mí Turnow, its affiliates, directors, employees, and agents shall NOT be liable under any circumstances for:
 
-We may suspend or terminate your access for violation of these terms.
+- **Financial losses:** Loss of income, profits, data, business opportunities, or indirect, consequential, or punitive damages
+- **Unprocessed payments:** Payment disputes between establishment and clients (we do not process these payments)
+- **Service interruptions:** Losses due to temporary interruptions, scheduled or unscheduled maintenance
+- **Third-party actions:** Damages caused by external service providers, establishment clients, or third parties
+- **Misuse:** Damages resulting from incorrect or unauthorized use of the service
+- **Data loss:** Data loss due to user errors, technical failures, or causes beyond our reasonable control
 
-## 8. Modifications
+**MAXIMUM LIABILITY LIMIT:**
 
-We reserve the right to modify these terms with prior notification.
+In no case shall Mí Turnow's total liability exceed the amount paid by the user in the last 12 months.
+
+**WARRANTY DISCLAIMER:**
+
+The service is provided "AS IS" and "AS AVAILABLE" without warranties of any kind, express or implied, including but not limited to warranties of merchantability, fitness for a particular purpose, or non-infringement.
+
+## 7. Indemnification
+
+You agree to indemnify, defend, and hold harmless Mí Turnow, its affiliates, directors, employees, and agents from any claim, demand, loss, liability, and expense (including reasonable legal fees) arising from:
+- Your use of the service
+- Violation of these terms
+- Violation of third-party rights
+- Disputes with your clients related to payments or services
+
+## 8. Termination
+
+We may suspend or terminate your access immediately without prior notice for:
+- Violation of these terms
+- Fraudulent or illegal use of the service
+- Subscription non-payment
+- Any activity we consider harmful to the service
+
+## 9. Modifications
+
+We reserve the right to modify these terms at any time. Modifications will take effect 30 days after notification. Continued use of the service after modification constitutes acceptance of the new terms.
+
+## 10. Applicable Law and Jurisdiction
+
+These terms are governed by the laws of the Dominican Republic. Any dispute shall be resolved exclusively in the competent courts of the Dominican Republic.
+
+## 11. Contact
+
+For inquiries about these terms:
+- Phone: +1 809-219-5141
+- Email: support@miturnow.com
+- Business hours: Monday to Friday, 9:00 AM - 6:00 PM (Eastern Time)
   `;
 
   const usageGuideContent = language === "es" ? `
@@ -284,8 +434,9 @@ We reserve the right to modify these terms with prior notification.
 ## Soporte
 
 ¿Necesitas ayuda? Contáctanos:
+- Teléfono: +1 809-219-5141
 - Email: soporte@miturnow.com
-- Horario: Lunes a Viernes, 9am - 6pm
+- Horario: Lunes a Viernes, 9:00 AM - 6:00 PM (Hora del Este)
   ` : `
 # Usage Guide
 
@@ -359,8 +510,9 @@ We reserve the right to modify these terms with prior notification.
 ## Support
 
 Need help? Contact us:
+- Phone: +1 809-219-5141
 - Email: support@miturnow.com
-- Hours: Monday to Friday, 9am - 6pm
+- Business hours: Monday to Friday, 9:00 AM - 6:00 PM (Eastern Time)
   `;
 
   return (

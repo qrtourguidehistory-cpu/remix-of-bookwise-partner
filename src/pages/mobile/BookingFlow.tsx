@@ -14,6 +14,8 @@ import { TimeStep } from "@/components/mobile/booking/TimeStep";
 import { ConfirmationStep } from "@/components/mobile/booking/ConfirmationStep";
 import { BookingProgress } from "@/components/mobile/booking/BookingProgress";
 import { BookingNavigation } from "@/components/mobile/booking/BookingNavigation";
+import { useStaffAvailability } from "@/hooks/useStaffAvailability";
+import { useRealtimeEarlyDepartures } from "@/hooks/useRealtimeEarlyDepartures";
 
 const TIME_SLOTS = [
   "7:00am", "7:30am", "8:00am", "8:30am", "9:00am", "9:30am",
@@ -34,10 +36,26 @@ export default function BookingFlow() {
   const [staff, setStaff] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [availableTimes, setAvailableTimes] = useState<string[]>([]);
+  const [earlyDepartureMessage, setEarlyDepartureMessage] = useState<string>("");
   const { language, t } = useLanguage();
   const navigate = useNavigate();
   const { toast } = useToast();
   const { profile } = useAuth();
+  
+  // Hook para consultar disponibilidad del staff
+  const { schedules, timeOff, earlyDepartures, isLoading: availabilityLoading, refetch: refetchAvailability } = useStaffAvailability(
+    selectedStaff || null,
+    selectedDate || null,
+    profile?.business_id || null
+  );
+
+  // Suscripción realtime para salidas anticipadas
+  useRealtimeEarlyDepartures(() => {
+    // Cuando hay cambios en salidas anticipadas, refetch la disponibilidad
+    if (selectedStaff && selectedDate) {
+      refetchAvailability();
+    }
+  });
 
   useEffect(() => {
     if (profile?.business_id) {
@@ -122,6 +140,24 @@ export default function BookingFlow() {
   const filterAvailableTimes = async () => {
     if (!selectedStaff || !selectedDate || !profile?.business_id) return;
 
+    // 0. Verificar si el negocio está cerrado temporalmente
+    const { data: businessData } = await supabase
+      .from("businesses")
+      .select("temporarily_closed, closed_until")
+      .eq("id", profile.business_id)
+      .single();
+
+    if (businessData?.temporarily_closed) {
+      const closedUntil = businessData.closed_until ? new Date(businessData.closed_until) : null;
+      const now = new Date();
+      // Si closed_until existe y aún no ha pasado, no mostrar horarios disponibles
+      if (closedUntil && closedUntil > now) {
+        setAvailableTimes([]);
+        setEarlyDepartureMessage("");
+        return;
+      }
+    }
+
     const dayOfWeek = selectedDate.getDay();
 
     // 1. Consultar business_hours primero
@@ -139,6 +175,7 @@ export default function BookingFlow() {
     
     if (isClosed) {
       setAvailableTimes([]);
+      setEarlyDepartureMessage("");
       return;
     }
 
@@ -158,24 +195,10 @@ export default function BookingFlow() {
       30
     );
 
-    // 3. Consultar staff_schedules para filtrar más
-    const { data: schedules } = await supabase
-      .from("staff_schedules")
-      .select("*")
-      .eq("staff_id", selectedStaff)
-      .eq("day_of_week", dayOfWeek)
-      .eq("is_available", true);
-
-    const dateStr = selectedDate.toISOString().split("T")[0];
-    const { data: timeOff } = await supabase
-      .from("staff_time_off")
-      .select("*")
-      .eq("staff_id", selectedStaff)
-      .lte("start_date", dateStr)
-      .gte("end_date", dateStr);
-
+    // 3. Verificar staff_time_off (vacaciones/descanso) - si existe, no hay disponibilidad
     if (timeOff && timeOff.length > 0) {
       setAvailableTimes([]);
+      setEarlyDepartureMessage("");
       return;
     }
 
@@ -191,6 +214,40 @@ export default function BookingFlow() {
         const timeValue = time.toLowerCase().replace(/\s/g, "");
         return timeValue >= staffStartTime && timeValue <= staffEndTime;
       });
+    }
+
+    // 5. CRÍTICO: Filtrar slots por staff_early_departures (salidas anticipadas)
+    // La excepción siempre anula al horario regular
+    if (earlyDepartures && earlyDepartures.length > 0) {
+      const earlyDeparture = earlyDepartures[0];
+      const departureTime24 = earlyDeparture.departure_time.substring(0, 5);
+      
+      // Filtrar slots que están después de la hora de salida anticipada
+      availableSlots = availableSlots.filter((time) => {
+        const time24 = convertTo24Hour(time).substring(0, 5);
+        const timeMinutes = timeToMinutes(time24);
+        const departureMinutes = timeToMinutes(departureTime24);
+        
+        // Si el slot está después de la salida anticipada, excluirlo
+        if (timeMinutes >= departureMinutes) {
+          return false; // El slot desaparece por salida anticipada
+        }
+        return true;
+      });
+      
+      // Si no hay slots disponibles después de filtrar, mostrar mensaje
+      if (availableSlots.length === 0) {
+        const departureTime12h = formatTime(departureTime24, '12h');
+        setEarlyDepartureMessage(
+          language === "es" 
+            ? `Horario especial: El profesional se retira antes el día de hoy (${departureTime12h})`
+            : `Special schedule: The professional leaves early today (${departureTime12h})`
+        );
+      } else {
+        setEarlyDepartureMessage("");
+      }
+    } else {
+      setEarlyDepartureMessage("");
     }
 
     // 5. Excluir breaks del negocio (business_hours)
@@ -269,6 +326,18 @@ export default function BookingFlow() {
   const timeToMinutes = (time24: string): number => {
     const [hours, minutes] = time24.split(':').map(Number);
     return hours * 60 + minutes;
+  };
+
+  // Helper: Formatear tiempo (importado de timeFormat)
+  const formatTime = (time24: string, format: '12h' | '24h' = '12h'): string => {
+    if (!time24) return '';
+    const [hours, minutes] = time24.split(':').map(str => parseInt(str, 10));
+    if (format === '24h') {
+      return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
+    }
+    const period = hours >= 12 ? 'pm' : 'am';
+    const displayHours = hours > 12 ? hours - 12 : hours === 0 ? 12 : hours;
+    return `${displayHours}:${String(minutes).padStart(2, '0')}${period}`;
   };
 
   const parseTime = (timeStr: string): { hours: number; minutes: number } | null => {
@@ -371,7 +440,7 @@ export default function BookingFlow() {
       const servicePrice = typeof service.price === 'string' ? parseFloat(service.price) : (service.price || 0);
       const appointmentDateStr = selectedDate?.toISOString().split("T")[0] || format(new Date(), "yyyy-MM-dd");
       
-      const { error } = await supabase.from("appointments").insert({
+      const { data: newAppointment, error } = await supabase.from("appointments").insert({
         business_id: profile?.business_id || null,
         client_id: clientId || null,
         service_id: selectedService,
@@ -382,9 +451,31 @@ export default function BookingFlow() {
         end_time: endTime24h,
         status: "pending",
         payment_amount: servicePrice,
-      });
+      }).select().single();
 
       if (error) throw error;
+
+      // Crear notificación para Partner sobre nueva cita
+      if (newAppointment && profile?.business_id && profile?.id) {
+        try {
+          const { notifyNewAppointment } = await import("@/lib/partnerNotificationService");
+          const appointmentDate = selectedDate ? format(selectedDate, "dd/MM/yyyy") : appointmentDateStr;
+          const appointmentTime = selectedTime;
+          await notifyNewAppointment(
+            profile.business_id,
+            profile.id,
+            newAppointment.id,
+            clientId || "",
+            "Demo Client", // En producción, obtener el nombre real del cliente
+            appointmentDate,
+            appointmentTime,
+            language === "es" ? "es" : "en"
+          );
+        } catch (err) {
+          console.error("Error creating new appointment notification:", err);
+          // No mostrar error al usuario, solo log
+        }
+      }
 
       toast({
         title: t("appointmentConfirmed"),
@@ -446,7 +537,8 @@ export default function BookingFlow() {
           <TimeStep 
             availableTimes={availableTimes} 
             selectedTime={selectedTime} 
-            onTimeChange={setSelectedTime} 
+            onTimeChange={setSelectedTime}
+            earlyDepartureMessage={earlyDepartureMessage}
           />
         )}
 

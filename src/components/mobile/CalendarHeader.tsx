@@ -222,7 +222,7 @@ export function CalendarHeader({ currentDate, onDateChange, view, onViewChange, 
             </SheetTitle>
           </SheetHeader>
           
-          <ScrollArea className="h-[calc(85vh-120px)] mt-6">
+          <ScrollArea className="h-[calc(85vh-120px)] mt-6 pb-safe">
             <div className="space-y-6 pr-4">
               {/* Search */}
               <div className="space-y-2">
@@ -303,7 +303,7 @@ export function CalendarHeader({ currentDate, onDateChange, view, onViewChange, 
             </div>
           </ScrollArea>
 
-          <div className="absolute bottom-0 left-0 right-0 p-4 bg-card border-t">
+          <div className="absolute bottom-0 left-0 right-0 p-4 bg-card border-t pb-safe sticky-footer-safe">
             <div className="flex gap-2">
               <Button variant="outline" onClick={clearAllFilters} className="flex-1">
                 Limpiar Todo

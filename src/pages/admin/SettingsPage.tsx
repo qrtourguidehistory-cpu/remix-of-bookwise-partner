@@ -5,7 +5,7 @@ import { useNavigate } from "react-router-dom";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { useState, useEffect } from "react";
 import { cn } from "@/lib/utils";
-import { BUILD_INFO, getPlatformInfo, getBuildInfoString } from "@/lib/buildInfo";
+import { BUILD_INFO } from "@/lib/buildInfo";
 import { 
   Clock, 
   Users, 
@@ -62,10 +62,6 @@ function FooterText() {
     <div className="mt-8 p-4 border rounded-lg text-center text-sm text-muted-foreground" data-footer-text>
       <p>{language === "es" ? "Versión" : "Version"} {BUILD_INFO.version}</p>
       <p className="mt-1">© 2026 Mí Turnow - {language === "es" ? "Sistema de Gestión de Citas" : "Appointment Management System"}</p>
-      {/* Build stamp for version verification */}
-      <p className="mt-2 text-xs font-mono opacity-60">
-        {getBuildInfoString()} | {getPlatformInfo()}
-      </p>
     </div>
   );
 }
@@ -91,42 +87,42 @@ export default function SettingsPage() {
           label: language === "es" ? "Perfil Público" : "Public Profile",
           description: language === "es" ? "Hacer visible tu negocio para clientes" : "Make your business visible to clients",
           path: "/admin/business-profile",
-          color: "text-emerald-500"
+          color: "text-black dark:text-white"
         },
         {
           icon: Clock,
           label: language === "es" ? "Horarios del Negocio" : "Business Hours",
           description: language === "es" ? "Configurar horarios de apertura y cierre" : "Configure opening and closing hours",
           path: "/admin/business-hours",
-          color: "text-blue-500"
+          color: "text-black dark:text-white"
         },
         {
           icon: Clock,
           label: language === "es" ? "Cerrar Temporalmente" : "Temporary Close",
           description: language === "es" ? "Cerrar establecimiento por 30min, 1h o hasta mañana" : "Close business for 30min, 1h or until tomorrow",
           path: "/admin/temporary-close",
-          color: "text-orange-500"
+          color: "text-black dark:text-white"
         },
         {
           icon: Users,
           label: language === "es" ? "Gestión de Personal" : "Staff Management",
           description: language === "es" ? "Horarios, breaks y vacaciones del equipo" : "Team schedules, breaks and vacations",
           path: "/admin/schedules",
-          color: "text-green-500"
+          color: "text-black dark:text-white"
         },
         {
           icon: Calendar,
           label: language === "es" ? "Configuración de Citas" : "Appointment Settings",
           description: language === "es" ? "Duración de slots, buffer y políticas" : "Slot duration, buffer and policies",
           path: "/admin/appointment-config",
-          color: "text-purple-500"
+          color: "text-black dark:text-white"
         },
         {
           icon: Type,
           label: language === "es" ? "Texto" : "Text",
           description: language === "es" ? "Tamaño de texto y visibilidad del footer" : "Text size and footer visibility",
           path: "/admin/accessibility-settings",
-          color: "text-indigo-500"
+          color: "text-black dark:text-white"
         }
       ]
     },
@@ -138,28 +134,28 @@ export default function SettingsPage() {
           label: language === "es" ? "Métodos de Pago" : "Payment Methods",
           description: language === "es" ? "Configurar formas de pago aceptadas" : "Configure accepted payment methods",
           path: "/admin/payment-methods",
-          color: "text-yellow-500"
+          color: "text-black dark:text-white"
         },
         {
           icon: Database,
           label: language === "es" ? "Comisiones del Personal" : "Staff Commissions",
           description: language === "es" ? "Configurar % de comisiones por servicio" : "Configure commission % per service",
           path: "/admin/commissions",
-          color: "text-orange-500"
+          color: "text-black dark:text-white"
         },
         {
           icon: Package,
           label: language === "es" ? "Inventario" : "Inventory",
           description: language === "es" ? "Gestionar productos y stock" : "Manage products and stock",
           path: "/admin/inventory",
-          color: "text-cyan-500"
+          color: "text-black dark:text-white"
         },
         {
           icon: BarChart3,
           label: language === "es" ? "Dashboard de Inventario" : "Inventory Dashboard",
           description: language === "es" ? "Gráficos y alertas de stock" : "Charts and stock alerts",
           path: "/admin/inventory/dashboard",
-          color: "text-teal-500"
+          color: "text-black dark:text-white"
         }
       ]
     },
@@ -171,14 +167,14 @@ export default function SettingsPage() {
           label: language === "es" ? "Tema y Colores" : "Theme & Colors",
           description: language === "es" ? "Personalizar la apariencia de la app" : "Customize app appearance",
           path: "/admin/theme-settings",
-          color: "text-pink-500"
+          color: "text-black dark:text-white"
         },
         {
           icon: Globe,
           label: language === "es" ? "Idioma y Región" : "Language & Region",
           description: language === "es" ? "Configurar idioma y formato de fechas" : "Configure language and date format",
           path: "/admin/locale-settings",
-          color: "text-indigo-500"
+          color: "text-black dark:text-white"
         }
       ]
     },
@@ -190,14 +186,14 @@ export default function SettingsPage() {
           label: language === "es" ? "Recordatorios" : "Reminders",
           description: language === "es" ? "Configurar recordatorios automáticos" : "Configure automatic reminders",
           path: "/admin/notification-settings",
-          color: "text-red-500"
+          color: "text-black dark:text-white"
         },
         {
           icon: MessageSquare,
           label: language === "es" ? "Plantillas SMS" : "SMS Templates",
           description: language === "es" ? "Personalizar mensajes de texto" : "Customize text messages",
           path: "/admin/sms-templates",
-          color: "text-blue-500"
+          color: "text-black dark:text-white"
         }
       ]
     },
@@ -209,21 +205,21 @@ export default function SettingsPage() {
           label: language === "es" ? "Legal y Ayuda" : "Legal & Help",
           description: language === "es" ? "Políticas, términos y guía de uso" : "Policies, terms and usage guide",
           path: "/admin/roles",
-          color: "text-gray-500"
+          color: "text-black dark:text-white"
         },
         {
           icon: ShieldOff,
           label: language === "es" ? "Clientes bloqueados" : "Blocked Clients",
           description: language === "es" ? "Administrar clientes bloqueados" : "Manage blocked clients",
           path: "/admin/blocked-clients",
-          color: "text-red-500"
+          color: "text-black dark:text-white"
         },
         {
           icon: ShieldOff,
           label: language === "es" ? "Eliminar Cuenta" : "Delete Account",
           description: language === "es" ? "Eliminar permanentemente tu cuenta" : "Permanently delete your account",
           path: "/admin/delete-account",
-          color: "text-red-600"
+          color: "text-black dark:text-white"
         }
       ]
     }
@@ -326,7 +322,7 @@ export default function SettingsPage() {
                         className="flex flex-col items-center justify-start gap-1.5 h-auto min-h-[110px] p-3 w-full whitespace-normal"
                       >
                         <div className={`${item.color} flex-shrink-0`}>
-                          <Icon className="h-6 w-6" />
+                          <Icon className="h-7 w-7 stroke-[1.5]" />
                         </div>
                         <div className="text-center w-full flex flex-col gap-0.5 flex-1 min-w-0 px-1 overflow-visible">
                           <p className="font-medium text-sm leading-tight w-full break-words">

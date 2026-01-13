@@ -102,10 +102,10 @@ export default function ReportsAnalytics() {
     const { start, end } = getDateRange();
 
     try {
-      // Fetch sales data
+      // Fetch sales data (incluyendo ventas de productos)
       const { data: sales, error: salesError } = await supabase
         .from("sales")
-        .select("price_usd, payment_method")
+        .select("price_usd, payment_method, inventory_used, service_name")
         .eq("business_id", profile.business_id)
         .gte("created_at", start)
         .lte("created_at", end);

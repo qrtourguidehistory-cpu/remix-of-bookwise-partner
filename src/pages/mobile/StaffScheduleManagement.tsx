@@ -17,15 +17,16 @@ import { format } from "date-fns";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { useRealtimeEarlyDepartures } from "@/hooks/useRealtimeEarlyDepartures";
 
 const daysOfWeek = [
-  { value: 0, label: "Sunday" },
-  { value: 1, label: "Monday" },
-  { value: 2, label: "Tuesday" },
-  { value: 3, label: "Wednesday" },
-  { value: 4, label: "Thursday" },
-  { value: 5, label: "Friday" },
-  { value: 6, label: "Saturday" },
+  { value: 0, label: "Domingo", labelEn: "Sunday", short: "Dom", shortEn: "Sun" },
+  { value: 1, label: "Lunes", labelEn: "Monday", short: "Lun", shortEn: "Mon" },
+  { value: 2, label: "Martes", labelEn: "Tuesday", short: "Mar", shortEn: "Tue" },
+  { value: 3, label: "Miércoles", labelEn: "Wednesday", short: "Mié", shortEn: "Wed" },
+  { value: 4, label: "Jueves", labelEn: "Thursday", short: "Jue", shortEn: "Thu" },
+  { value: 5, label: "Viernes", labelEn: "Friday", short: "Vie", shortEn: "Fri" },
+  { value: 6, label: "Sábado", labelEn: "Saturday", short: "Sáb", shortEn: "Sat" },
 ];
 
 export default function StaffScheduleManagement() {
@@ -47,8 +48,7 @@ export default function StaffScheduleManagement() {
   const [earlyDepartures, setEarlyDepartures] = useState<any[]>([]);
   const [newEarlyDeparture, setNewEarlyDeparture] = useState({
     date: undefined as Date | undefined,
-    original_end_time: "",
-    actual_end_time: "",
+    departure_time: "",
     reason: "",
   });
   const [newTimeOff, setNewTimeOff] = useState({
@@ -69,6 +69,13 @@ export default function StaffScheduleManagement() {
       fetchEarlyDepartures();
     }
   }, [selectedStaff]);
+
+  // Suscripción realtime para salidas anticipadas
+  useRealtimeEarlyDepartures(() => {
+    if (selectedStaff) {
+      fetchEarlyDepartures();
+    }
+  });
 
   const fetchStaff = async () => {
     if (!profile?.business_id) return;
@@ -115,6 +122,17 @@ export default function StaffScheduleManagement() {
       return;
     }
 
+    if (!profile?.business_id) {
+      toast.error(language === "es" ? "Business ID no encontrado" : "Business ID not found");
+      return;
+    }
+
+    // Validar que start_time < end_time
+    if (newSchedule.start_time >= newSchedule.end_time) {
+      toast.error(language === "es" ? "La hora de inicio debe ser antes de la hora de fin" : "Start time must be before end time");
+      return;
+    }
+
     // Validate break times if provided
     if (newSchedule.break_start && newSchedule.break_end) {
       if (newSchedule.break_start >= newSchedule.break_end) {
@@ -127,8 +145,26 @@ export default function StaffScheduleManagement() {
       }
     }
 
-    const { error } = await supabase.from("staff_schedules").insert({
+    // Verificar si ya existe un horario para este día
+    const { data: existingSchedule } = await supabase
+      .from("staff_schedules")
+      .select("id")
+      .eq("staff_id", selectedStaff)
+      .eq("day_of_week", parseInt(newSchedule.day_of_week))
+      .maybeSingle();
+
+    if (existingSchedule) {
+      toast.error(
+        language === "es" 
+          ? `Ya existe un horario para ${daysOfWeek.find(d => d.value.toString() === newSchedule.day_of_week)?.label}. Elimine el existente primero.`
+          : `A schedule already exists for ${daysOfWeek.find(d => d.value.toString() === newSchedule.day_of_week)?.label}. Delete the existing one first.`
+      );
+      return;
+    }
+
+    const { error, data } = await supabase.from("staff_schedules").insert({
       staff_id: selectedStaff,
+      business_id: profile.business_id, // CRÍTICO: Agregar business_id para RLS
       day_of_week: parseInt(newSchedule.day_of_week),
       start_time: newSchedule.start_time,
       end_time: newSchedule.end_time,
@@ -136,26 +172,44 @@ export default function StaffScheduleManagement() {
       break_end: newSchedule.break_end || null,
       break_notes: newSchedule.break_notes || null,
       is_available: true,
-    });
+    }).select();
 
     if (!error) {
-      toast.success(language === "es" ? "Horario agregado" : "Schedule added");
+      toast.success(language === "es" ? "Horario agregado exitosamente" : "Schedule added successfully");
       setNewSchedule({ day_of_week: "", start_time: "", end_time: "", break_start: "", break_end: "", break_notes: "" });
       fetchSchedules();
     } else {
-      toast.error("Error adding schedule");
+      console.error("Error adding schedule:", error);
+      toast.error(
+        language === "es" 
+          ? `Error al agregar horario: ${error.message || "Error desconocido"}` 
+          : `Error adding schedule: ${error.message || "Unknown error"}`
+      );
     }
   };
 
   const handleDeleteSchedule = async (id: string) => {
+    if (!profile?.business_id) {
+      toast.error(language === "es" ? "Business ID no encontrado" : "Business ID not found");
+      return;
+    }
+
     const { error } = await supabase
       .from("staff_schedules")
       .delete()
-      .eq("id", id);
+      .eq("id", id)
+      .eq("business_id", profile.business_id); // Asegurar que solo se eliminen horarios del negocio correcto
 
     if (!error) {
-      toast.success(language === "es" ? "Horario eliminado" : "Schedule deleted");
+      toast.success(language === "es" ? "Horario eliminado exitosamente" : "Schedule deleted successfully");
       fetchSchedules();
+    } else {
+      console.error("Error deleting schedule:", error);
+      toast.error(
+        language === "es" 
+          ? `Error al eliminar horario: ${error.message || "Error desconocido"}` 
+          : `Error deleting schedule: ${error.message || "Unknown error"}`
+      );
     }
   };
 
@@ -195,30 +249,102 @@ export default function StaffScheduleManagement() {
   };
 
   const handleAddEarlyDeparture = async () => {
-    if (!selectedStaff || !newEarlyDeparture.date || !newEarlyDeparture.original_end_time || !newEarlyDeparture.actual_end_time) {
+    if (!selectedStaff || !newEarlyDeparture.date || !newEarlyDeparture.departure_time) {
       toast.error(language === "es" ? "Complete todos los campos" : "Fill all fields");
       return;
     }
 
-    if (newEarlyDeparture.actual_end_time >= newEarlyDeparture.original_end_time) {
-      toast.error(language === "es" ? "La hora real debe ser antes de la hora programada" : "Actual time must be before scheduled time");
+    if (!profile?.business_id) {
+      toast.error(language === "es" ? "Business ID no encontrado" : "Business ID not found");
       return;
     }
 
     const { error } = await supabase.from("staff_early_departures").insert({
       staff_id: selectedStaff,
-      departure_date: format(newEarlyDeparture.date, "yyyy-MM-dd"),
-      original_end_time: newEarlyDeparture.original_end_time,
-      actual_end_time: newEarlyDeparture.actual_end_time,
-      reason: newEarlyDeparture.reason,
+      business_id: profile.business_id,
+      date: format(newEarlyDeparture.date, "yyyy-MM-dd"),
+      departure_time: newEarlyDeparture.departure_time,
+      reason: newEarlyDeparture.reason || null,
     });
 
     if (!error) {
-      toast.success(language === "es" ? "Salida temprana registrada" : "Early departure recorded");
-      setNewEarlyDeparture({ date: undefined, original_end_time: "", actual_end_time: "", reason: "" });
+      toast.success(language === "es" ? "Salida anticipada registrada" : "Early departure recorded");
+      setNewEarlyDeparture({ date: undefined, departure_time: "", reason: "" });
       fetchEarlyDepartures();
+      
+      // Detectar y actualizar citas afectadas
+      await handleAffectedAppointments(selectedStaff, format(newEarlyDeparture.date, "yyyy-MM-dd"), newEarlyDeparture.departure_time);
     } else {
-      toast.error("Error recording early departure");
+      console.error("Error recording early departure:", error);
+      toast.error(language === "es" ? "Error al registrar salida anticipada" : "Error recording early departure");
+    }
+  };
+
+  // Detectar citas afectadas y cambiarlas a pending_reschedule
+  const handleAffectedAppointments = async (staffId: string, date: string, departureTime: string) => {
+    try {
+      // Buscar citas del staff en esa fecha que empiezan después de la hora de salida
+      const { data: affectedAppointments, error } = await supabase
+        .from("appointments")
+        .select("*, clients!appointments_client_id_fkey(full_name, email)")
+        .eq("staff_id", staffId)
+        .eq("appointment_date", date)
+        .in("status", ["pending", "confirmed"])
+        .gte("start_time", departureTime);
+
+      if (error) {
+        console.error("Error fetching affected appointments:", error);
+        return;
+      }
+
+      if (!affectedAppointments || affectedAppointments.length === 0) {
+        return; // No hay citas afectadas
+      }
+
+      // Actualizar status a pending_reschedule
+      const appointmentIds = affectedAppointments.map(apt => apt.id);
+      
+      const { error: updateError } = await supabase
+        .from("appointments")
+        .update({ status: "pending_reschedule" })
+        .in("id", appointmentIds);
+
+      if (updateError) {
+        console.error("Error updating appointments:", updateError);
+        return;
+      }
+
+      // Crear notificaciones para cada cliente afectado
+      for (const appointment of affectedAppointments) {
+        const client = appointment.clients;
+        if (client) {
+          // Crear notificación en la tabla notifications si existe
+          await supabase.from("notifications").insert({
+            client_id: appointment.client_id,
+            business_id: profile?.business_id,
+            appointment_id: appointment.id,
+            type: "appointment_reschedule",
+            title: language === "es" 
+              ? "Cita necesita re-agendamiento" 
+              : "Appointment needs rescheduling",
+            message: language === "es"
+              ? "Tu profesional ha tenido un imprevisto. Por favor, elige una nueva hora para tu cita."
+              : "Your professional has had an unexpected event. Please choose a new time for your appointment.",
+            is_read: false,
+          }).catch(err => {
+            console.error("Error creating notification:", err);
+            // Si la tabla no existe, continuar sin crear notificación
+          });
+        }
+      }
+
+      toast.success(
+        language === "es" 
+          ? `${affectedAppointments.length} cita(s) marcada(s) para re-agendamiento`
+          : `${affectedAppointments.length} appointment(s) marked for rescheduling`
+      );
+    } catch (error) {
+      console.error("Error handling affected appointments:", error);
     }
   };
 
@@ -282,21 +408,36 @@ export default function StaffScheduleManagement() {
                 <div className="space-y-3">
                   <div>
                     <Label>{language === "es" ? "Día de la Semana" : "Day of Week"}</Label>
-                    <Select
-                      value={newSchedule.day_of_week}
-                      onValueChange={(value) => setNewSchedule({ ...newSchedule, day_of_week: value })}
-                    >
-                      <SelectTrigger className="mt-2">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {daysOfWeek.map((day) => (
-                          <SelectItem key={day.value} value={day.value.toString()}>
-                            {day.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    <div className="mt-2 grid grid-cols-4 gap-2">
+                      {daysOfWeek.map((day) => {
+                        const isSelected = newSchedule.day_of_week === day.value.toString();
+                        const displayLabel = language === "es" ? day.short : day.shortEn;
+                        const fullLabel = language === "es" ? day.label : day.labelEn;
+                        return (
+                          <Button
+                            key={day.value}
+                            type="button"
+                            variant={isSelected ? "default" : "outline"}
+                            onClick={() => setNewSchedule({ ...newSchedule, day_of_week: day.value.toString() })}
+                            className="flex flex-col items-center justify-center h-16 p-2"
+                            title={fullLabel}
+                          >
+                            <span className="text-xs font-semibold">{displayLabel}</span>
+                            <span className="text-[10px] opacity-70">{fullLabel.substring(0, 3)}</span>
+                          </Button>
+                        );
+                      })}
+                    </div>
+                    {newSchedule.day_of_week && (
+                      <p className="text-xs text-muted-foreground mt-2">
+                        {language === "es" ? "Seleccionado: " : "Selected: "}
+                        <span className="font-semibold">
+                          {language === "es" 
+                            ? daysOfWeek.find(d => d.value.toString() === newSchedule.day_of_week)?.label
+                            : daysOfWeek.find(d => d.value.toString() === newSchedule.day_of_week)?.labelEn}
+                        </span>
+                      </p>
+                    )}
                   </div>
                   <div className="grid grid-cols-2 gap-3">
                     <div>
@@ -354,31 +495,42 @@ export default function StaffScheduleManagement() {
                 </div>
 
                 <div className="space-y-2">
-                  {schedules.map((schedule) => (
-                    <div key={schedule.id} className="flex items-center justify-between p-3 border rounded-lg">
-                      <div className="flex-1">
-                        <p className="font-medium">
-                          {daysOfWeek.find((d) => d.value === schedule.day_of_week)?.label}
-                        </p>
-                        <p className="text-sm text-muted-foreground">
-                          {schedule.start_time} - {schedule.end_time}
-                        </p>
-                        {schedule.break_start && schedule.break_end && (
-                          <Badge variant="outline" className="mt-1 bg-orange-500/10 text-orange-700 dark:text-orange-300 border-orange-500/30">
-                            🍽️ Break: {schedule.break_start} - {schedule.break_end}
-                            {schedule.break_notes && ` (${schedule.break_notes})`}
-                          </Badge>
-                        )}
+                  {schedules.length === 0 ? (
+                    <p className="text-center text-muted-foreground py-4 text-sm">
+                      {language === "es" 
+                        ? "No hay horarios configurados. Agregue uno usando el formulario arriba." 
+                        : "No schedules configured. Add one using the form above."}
+                    </p>
+                  ) : (
+                    schedules.map((schedule) => (
+                      <div key={schedule.id} className="flex items-center justify-between p-3 border rounded-lg">
+                        <div className="flex-1">
+                          <p className="font-medium">
+                            {language === "es" 
+                              ? daysOfWeek.find((d) => d.value === schedule.day_of_week)?.label
+                              : daysOfWeek.find((d) => d.value === schedule.day_of_week)?.labelEn}
+                          </p>
+                          <p className="text-sm text-muted-foreground">
+                            {schedule.start_time} - {schedule.end_time}
+                          </p>
+                          {schedule.break_start && schedule.break_end && (
+                            <Badge variant="outline" className="mt-1 bg-orange-500/10 text-orange-700 dark:text-orange-300 border-orange-500/30">
+                              🍽️ {language === "es" ? "Break" : "Break"}: {schedule.break_start} - {schedule.break_end}
+                              {schedule.break_notes && ` (${schedule.break_notes})`}
+                            </Badge>
+                          )}
+                        </div>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => handleDeleteSchedule(schedule.id)}
+                          title={language === "es" ? "Eliminar horario" : "Delete schedule"}
+                        >
+                          <Trash2 className="h-4 w-4 text-destructive" />
+                        </Button>
                       </div>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => handleDeleteSchedule(schedule.id)}
-                      >
-                        <Trash2 className="h-4 w-4 text-destructive" />
-                      </Button>
-                    </div>
-                  ))}
+                    ))
+                  )}
                 </div>
               </CardContent>
             </Card>
@@ -409,25 +561,20 @@ export default function StaffScheduleManagement() {
                       </PopoverContent>
                     </Popover>
                   </div>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <Label>{language === "es" ? "Hora Normal de Salida" : "Normal End Time"}</Label>
-                      <Input
-                        type="time"
-                        value={newEarlyDeparture.original_end_time}
-                        onChange={(e) => setNewEarlyDeparture({ ...newEarlyDeparture, original_end_time: e.target.value })}
-                        className="mt-2"
-                      />
-                    </div>
-                    <div>
-                      <Label>{language === "es" ? "Hora Real de Salida" : "Actual End Time"}</Label>
-                      <Input
-                        type="time"
-                        value={newEarlyDeparture.actual_end_time}
-                        onChange={(e) => setNewEarlyDeparture({ ...newEarlyDeparture, actual_end_time: e.target.value })}
-                        className="mt-2"
-                      />
-                    </div>
+                  <div>
+                    <Label>{language === "es" ? "Hora de Salida Anticipada" : "Early Departure Time"}</Label>
+                    <Input
+                      type="time"
+                      value={newEarlyDeparture.departure_time}
+                      onChange={(e) => setNewEarlyDeparture({ ...newEarlyDeparture, departure_time: e.target.value })}
+                      className="mt-2"
+                      placeholder={language === "es" ? "Ej: 15:00" : "E.g: 15:00"}
+                    />
+                    <p className="text-xs text-muted-foreground mt-1">
+                      {language === "es" 
+                        ? "Los slots después de esta hora desaparecerán automáticamente"
+                        : "Slots after this time will automatically disappear"}
+                    </p>
                   </div>
                   <div>
                     <Label>{language === "es" ? "Razón" : "Reason"}</Label>
@@ -448,14 +595,10 @@ export default function StaffScheduleManagement() {
                     <div key={departure.id} className="flex items-center justify-between p-3 border rounded-lg">
                       <div className="flex-1">
                         <p className="font-medium">
-                          {format(new Date(departure.departure_date), "MMM d, yyyy")}
+                          {format(new Date(departure.date), "MMM d, yyyy")}
                         </p>
                         <p className="text-sm text-muted-foreground">
-                          {language === "es" ? "Programado" : "Scheduled"}: {departure.original_end_time}<br/>
-                          {language === "es" ? "Real" : "Actual"}: {departure.actual_end_time}
-                          <Badge variant="destructive" className="ml-2">
-                            -{calculateTimeDifference(departure.original_end_time, departure.actual_end_time)}
-                          </Badge>
+                          {language === "es" ? "Sale a las" : "Leaves at"}: <span className="font-semibold text-orange-600 dark:text-orange-400">{departure.departure_time}</span>
                         </p>
                         {departure.reason && (
                           <p className="text-sm mt-1 text-muted-foreground">{departure.reason}</p>
