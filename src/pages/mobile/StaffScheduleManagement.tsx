@@ -314,27 +314,32 @@ export default function StaffScheduleManagement() {
         return;
       }
 
-      // Crear notificaciones para cada cliente afectado
+      // Crear notificaciones para cada cliente afectado usando Edge Function
       for (const appointment of affectedAppointments) {
         const client = appointment.clients;
-        if (client) {
-          // Crear notificación en la tabla notifications si existe
-          await supabase.from("notifications").insert({
-            client_id: appointment.client_id,
-            business_id: profile?.business_id,
-            appointment_id: appointment.id,
-            type: "appointment_reschedule",
-            title: language === "es" 
-              ? "Cita necesita re-agendamiento" 
-              : "Appointment needs rescheduling",
-            message: language === "es"
-              ? "Tu profesional ha tenido un imprevisto. Por favor, elige una nueva hora para tu cita."
-              : "Your professional has had an unexpected event. Please choose a new time for your appointment.",
-            is_read: false,
-          }).catch(err => {
-            console.error("Error creating notification:", err);
-            // Si la tabla no existe, continuar sin crear notificación
-          });
+        if (client && client.user_id && profile?.business_id) {
+          // ✅ Usar Edge Function notify-client en lugar de insertar directamente
+          try {
+            await supabase.functions.invoke('notify-client', {
+              body: {
+                business_id: profile.business_id,
+                user_id: client.user_id,
+                client_id: appointment.client_id,
+                appointment_id: appointment.id,
+                type: 'status_change', // Mapear a tipo permitido
+                title: language === "es" 
+                  ? "Cita necesita re-agendamiento" 
+                  : "Appointment needs rescheduling",
+                message: language === "es"
+                  ? "Tu profesional ha tenido un imprevisto. Por favor, elige una nueva hora para tu cita."
+                  : "Your professional has had an unexpected event. Please choose a new time for your appointment.",
+                meta: { requires_reschedule: true },
+              },
+            });
+          } catch (err) {
+            console.error("Error creating notification via Edge Function:", err);
+            // Continuar sin crear notificación si falla
+          }
         }
       }
 

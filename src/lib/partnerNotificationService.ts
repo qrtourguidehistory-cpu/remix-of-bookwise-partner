@@ -53,8 +53,8 @@ function isOperativeType(type: string): boolean {
 
 /**
  * Crear notificación para Partner
- * ✅ CORRECCIÓN: Se inserta en 'notifications' (tabla de partners), NO en 'client_notifications'
- * Maneja errores explícitamente y mapea tipos a valores permitidos
+ * ✅ ARQUITECTURA CORRECTA: Usa Edge Function (notify-partner) en lugar de insertar directamente
+ * La Edge Function usa service role para insertar y enviar FCM
  */
 export async function createPartnerNotification(
   data: PartnerNotificationData
@@ -66,49 +66,55 @@ export async function createPartnerNotification(
       return { success: false, error: `Tipo de notificación no operativo: ${data.type}` };
     }
 
-    // La tabla notifications no tiene constraint de tipos, usamos el tipo interno directamente
-    const insertData = {
-      user_id: data.user_id || null,
-      type: data.type,
-      title: data.title,
-      message: data.message,
-      read: false,
-      link: data.link || null,
-    };
+    if (!data.user_id) {
+      console.error('❌ [PARTNER NOTIFICATION] user_id es requerido');
+      return { success: false, error: 'user_id es requerido' };
+    }
 
-    console.log(`📨 [PARTNER NOTIFICATION] Insertando en 'notifications':`, {
+    console.log(`📨 [PARTNER NOTIFICATION] Llamando Edge Function 'notify-partner':`, {
       type: data.type,
       user_id: data.user_id,
       business_id: data.business_id,
       appointment_id: data.appointment_id,
     });
 
-    const { data: insertedData, error } = await supabase
-      .from('notifications')
-      .insert(insertData)
-      .select()
-      .single();
+    // ✅ Llamar Edge Function en lugar de insertar directamente
+    const { data: result, error } = await supabase.functions.invoke('notify-partner', {
+      body: {
+        business_id: data.business_id,
+        user_id: data.user_id,
+        type: data.type,
+        title: data.title,
+        message: data.message,
+        appointment_id: data.appointment_id || null,
+        client_id: data.client_id || null,
+        link: data.link || null,
+        meta: data.meta || null,
+      },
+    });
 
     if (error) {
-      console.error('❌ [PARTNER NOTIFICATION] Error al insertar notificación:', {
+      console.error('❌ [PARTNER NOTIFICATION] Error al llamar Edge Function:', {
         error: error.message,
-        code: error.code,
-        details: error.details,
-        hint: error.hint,
         type: data.type,
-        insertData,
       });
       return { success: false, error: error.message };
     }
 
+    if (!result?.success) {
+      console.error('❌ [PARTNER NOTIFICATION] Edge Function retornó error:', result);
+      return { success: false, error: result?.error || 'Error desconocido' };
+    }
+
     console.log(`✅ [PARTNER NOTIFICATION] Notificación creada exitosamente:`, {
-      id: insertedData?.id,
+      notification_id: result.notification_id,
+      push_sent: result.push_sent,
       type: data.type,
     });
 
     return { success: true };
   } catch (error: any) {
-    console.error('❌ [NOTIFICATION] Excepción al crear notificación:', {
+    console.error('❌ [PARTNER NOTIFICATION] Excepción al crear notificación:', {
       error: error.message,
       stack: error.stack,
       originalType: data.type,
