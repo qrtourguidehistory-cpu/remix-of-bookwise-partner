@@ -1,27 +1,10 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { initializeApp, cert, getApps } from "npm:firebase-admin@11.5.0/app";
-import { getMessaging } from "npm:firebase-admin@11.5.0/messaging";
+import admin from "npm:firebase-admin@11.5.0";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
-
-interface PushNotificationRequest {
-  userId?: string;
-  user_id?: string;
-  clientId?: string;
-  role?: string;
-  title?: string;
-  body?: string;
-  message?: string;
-  token?: string;
-  data?: Record<string, any>;
-  businessId?: string;
-  appointmentId?: string;
-  notificationType?: string;
-  record?: any;
-}
 
 serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
@@ -30,56 +13,23 @@ serve(async (req: Request) => {
 
   try {
     const requestBody = await req.json();
+    console.log("📥 Request recibido:", JSON.stringify(requestBody).substring(0, 200));
     
     // Extract payload: handle both direct calls and webhook/trigger calls
-    // When called from a trigger, data comes in requestBody.record
-    const payload = requestBody.record || requestBody;
+    const record = requestBody.record || requestBody;
+    console.log("📦 Record extraído:", JSON.stringify(record).substring(0, 200));
     
-    console.log("📥 Request body completo:", JSON.stringify(requestBody).substring(0, 200));
-    console.log("📥 Payload extraído:", JSON.stringify(payload).substring(0, 200));
-    
-    const { 
-      userId, 
-      user_id,
-      clientId, 
-      role,
-      title, 
-      body, 
-      message,
-      token,
-      data,
-      businessId,
-      appointmentId,
-      notificationType 
-    }: PushNotificationRequest = payload;
-    
-    // Handle different field names
-    const finalTitle = title || payload.title;
-    const finalBody = body || message || payload.body || payload.message;
+    const targetUserId = record.user_id || record.userId || record.clientId;
+    const finalTitle = record.title || "Actualización de Cita";
+    const finalBody = record.message || record.body || "Tienes una nueva actualización.";
 
-    console.log("📥 Datos extraídos:", JSON.stringify({ 
-      userId, 
-      user_id, 
-      clientId, 
-      role, 
-      finalTitle, 
-      finalBody, 
-      token, 
-      data 
-    }));
+    console.log(`🎯 Target User ID: ${targetUserId}`);
+    console.log(`📝 Title: ${finalTitle}`);
+    console.log(`📝 Body: ${finalBody}`);
 
-    if (!finalTitle || !finalBody) {
-      console.error("❌ Missing title or body:", { finalTitle, finalBody, payload });
-      throw new Error("Title and body are required");
+    if (!targetUserId) {
+      throw new Error("user_id, userId o clientId es requerido");
     }
-
-    // Accept userId, user_id, or clientId
-    const targetUserId = userId || user_id || clientId;
-    const directToken = token;
-    
-    console.log(`🔍 Target User ID: ${targetUserId || "NO PROPORCIONADO"}`);
-    console.log(`🔍 Direct Token: ${directToken ? directToken.substring(0, 20) + "..." : "NO PROPORCIONADO"}`);
-    console.log(`🔍 Role recibido en request: ${role || "NO PROPORCIONADO"}`);
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL");
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
@@ -87,398 +37,249 @@ serve(async (req: Request) => {
     if (!supabaseUrl || !supabaseServiceKey) {
       throw new Error("Supabase credentials not configured");
     }
-    
-    // If we have a direct token, we can skip user lookup
-    if (directToken && !targetUserId && !role) {
-      console.log("⚠️ Direct token provided without userId or role. Will attempt to send with default settings.");
+
+    console.log(`🔍 Buscando dispositivos para user_id: ${targetUserId}`);
+
+    // Buscar dispositivos del usuario
+    const devicesUrl = `${supabaseUrl}/rest/v1/client_devices?user_id=eq.${targetUserId}&enabled=eq.true&select=id,user_id,fcm_token,role,platform`;
+    console.log(`🔍 URL de consulta: ${devicesUrl}`);
+
+    const devicesRes = await fetch(devicesUrl, {
+      headers: {
+        "apikey": supabaseServiceKey,
+        "Authorization": `Bearer ${supabaseServiceKey}`,
+        "Content-Type": "application/json",
+      },
+    });
+
+    console.log(`📡 Devices response status: ${devicesRes.status}`);
+    const devicesText = await devicesRes.text();
+    console.log(`📡 Devices response body: ${devicesText}`);
+
+    let devices;
+    try {
+      devices = JSON.parse(devicesText);
+    } catch (e) {
+      console.error("❌ Error parsing devices response:", e);
+      devices = [];
     }
 
-    // Determine user role
-    let userRole = role;
-    
-    if (!userRole) {
-      console.log(`🔍 Role no proporcionado, consultando tabla profiles para user_id: ${targetUserId}`);
-      // If role not provided, get it from profiles table
-      const profileUrl = `${supabaseUrl}/rest/v1/profiles?id=eq.${targetUserId}&select=id,role`;
-      console.log(`🔍 Consultando: ${profileUrl}`);
-      
-      const profileResponse = await fetch(profileUrl, {
-        headers: {
-          "apikey": supabaseServiceKey,
-          "Authorization": `Bearer ${supabaseServiceKey}`,
-          "Content-Type": "application/json",
-        },
-      });
-      
-      console.log(`🔍 Profile response status: ${profileResponse.status}`);
-      const profiles = await profileResponse.json();
-      console.log(`🔍 Profile response data:`, JSON.stringify(profiles));
-      
-      if (profiles && profiles.length > 0) {
-        userRole = profiles[0].role;
-        console.log(`✅ Rol encontrado en profiles: ${userRole}`);
-      } else {
-        console.log(`⚠️ No se encontró perfil para user_id: ${targetUserId}, usando 'client' por defecto`);
-        userRole = "client";
-      }
-    } else {
-      console.log(`✅ Usando rol proporcionado en request: ${userRole}`);
-    }
-
-    console.log(`👤 ROL FINAL DETERMINADO: ${userRole}`);
-
-    // Determine which Firebase project to use based on role
-    const isPartner = userRole === "partner";
-    console.log(`🔍 isPartner: ${isPartner} (userRole === "partner": ${userRole === "partner"})`);
-    
-    const projectId = isPartner 
-      ? Deno.env.get("FIREBASE_PARTNER_PROJECT_ID") || "bookwise-partner"
-      : Deno.env.get("FIREBASE_CLIENT_PROJECT_ID") || "mi-turnow-cliente";
-    
-    const clientEmail = isPartner
-      ? Deno.env.get("FIREBASE_PARTNER_CLIENT_EMAIL") || "firebase-adminsdk-fbsvc@bookwise-partner.iam.gserviceaccount.com"
-      : Deno.env.get("FIREBASE_CLIENT_CLIENT_EMAIL") || "firebase-adminsdk-fbsvc@mi-turnow-cliente.iam.gserviceaccount.com";
-    
-    const privateKey = isPartner
-      ? Deno.env.get("FIREBASE_PARTNER_PRIVATE_KEY")
-      : Deno.env.get("FIREBASE_CLIENT_PRIVATE_KEY");
-
-    // Get project number from Firebase Admin (for SenderId validation)
-    // Note: SenderId = Project Number in Firebase
-    const expectedSenderId = isPartner ? "766564879842" : null; // bookwise-partner project number
-    const expectedClientSenderId = "YOUR_CLIENT_PROJECT_NUMBER"; // Replace with actual client project number if known
-    
-    console.log(`🔥 Credenciales Firebase seleccionadas:`);
-    console.log(`   - Rol: ${userRole}`);
-    console.log(`   - isPartner: ${isPartner}`);
-    console.log(`   - Project ID: ${projectId}`);
-    console.log(`   - Expected SenderId (Project Number): ${isPartner ? expectedSenderId : "N/A"}`);
-    console.log(`   - Client Email: ${clientEmail}`);
-    console.log(`   - Private Key exists: ${!!privateKey}`);
-    console.log(`   - Private Key preview: ${privateKey ? `${privateKey.substring(0, 50)}...` : "NO ENCONTRADA"}`);
-    
-    // Log environment variables status
-    console.log(`🔍 Environment Variables Check:`);
-    console.log(`   - FIREBASE_PARTNER_PROJECT_ID: ${Deno.env.get("FIREBASE_PARTNER_PROJECT_ID") || "NOT SET"}`);
-    console.log(`   - FIREBASE_PARTNER_CLIENT_EMAIL exists: ${!!Deno.env.get("FIREBASE_PARTNER_CLIENT_EMAIL")}`);
-    console.log(`   - FIREBASE_PARTNER_PRIVATE_KEY exists: ${!!Deno.env.get("FIREBASE_PARTNER_PRIVATE_KEY")}`);
-    console.log(`   - FIREBASE_CLIENT_PROJECT_ID: ${Deno.env.get("FIREBASE_CLIENT_PROJECT_ID") || "NOT SET"}`);
-    console.log(`   - FIREBASE_CLIENT_CLIENT_EMAIL exists: ${!!Deno.env.get("FIREBASE_CLIENT_CLIENT_EMAIL")}`);
-    console.log(`   - FIREBASE_CLIENT_PRIVATE_KEY exists: ${!!Deno.env.get("FIREBASE_CLIENT_PRIVATE_KEY")}`);
-
-    if (!privateKey) {
-      throw new Error(`Missing private key for role: ${userRole}`);
-    }
-
-    // Log private key format for debugging
-    console.log(`🔑 Private Key Analysis for ${userRole}:`);
-    console.log(`   - Length: ${privateKey.length} characters`);
-    console.log(`   - Starts with: ${privateKey.substring(0, 30)}`);
-    console.log(`   - Contains \\n: ${privateKey.includes('\\n')}`);
-    console.log(`   - Contains literal newlines: ${privateKey.includes('\n')}`);
-    console.log(`   - First 100 chars: ${privateKey.substring(0, 100)}`);
-
-    // Initialize Firebase Admin with the correct credentials
-    const appName = `app-${userRole}`;
-    console.log(`🔧 Initializing Firebase app: ${appName}`);
-    console.log(`   - Using projectId: ${projectId}`);
-    console.log(`   - Using clientEmail: ${clientEmail}`);
-    
-    if (getApps().length === 0 || !getApps().find((app) => app.name === appName)) {
-      // Clean the private key: handle both \\n and \n, and ensure proper format
-      let cleanedPrivateKey = privateKey;
-      
-      // If the key contains escaped newlines (\\n), replace them with real newlines
-      if (cleanedPrivateKey.includes('\\n')) {
-        cleanedPrivateKey = cleanedPrivateKey.replace(/\\n/g, '\n');
-        console.log(`   - Replaced \\\\n with \\n`);
-      }
-      
-      // Ensure the key starts with -----BEGIN and ends with -----END
-      if (!cleanedPrivateKey.includes('-----BEGIN')) {
-        throw new Error(`Invalid private key format for ${userRole}: does not contain BEGIN marker`);
-      }
-      
-      console.log(`   - Private key after cleaning (first 60 chars): ${cleanedPrivateKey.substring(0, 60)}`);
-      console.log(`   - Private key after cleaning (last 60 chars): ${cleanedPrivateKey.substring(cleanedPrivateKey.length - 60)}`);
-      
-      const firebaseConfig = {
-        projectId,
-        clientEmail,
-        privateKey: cleanedPrivateKey,
-      };
-      
-      console.log(`   - Creating new Firebase app instance for ${appName}`);
-      
-      try {
-        initializeApp({
-          credential: cert(firebaseConfig),
-        }, appName);
-        console.log(`✅ Firebase app initialized: ${appName} with project: ${projectId}`);
-      } catch (initError: any) {
-        console.error(`❌ Error initializing Firebase app for ${userRole}:`, initError.message);
-        console.error(`   Project ID: ${projectId}`);
-        console.error(`   Client Email: ${clientEmail}`);
-        console.error(`   Private Key length: ${cleanedPrivateKey.length}`);
-        console.error(`   Private Key start: ${cleanedPrivateKey.substring(0, 50)}`);
-        throw new Error(`Failed to initialize Firebase for ${userRole}: ${initError.message}`);
-      }
-    } else {
-      console.log(`   - Reusing existing Firebase app instance: ${appName}`);
-    }
-
-    const app = getApps().find((app) => app.name === appName);
-    if (!app) {
-      throw new Error(`Failed to get Firebase app: ${appName}`);
-    }
-    
-    console.log(`📱 Getting messaging instance from app: ${appName}`);
-    const messaging = getMessaging(app);
-    console.log(`✅ Messaging instance obtained for project: ${projectId}`);
-
-    // Get FCM tokens from client_devices table
-    let devices: any[] = [];
-    
-    if (targetUserId) {
-      // First, try to get devices with the specific role
-      let devicesUrl = `${supabaseUrl}/rest/v1/client_devices?user_id=eq.${targetUserId}&role=eq.${userRole}&enabled=eq.true&select=id,fcm_token,role,platform`;
-      console.log(`🔍 Consultando dispositivos con:`);
-      console.log(`   - user_id: ${targetUserId} (length: ${targetUserId.length})`);
-      console.log(`   - role EXACTO: "${userRole}" (type: ${typeof userRole}, length: ${userRole.length})`);
-      console.log(`   - enabled: true`);
-      console.log(`   - URL COMPLETA: ${devicesUrl}`);
-      console.log(`   - Headers: apikey=${supabaseServiceKey.substring(0, 20)}..., Authorization=Bearer ${supabaseServiceKey.substring(0, 20)}...`);
-      
-      let devicesResponse = await fetch(devicesUrl, {
-        headers: {
-          "apikey": supabaseServiceKey,
-          "Authorization": `Bearer ${supabaseServiceKey}`,
-          "Content-Type": "application/json",
-        },
-      });
-
-      console.log(`🔍 Devices response status: ${devicesResponse.status}`);
-      const responseText = await devicesResponse.text();
-      console.log(`🔍 Devices response body: ${responseText}`);
-      
-      try {
-        devices = JSON.parse(responseText);
-      } catch (e) {
-        console.error(`❌ Error parsing response: ${e}`);
-        devices = [];
-      }
-      
-      console.log(`🔍 Devices encontrados con role="${userRole}": ${devices?.length || 0}`);
-      
-      // If no devices found with the specific role, try without role filter (fallback)
-      if (!devices || devices.length === 0) {
-        console.log(`⚠️ No se encontraron dispositivos con role="${userRole}", intentando sin filtro de rol...`);
-        devicesUrl = `${supabaseUrl}/rest/v1/client_devices?user_id=eq.${targetUserId}&enabled=eq.true&select=id,fcm_token,role,platform`;
-        console.log(`🔍 Consultando dispositivos (sin filtro de rol): ${devicesUrl}`);
-        
-        devicesResponse = await fetch(devicesUrl, {
-          headers: {
-            "apikey": supabaseServiceKey,
-            "Authorization": `Bearer ${supabaseServiceKey}`,
-            "Content-Type": "application/json",
-          },
-        });
-        
-        const responseText2 = await devicesResponse.text();
-        console.log(`🔍 Devices response (sin rol) status: ${devicesResponse.status}`);
-        console.log(`🔍 Devices response (sin rol) body: ${responseText2}`);
-        
-        try {
-          devices = JSON.parse(responseText2);
-        } catch (e) {
-          console.error(`❌ Error parsing response (sin rol): ${e}`);
-          devices = [];
-        }
-        
-        console.log(`🔍 Devices encontrados (sin filtro de rol): ${devices?.length || 0}`);
-        
-        if (devices && devices.length > 0) {
-          console.log(`⚠️ ADVERTENCIA: Se encontraron dispositivos pero con roles diferentes:`);
-          devices.forEach((d: any) => {
-            console.log(`   - Device ${d.id}: role="${d.role}" (type: ${typeof d.role}, length: ${d.role?.length}), platform=${d.platform}`);
-          });
-        } else {
-          // Last resort: check if ANY device exists for this user_id
-          console.log(`⚠️ Verificando si EXISTE algún dispositivo para user_id=${targetUserId}...`);
-          const checkUrl = `${supabaseUrl}/rest/v1/client_devices?user_id=eq.${targetUserId}&select=id,user_id,role,enabled`;
-          console.log(`🔍 URL de verificación: ${checkUrl}`);
-          
-          const checkResponse = await fetch(checkUrl, {
-            headers: {
-              "apikey": supabaseServiceKey,
-              "Authorization": `Bearer ${supabaseServiceKey}`,
-              "Content-Type": "application/json",
-            },
-          });
-          
-          const checkText = await checkResponse.text();
-          console.log(`🔍 Verificación response: ${checkText}`);
-        }
-      }
-      
-      // Last resort: search by token if provided
-      if ((!devices || devices.length === 0) && directToken) {
-        console.log(`⚠️ No se encontraron dispositivos por user_id, intentando buscar por token directo...`);
-        devicesUrl = `${supabaseUrl}/rest/v1/client_devices?fcm_token=eq.${directToken}&enabled=eq.true&select=id,fcm_token,role,platform,user_id`;
-        console.log(`🔍 Consultando dispositivos por token: ${directToken.substring(0, 20)}...`);
-        
-        devicesResponse = await fetch(devicesUrl, {
-          headers: {
-            "apikey": supabaseServiceKey,
-            "Authorization": `Bearer ${supabaseServiceKey}`,
-            "Content-Type": "application/json",
-          },
-        });
-        
-        devices = await devicesResponse.json();
-        console.log(`🔍 Devices encontrados por token: ${devices?.length || 0}`);
-        
-        if (devices && devices.length > 0) {
-          console.log(`✅ Dispositivo encontrado por token:`);
-          devices.forEach((d: any) => {
-            console.log(`   - Device ${d.id}: user_id=${d.user_id}, role="${d.role}", platform=${d.platform}`);
-          });
-        }
-      }
-    } else if (directToken) {
-      // If no userId but we have a token, use it directly
-      console.log(`⚠️ No se proporcionó user_id, usando token directo: ${directToken.substring(0, 20)}...`);
-      devices = [{ fcm_token: directToken, id: "direct-token", role: userRole || "unknown", platform: "unknown" }];
-    }
-    
     if (!devices || devices.length === 0) {
-      console.log(`⚠️ No devices found for user_id: ${targetUserId}, role: ${userRole}`);
+      console.log("⚠️ No se encontraron dispositivos para el usuario:", targetUserId);
       return new Response(
         JSON.stringify({ 
-          success: true,
+          success: true, 
           pushSent: false,
-          reason: "no_devices",
-          message: `No devices found for user_id: ${targetUserId}, role: ${userRole}` 
+          message: "No devices found",
+          userId: targetUserId 
         }),
         { 
-          status: 200, 
+          status: 200,
           headers: { ...corsHeaders, "Content-Type": "application/json" } 
         }
       );
     }
 
-    console.log(`📱 Found ${devices.length} device(s) for user_id: ${targetUserId}`);
+    console.log(`📱 Encontrados ${devices.length} dispositivo(s)`);
     devices.forEach((d: any, idx: number) => {
       console.log(`   Device ${idx + 1}: id=${d.id}, role=${d.role}, platform=${d.platform}, token=${d.fcm_token?.substring(0, 20)}...`);
     });
 
-    // Send notification to all devices
-    console.log(`🚀 Iniciando envío de notificaciones a ${devices.length} dispositivo(s) usando Firebase project: ${projectId}`);
-    
+    // Procesar cada dispositivo
     const results = await Promise.allSettled(
       devices.map(async (device: any) => {
-        const deviceId = device.id || "unknown";
-        const deviceRole = device.role || "unknown";
-        const tokenPreview = device.fcm_token?.substring(0, 20) + "...";
+        const deviceId = device.id;
+        const deviceRole = device.role; // NO USAR VALORES POR DEFECTO
+        const fcmToken = device.fcm_token;
+
+        console.log(`\n🔄 Procesando device ${deviceId} (role: ${deviceRole})`);
+
+        // VALIDACIÓN ESTRICTA DEL ROL - NO ADIVINAR
+        if (!deviceRole) {
+          const errorMsg = `Device ${deviceId} no tiene rol definido. No se puede determinar qué proyecto Firebase usar.`;
+          console.error(`❌ ${errorMsg}`);
+          throw new Error(errorMsg);
+        }
+
+        if (deviceRole !== "partner" && deviceRole !== "client") {
+          const errorMsg = `Device ${deviceId} tiene rol inválido: "${deviceRole}". Solo se permiten 'partner' o 'client'.`;
+          console.error(`❌ ${errorMsg}`);
+          throw new Error(errorMsg);
+        }
+
+        // SELECCIÓN DINÁMICA DEL PROYECTO FIREBASE BASADO EN EL ROL
+        const isPartner = deviceRole === "partner";
+        const secretName = isPartner ? "FIREBASE_SERVICE_ACCOUNT" : "FIREBASE_SERVICE_ACCOUNT_CLIENT";
         
-        console.log(`📤 Enviando a device ${deviceId} (role: ${deviceRole}, token: ${tokenPreview})`);
-        console.log(`   Usando Firebase project: ${projectId}, clientEmail: ${clientEmail}`);
+        console.log(`🔑 Usando secret: ${secretName} para rol: ${deviceRole}`);
         
-        const message = {
-          token: device.fcm_token,
-          notification: {
-            title: finalTitle,
-            body: finalBody,
-          },
-          data: data || {},
-          android: {
-            priority: "high" as const,
-            notification: {
-              channelId: "default",
-              sound: "default",
+        const serviceAccountJson = Deno.env.get(secretName);
+        
+        if (!serviceAccountJson) {
+          throw new Error(`Secret ${secretName} no está configurado`);
+        }
+
+        console.log(`✅ Secret ${secretName} encontrado (length: ${serviceAccountJson.length})`);
+
+        let serviceAccount;
+        try {
+          serviceAccount = JSON.parse(serviceAccountJson);
+          console.log(`✅ Service Account parseado - project_id: ${serviceAccount.project_id}`);
+        } catch (e) {
+          console.error(`❌ Error parseando ${secretName}:`, e);
+          throw new Error(`Error parseando ${secretName}: ${e.message}`);
+        }
+
+        // Nombre único de app para cada rol
+        const appName = `app-${deviceRole}`;
+        console.log(`🔧 Inicializando/obteniendo Firebase app: ${appName}`);
+
+        let currentApp;
+
+        // Verificar si la app ya existe
+        const existingApps = admin.apps || [];
+        const existingApp = existingApps.find((a: any) => a && a.name === appName);
+        
+        if (!existingApp) {
+          console.log(`   - Creando nueva instancia de Firebase app: ${appName}`);
+          currentApp = admin.initializeApp(
+            {
+              credential: admin.credential.cert(serviceAccount),
             },
-          },
-          apns: {
-            payload: {
-              aps: {
-                sound: "default",
-                badge: 1,
-              },
-            },
-          },
-        };
+            appName
+          );
+          console.log(`✅ Firebase app creada: ${appName} con proyecto: ${serviceAccount.project_id}`);
+        } else {
+          console.log(`   - Reutilizando instancia existente: ${appName}`);
+          currentApp = admin.app(appName);
+        }
+
+        console.log(`📱 Obteniendo messaging instance para ${appName}`);
+        const messaging = admin.messaging(currentApp);
+
+        // Enviar notificación
+        console.log(`📤 Enviando notificación a ${deviceRole} (token: ${fcmToken.substring(0, 20)}...)`);
+        console.log(`   - Proyecto Firebase: ${serviceAccount.project_id}`);
+        console.log(`   - Title: ${finalTitle}`);
+        console.log(`   - Body: ${finalBody}`);
 
         try {
-          const response = await messaging.send(message);
-          console.log(`✅ Device ${deviceId}: Enviado exitosamente - ${response}`);
-          return { deviceId, success: true, response };
-        } catch (error: any) {
-          console.error(`❌ Device ${deviceId}: Error al enviar -`, error);
-          console.error(`   Error code: ${error.code}, message: ${error.message}`);
-          console.error(`   Firebase project usado: ${projectId}`);
+          const response = await messaging.send({
+            token: fcmToken,
+            notification: {
+              title: finalTitle,
+              body: finalBody,
+            },
+            data: record.data || {},
+            android: {
+              priority: "high" as const,
+              notification: {
+                channelId: "default",
+                sound: "default",
+              },
+            },
+            apns: {
+              payload: {
+                aps: {
+                  sound: "default",
+                  badge: 1,
+                },
+              },
+            },
+          });
+
+          console.log(`✅ Notificación enviada exitosamente a ${deviceRole} (device ${deviceId})`);
+          console.log(`   Response: ${response}`);
+
+          return {
+            status: "fulfilled",
+            deviceId,
+            role: deviceRole,
+            project: serviceAccount.project_id,
+            response,
+          };
+        } catch (err: any) {
+          console.error(`❌ Error enviando a ${deviceRole} (device ${deviceId}):`, err.message);
+          console.error(`   Error code: ${err.code}`);
+          console.error(`   Proyecto usado: ${serviceAccount.project_id}`);
           
-          // Detect SenderId mismatch error
-          if (error.code === 403 || error.message?.includes("SenderId mismatch") || error.message?.includes("SENDER_ID_MISMATCH")) {
-            console.error(`   ⚠️ SENDERID MISMATCH DETECTADO:`);
-            console.error(`   - El token FCM fue registrado con un proyecto Firebase diferente`);
-            console.error(`   - Proyecto actual: ${projectId}`);
-            console.error(`   - Rol del usuario: ${userRole}`);
-            console.error(`   - Rol del dispositivo: ${deviceRole}`);
-            console.error(`   - SOLUCIÓN: El token necesita ser regenerado en la app usando el google-services.json correcto`);
-            console.error(`   - Para partner: usar google-services.json de bookwise-partner (project_number: 766564879842)`);
+          if (err.code === 403 || err.message?.includes("SenderId mismatch")) {
+            console.error(`   ⚠️ SENDER_ID_MISMATCH: El token fue registrado con un proyecto diferente`);
           }
-          
-          throw { deviceId, error, userRole, projectId, deviceRole };
+
+          throw {
+            deviceId,
+            role: deviceRole,
+            project: serviceAccount.project_id,
+            error: err.message,
+            code: err.code,
+          };
         }
       })
     );
 
+    // Contar resultados
     const successful = results.filter((r) => r.status === "fulfilled").length;
     const failed = results.filter((r) => r.status === "rejected").length;
 
-    console.log(`📊 RESUMEN FINAL:`);
-    console.log(`   - Rol detectado: ${userRole}`);
-    console.log(`   - Firebase project: ${projectId}`);
-    console.log(`   - Exitosos: ${successful}/${devices.length}`);
-    console.log(`   - Fallidos: ${failed}/${devices.length}`);
-    
-    // Log detailed error information
+    console.log(`\n📊 RESUMEN FINAL:`);
+    console.log(`   - Total dispositivos: ${devices.length}`);
+    console.log(`   - Exitosos: ${successful}`);
+    console.log(`   - Fallidos: ${failed}`);
+
     results.forEach((result, idx) => {
-      if (result.status === "rejected") {
-        const error = (result as any).reason;
-        console.error(`   ❌ Device ${idx + 1} falló:`, error);
+      if (result.status === "fulfilled") {
+        const value = result.value as any;
+        console.log(`   ✅ Device ${idx + 1}: ${value.role} - ${value.project} - OK`);
+      } else {
+        const reason = (result as any).reason;
+        console.log(`   ❌ Device ${idx + 1}: ${reason.role || "unknown"} - ${reason.error || "Unknown error"}`);
       }
     });
 
     return new Response(
-      JSON.stringify({ 
+      JSON.stringify({
         success: true,
         pushSent: successful > 0,
         sent: successful,
         failed: failed,
         total: devices.length,
-        results: results.map((r, idx) => ({
-          device: devices[idx].fcm_token.substring(0, 20) + "...",
-          status: r.status,
-          ...(r.status === "fulfilled" ? { result: r.value } : { error: (r as any).reason?.message || "Unknown error" }),
-        })),
+        results: results.map((r, idx) => {
+          if (r.status === "fulfilled") {
+            const value = r.value as any;
+            return {
+              device: devices[idx].fcm_token.substring(0, 20) + "...",
+              status: "ok",
+              role: value.role,
+              project: value.project,
+            };
+          } else {
+            const reason = (r as any).reason;
+            return {
+              device: devices[idx].fcm_token.substring(0, 20) + "...",
+              status: "error",
+              role: reason.role,
+              error: reason.error,
+            };
+          }
+        }),
       }),
-      { 
-        headers: { ...corsHeaders, "Content-Type": "application/json" } 
+      {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
       }
     );
-
   } catch (error: any) {
-    console.error("❌ Error:", error);
+    console.error("❌ Error Crítico:", error.message);
+    console.error("Stack:", error.stack);
     return new Response(
-      JSON.stringify({ 
+      JSON.stringify({
         success: false,
         error: error.message,
-        stack: error.stack 
+        stack: error.stack,
       }),
-      { 
-        status: 500, 
-        headers: { ...corsHeaders, "Content-Type": "application/json" } 
+      {
+        status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
       }
     );
   }
