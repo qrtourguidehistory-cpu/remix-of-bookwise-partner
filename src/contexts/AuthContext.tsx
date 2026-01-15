@@ -2,7 +2,8 @@ import { createContext, useContext, useEffect, useState, useRef, useMemo, useCal
 import { User, Session } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { initializePushNotifications, clearPushToken } from "@/lib/pushNotificationService";
+import { useNavigate } from "react-router-dom";
+import { initializePartnerPush, cleanupPartnerPush } from "../services/partnerPushService";
 
 interface AuthContextType {
   user: User | null;
@@ -20,6 +21,7 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
+  const navigate = useNavigate();
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [profile, setProfile] = useState<any | null>(null);
@@ -176,6 +178,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               setLoading(false);
             }
           });
+          
+          // Initialize partner push notifications
+          setTimeout(async () => {
+            try {
+              const { data: profile } = await supabase
+                .from('profiles')
+                .select('role')
+                .eq('id', currentUser.id)
+                .single();
+              
+              if (profile?.role === 'partner') {
+                try {
+                  await initializePartnerPush(currentUser.id);
+                } catch (err) {
+                  console.error('[AuthContext] Push init failed but continuing:', err);
+                }
+              }
+            } catch (error) {
+              console.error('[AuthContext] Push init error:', error);
+            }
+          }, 1000);
         } else {
           // No session, we're done
           setLoading(false);
@@ -226,6 +249,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               setLoading(false);
             }
           });
+          
+          // Initialize partner push notifications
+          setTimeout(async () => {
+            try {
+              const { data: profile } = await supabase
+                .from('profiles')
+                .select('role')
+                .eq('id', currentUser.id)
+                .single();
+              
+              if (profile?.role === 'partner') {
+                try {
+                  await initializePartnerPush(currentUser.id);
+                } catch (err) {
+                  console.error('[AuthContext] Push init failed but continuing:', err);
+                }
+              }
+            } catch (error) {
+              console.error('[AuthContext] Push init error:', error);
+            }
+          }, 1000);
         } else {
           // No user, clear profile
           setProfile(null);
@@ -268,10 +312,29 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       toast.success("¡Bienvenido!");
       
-      // Initialize push notifications after successful login
-      initializePushNotifications().catch((err) => {
-        console.log("[Auth] Push notifications init skipped:", err);
-      });
+      // Initialize partner push notifications
+      setTimeout(async () => {
+        try {
+          const { data: { user } } = await supabase.auth.getUser();
+          if (user) {
+            const { data: profile } = await supabase
+              .from('profiles')
+              .select('role')
+              .eq('id', user.id)
+              .single();
+            
+            if (profile?.role === 'partner') {
+              try {
+                await initializePartnerPush(user.id);
+              } catch (err) {
+                console.error('[AuthContext] Push init failed but continuing:', err);
+              }
+            }
+          }
+        } catch (error) {
+          console.error('[AuthContext] Push init error:', error);
+        }
+      }, 1000);
       
       return { error: null };
     } catch (err: any) {
@@ -317,10 +380,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const signOut = async () => {
-    // Clear push token before signing out
-    await clearPushToken().catch((err) => {
-      console.log("[Auth] Error clearing push token:", err);
-    });
+    // Cleanup push notifications before signing out
+    try {
+      await cleanupPartnerPush();
+    } catch (error) {
+      console.error('[AuthContext] Cleanup error:', error);
+    }
     
     const { error } = await supabase.auth.signOut();
     

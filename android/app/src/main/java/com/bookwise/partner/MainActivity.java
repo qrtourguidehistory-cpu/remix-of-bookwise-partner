@@ -1,5 +1,6 @@
-package com.miturnow.app;
+package com.bookwise.partner;
 
 import com.getcapacitor.BridgeActivity;
 
 public class MainActivity extends BridgeActivity {}
+

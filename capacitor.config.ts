@@ -1,7 +1,7 @@
 import type { CapacitorConfig } from '@capacitor/cli';
 
 const config: CapacitorConfig = {
-  appId: 'com.miturnow.app',
+  appId: 'com.bookwise.partner',
   appName: 'Mí Turnow Partner',
   webDir: 'dist',
   plugins: {
