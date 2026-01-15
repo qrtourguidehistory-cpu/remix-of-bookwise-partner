@@ -5,7 +5,8 @@ import { Browser } from '@capacitor/browser';
 import { supabase } from '@/integrations/supabase/client';
 
 // Deep link scheme for the app - used for native redirect
-const NATIVE_REDIRECT_URL = 'com.miturnow.app://auth/callback';
+// Must match AndroidManifest.xml intent-filter scheme
+const NATIVE_REDIRECT_URL = 'com.bookwise.partner://auth/callback';
 
 /**
  * Hook for handling OAuth in Capacitor apps

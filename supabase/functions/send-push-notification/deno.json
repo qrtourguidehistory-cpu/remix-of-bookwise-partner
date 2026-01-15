@@ -1,0 +1,11 @@
+{
+  "compilerOptions": {
+    "lib": ["deno.window"],
+    "strict": true
+  },
+  "imports": {
+    "firebase-admin/app": "https://esm.sh/firebase-admin@11.5.0/app",
+    "firebase-admin/messaging": "https://esm.sh/firebase-admin@11.5.0/messaging"
+  }
+}
+
