@@ -6,6 +6,7 @@ import { DayView } from "@/components/mobile/DayView";
 import { WeekView } from "@/components/mobile/WeekView";
 import { MonthView } from "@/components/mobile/MonthView";
 import { StaffCalendarView } from "@/components/mobile/StaffCalendarView";
+import { NextTurnowView } from "@/components/mobile/NextTurnowView";
 import { TutorialTip } from "@/components/mobile/TutorialTip";
 import { ApprovalSuccessBanner } from "@/components/mobile/ApprovalSuccessBanner";
 import { useTutorialTips } from "@/hooks/useTutorialTips";
@@ -20,7 +21,7 @@ export default function MobileCalendar() {
   const { profile } = useAuth();
   const { canShowTip, markTipAsSeen, setActiveTip } = useTutorialTips();
   const [currentDate, setCurrentDate] = useState(new Date());
-  const [view, setView] = useState<"day" | "week" | "month" | "staff">("day");
+  const [view, setView] = useState<"day" | "week" | "month" | "staff" | "next">("day");
   const [filters, setFilters] = useState<FilterState>({
     searchQuery: "",
     statuses: [],
@@ -123,6 +124,7 @@ export default function MobileCalendar() {
       {view === "week" && <WeekView date={currentDate} filters={filters} />}
       {view === "month" && <MonthView date={currentDate} onDateSelect={handleDateSelect} />}
       {view === "staff" && <StaffCalendarView date={currentDate} filters={filters} />}
+      {view === "next" && <NextTurnowView filters={filters} />}
       
 
       

@@ -18,7 +18,14 @@ export function DateStep({ selectedDate, onDateChange }: DateStepProps) {
           selected={selectedDate}
           onSelect={onDateChange}
           className="rounded-md border"
-          disabled={(date) => date < new Date()}
+          disabled={(date) => {
+            // Allow same day - only disable past dates (before today)
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            const compareDate = new Date(date);
+            compareDate.setHours(0, 0, 0, 0);
+            return compareDate < today;
+          }}
         />
       </div>
     </div>

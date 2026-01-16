@@ -715,8 +715,24 @@ export function DayView({ date, filters, appointmentToOpen, onAppointmentOpened 
                   );
 
                   // Render each appointment inside an inner wrapper to guarantee it's visually inside the white grid area
+                  // Calculate z-index based on column (later columns have higher z-index to appear on top)
+                  // Add base z-index of 10, then add column number to ensure proper stacking
+                  const baseZIndex = 10;
+                  const columnZIndex = baseZIndex + column;
+
                   return (
-                    <div key={`apt-wrap-${appointment.id}`} style={{ position: 'absolute', top: `${position.top}px`, height: `${position.height}px`, left: `${left}%`, width: `calc(${width}% - 2px)`, zIndex: 2 }}>
+                    <div 
+                      key={`apt-wrap-${appointment.id}`} 
+                      style={{ 
+                        position: 'absolute', 
+                        top: `${position.top}px`, 
+                        height: `${position.height}px`, 
+                        left: `${left}%`, 
+                        width: `calc(${width}% - 2px)`, 
+                        zIndex: columnZIndex,
+                        pointerEvents: 'auto'
+                      }}
+                    >
                       <DraggableAppointment
                         key={appointment.id}
                         appointment={appointment}
@@ -790,7 +806,6 @@ function DraggableAppointment({ appointment, onEdit, isActive, position, layout,
     id: appointment.id,
   });
 
-  const statusInfo = getStatusInfo(appointment.status);
   const appointmentColor = useAppointmentColor();
   
   // Get client name - prefer clients relation, fallback to client_name, then guest_name
@@ -809,36 +824,33 @@ function DraggableAppointment({ appointment, onEdit, isActive, position, layout,
   const endTimeFormatted = appointment.end_time ? formatTime(appointment.end_time, timeFormat) : null;
   const timeRange = endTimeFormatted ? `${startTimeFormatted} - ${endTimeFormatted}` : startTimeFormatted;
 
-  // Determine border color based on appointment status and payment
-  let borderColor = appointmentColor;
+  // Determine background color based on appointment status (like image 4)
   const status = appointment.status || 'pending';
   
+  // Get background color based on status
+  let bgColor = '#f59e0b'; // Default orange for pending
+  let textColor = 'text-white'; // White text for colored backgrounds
+  
   switch (status) {
-    case 'cancelled':
-      borderColor = '#ef4444'; // Red
-      break;
-    case 'no_show':
-      borderColor = '#000000'; // Black for no-show
-      break;
     case 'confirmed':
-      borderColor = '#3b82f6'; // Blue for confirmed
+      bgColor = '#3b82f6'; // Blue
       break;
     case 'started':
-      borderColor = '#8b5cf6'; // Purple
+      bgColor = '#8b5cf6'; // Purple
       break;
     case 'completed':
-      // Subcolors for completed based on payment
-      const hasCredit = !appointment.payment_method && !appointment.payment_amount;
-      if (hasCredit) {
-        borderColor = '#38bdf8'; // Light blue for credit
-      } else {
-        // Green for all paid methods (cash, card, transfer, crypto)
-        borderColor = '#22c55e';
-      }
+      // Green for completed
+      bgColor = '#22c55e';
+      break;
+    case 'cancelled':
+      bgColor = '#ef4444'; // Red
+      break;
+    case 'no_show':
+      bgColor = '#6b7280'; // Gray
       break;
     case 'pending':
     default:
-      borderColor = '#f97316'; // Orange for pending/booked
+      bgColor = '#f97316'; // Orange
       break;
   }
 
@@ -849,11 +861,10 @@ function DraggableAppointment({ appointment, onEdit, isActive, position, layout,
     left: `${layout.left}%`,
     width: `calc(${layout.width}% - 2px)`,
     transform: transform ? `translate3d(${transform.x}px, ${transform.y}px, 0)` : undefined,
-    zIndex: isDragging ? 1000 : 1,
+    zIndex: isDragging ? 1000 : (isActive ? 20 : 'inherit'), // Inherit z-index from parent wrapper
     opacity: isDragging ? 0.8 : 1,
     cursor: 'pointer',
-    borderLeftColor: borderColor,
-    borderLeftWidth: '4px',
+    backgroundColor: bgColor,
   };
 
   return (
@@ -862,19 +873,23 @@ function DraggableAppointment({ appointment, onEdit, isActive, position, layout,
       {...listeners}
       {...attributes}
       style={style}
-      className="bg-muted/50 rounded-lg border-l-4 shadow-sm hover:shadow-md transition-shadow overflow-hidden relative"
+      className={`${textColor} rounded-lg shadow-sm hover:shadow-md transition-shadow overflow-hidden relative`}
       onClick={(e) => onEdit(appointment, e)}
     >
       {/* Tag icon in top-right corner */}
       <Tag className="absolute top-1.5 right-1.5 h-3 w-3 text-muted-foreground/60" />
       
-      <div className="h-full flex flex-col p-2 pt-1">
-        {/* First line: "10:00 - 11:30 John Doe" */}
-        <div className="text-sm text-foreground leading-tight truncate mb-0.5">
-          {timeRange} {clientName}
+      <div className="h-full flex flex-col p-2 pt-1 overflow-hidden">
+        {/* First line: Client name */}
+        <div className="text-sm font-medium leading-tight mb-0.5 break-words line-clamp-1">
+          {clientName}
         </div>
-        {/* Second line: "Haircut" */}
-        <div className="text-xs text-muted-foreground truncate">
+        {/* Second line: Time range */}
+        <div className="text-xs opacity-90 leading-tight mb-0.5 break-words line-clamp-1">
+          {timeRange}
+        </div>
+        {/* Third line: Service name */}
+        <div className="text-xs opacity-90 break-words line-clamp-2 flex-1 min-h-0">
           {serviceName}
         </div>
       </div>

@@ -29,6 +29,7 @@ export default function SaleForm() {
   const [staff, setStaff] = useState<any[]>([]);
   const [products, setProducts] = useState<any[]>([]);
   const [selectedProducts, setSelectedProducts] = useState<Array<{product_id: string; quantity: number; unit_price: number}>>([]);
+  const [saleType, setSaleType] = useState<"service" | "inventory">("service");
   const [formData, setFormData] = useState({
     client_type: "walk-in",
     client_id: "",
@@ -163,16 +164,37 @@ export default function SaleForm() {
       }
       
       // Calcular precio total (servicio + productos)
-      const servicePrice = parseFloat(formData.price_usd) || 0;
+      const servicePrice = saleType === "service" ? (parseFloat(formData.price_usd) || 0) : 0;
       const totalPrice = servicePrice + productsTotal;
+      
+      // Validar que haya al menos un servicio o producto
+      if (saleType === "service" && !formData.service_id) {
+        toast({
+          title: "Error",
+          description: language === "es" ? "Por favor selecciona un servicio" : "Please select a service",
+          variant: "destructive",
+        });
+        setLoading(false);
+        return;
+      }
+      
+      if (saleType === "inventory" && selectedProducts.length === 0) {
+        toast({
+          title: "Error",
+          description: language === "es" ? "Por favor selecciona al menos un producto" : "Please select at least one product",
+          variant: "destructive",
+        });
+        setLoading(false);
+        return;
+      }
       
       const saleData = {
         business_id: profile.business_id,
         client_id: formData.client_type === "existing" ? formData.client_id : null,
         client_name: formData.client_name || "Walk-in",
         client_type: formData.client_type,
-        service_id: formData.service_id || null,
-        service_name: formData.service_name || (selectedProducts.length > 0 ? "Venta de productos" : ""),
+        service_id: saleType === "service" ? formData.service_id : null,
+        service_name: saleType === "service" ? formData.service_name : (selectedProducts.length > 0 ? (language === "es" ? "Venta de productos" : "Product sale") : ""),
         staff_id: formData.staff_id || null,
         price_usd: totalPrice,
         price_mxn: parseFloat(formData.price_mxn) || 0,
@@ -219,6 +241,20 @@ export default function SaleForm() {
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-6">
+          {/* Sale Type Selection */}
+          <div>
+            <Label>{language === "es" ? "Tipo de Venta" : "Sale Type"}</Label>
+            <Select value={saleType} onValueChange={(value: "service" | "inventory") => setSaleType(value)}>
+              <SelectTrigger className="mt-2">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="service">{language === "es" ? "Servicios" : "Services"}</SelectItem>
+                <SelectItem value="inventory">{language === "es" ? "Inventario" : "Inventory"}</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
           <div>
             <Label>{language === "es" ? "Tipo de Cliente" : "Client Type"}</Label>
             <Select
@@ -269,21 +305,94 @@ export default function SaleForm() {
             </div>
           )}
 
-          <div>
-            <Label>{language === "es" ? "Servicio" : "Service"}</Label>
-            <Select value={formData.service_id} onValueChange={handleServiceSelect}>
-              <SelectTrigger className="mt-2">
-                <SelectValue placeholder={language === "es" ? "Seleccionar servicio..." : "Select service..."} />
-              </SelectTrigger>
-              <SelectContent>
-                {services.map((service) => (
-                  <SelectItem key={service.id} value={service.id}>
-                    {service.name} - ${service.price_usd || service.price}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+          {/* Service Selection - Only show if saleType is "service" */}
+          {saleType === "service" && (
+            <div>
+              <Label>{language === "es" ? "Servicio" : "Service"}</Label>
+              <Select value={formData.service_id} onValueChange={handleServiceSelect}>
+                <SelectTrigger className="mt-2">
+                  <SelectValue placeholder={language === "es" ? "Seleccionar servicio..." : "Select service..."} />
+                </SelectTrigger>
+                <SelectContent>
+                  {services.map((service) => (
+                    <SelectItem key={service.id} value={service.id}>
+                      {service.name} - ${service.price_usd || service.price}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+
+          {/* Inventory Selection - Only show if saleType is "inventory" */}
+          {saleType === "inventory" && (
+            <div>
+              <Label>{language === "es" ? "Productos" : "Products"}</Label>
+              <div className="space-y-2 mt-2">
+                {products.map((product) => {
+                  const selected = selectedProducts.find(p => p.product_id === product.id);
+                  const quantity = selected?.quantity || 0;
+                  return (
+                    <div key={product.id} className="border rounded-lg p-3">
+                      <div className="flex items-center justify-between mb-2">
+                        <div>
+                          <p className="font-medium">{product.name}</p>
+                          <p className="text-sm text-muted-foreground">
+                            {language === "es" ? "Precio:" : "Price:"} ${product.unit_price} • {language === "es" ? "Stock:" : "Stock:"} {product.current_stock}
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="icon"
+                            onClick={() => {
+                              if (quantity > 0) {
+                                setSelectedProducts(prev => 
+                                  prev.map(p => p.product_id === product.id 
+                                    ? { ...p, quantity: p.quantity - 1 }
+                                    : p
+                                  ).filter(p => p.quantity > 0)
+                                );
+                              }
+                            }}
+                            disabled={quantity === 0}
+                          >
+                            -
+                          </Button>
+                          <span className="w-8 text-center">{quantity}</span>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="icon"
+                            onClick={() => {
+                              if (quantity === 0) {
+                                setSelectedProducts(prev => [...prev, {
+                                  product_id: product.id,
+                                  quantity: 1,
+                                  unit_price: product.unit_price
+                                }]);
+                              } else {
+                                setSelectedProducts(prev => 
+                                  prev.map(p => p.product_id === product.id 
+                                    ? { ...p, quantity: p.quantity + 1 }
+                                    : p
+                                  )
+                                );
+                              }
+                            }}
+                            disabled={product.current_stock <= quantity}
+                          >
+                            +
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
 
           <div>
             <Label>{language === "es" ? "Personal" : "Staff"}</Label>

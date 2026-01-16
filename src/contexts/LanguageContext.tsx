@@ -97,6 +97,23 @@ const translations: Translations = {
   duration: { en: "Duration", es: "Duración" },
   image: { en: "Image", es: "Imagen" },
   selectClient: { en: "Select Client", es: "Seleccionar Cliente" },
+  reportsAndAnalytics: { en: "Reports & Analytics", es: "Reportes y Análisis" },
+  businessInsights: { en: "Business insights and performance metrics", es: "Métricas e información del negocio" },
+  revenueOverview: { en: "Revenue Overview", es: "Resumen de Ingresos" },
+  totalRevenue: { en: "Total Revenue", es: "Ingresos Totales" },
+  cashPayments: { en: "Cash Payments", es: "Pagos en Efectivo" },
+  cardPayments: { en: "Card Payments", es: "Pagos con Tarjeta" },
+  onlinePayments: { en: "Online Payments", es: "Pagos en Línea" },
+  exportReport: { en: "Export Report", es: "Exportar Reporte" },
+  exportAsPDF: { en: "Export as PDF", es: "Exportar como PDF" },
+  exportAsExcel: { en: "Export as Excel", es: "Exportar como Excel" },
+  exportAsCSV: { en: "Export as CSV", es: "Exportar como CSV" },
+  last7Days: { en: "Last 7 days", es: "Últimos 7 días" },
+  last30Days: { en: "Last 30 days", es: "Últimos 30 días" },
+  last90Days: { en: "Last 90 days", es: "Últimos 90 días" },
+  thisYear: { en: "This year", es: "Este año" },
+  nextTurnow: { en: "Next Turnow", es: "Siguiente Turno" },
+  calendarNextTurnow: { en: "Calendar - Next Turnow", es: "Calendario - Siguiente Turno" },
 };
 
 interface LanguageContextType {
@@ -110,7 +127,7 @@ const LanguageContext = createContext<LanguageContextType | undefined>(undefined
 export function LanguageProvider({ children }: { children: React.ReactNode }) {
   const [language, setLanguage] = useState<Language>(() => {
     const stored = localStorage.getItem("language");
-    return (stored as Language) || "en";
+    return (stored as Language) || "es"; // Default to Spanish
   });
 
   const t = (key: string): string => {

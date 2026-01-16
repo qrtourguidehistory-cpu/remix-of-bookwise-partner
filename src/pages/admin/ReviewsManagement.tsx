@@ -102,7 +102,16 @@ export default function ReviewsManagement() {
         adminResponse: review.admin_response || null,
       }));
 
-      setReviews(formattedReviews);
+      // Filter to max 10 per category (good: 4-5, neutral: 3, negative: 1-2)
+      const goodReviews = formattedReviews.filter(r => r.rating >= 4).slice(0, 10);
+      const neutralReviews = formattedReviews.filter(r => r.rating === 3).slice(0, 10);
+      const negativeReviews = formattedReviews.filter(r => r.rating <= 2).slice(0, 10);
+      
+      // Combine and sort by date (newest first)
+      const filteredReviews = [...goodReviews, ...neutralReviews, ...negativeReviews]
+        .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+      setReviews(filteredReviews);
 
       // Calculate stats
       const totalReviews = formattedReviews.length;

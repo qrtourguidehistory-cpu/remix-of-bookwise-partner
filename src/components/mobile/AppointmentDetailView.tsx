@@ -458,7 +458,37 @@ export function AppointmentDetailView({
   const servicePriceUSD = service?.price_usd || 0;
   const serviceDuration = service?.duration_minutes || duration;
   
-  const staffName = appointment?.staff?.full_name || "";
+  const [fetchedStaff, setFetchedStaff] = useState<any>(null);
+  
+  // Fetch staff if not loaded in appointment relation
+  useEffect(() => {
+    if (open && appointment && !appointment?.staff?.full_name && appointment?.staff_id) {
+      const fetchStaff = async () => {
+        if (!profile?.business_id || !appointment.staff_id) return;
+        
+        try {
+          const { data, error } = await supabase
+            .from("staff")
+            .select("id, full_name")
+            .eq("id", appointment.staff_id)
+            .eq("business_id", profile.business_id)
+            .single();
+          
+          if (!error && data) {
+            setFetchedStaff(data);
+          }
+        } catch (err) {
+          // Silent error handling
+        }
+      };
+      
+      fetchStaff();
+    } else {
+      setFetchedStaff(null);
+    }
+  }, [open, appointment, profile?.business_id]);
+  
+  const staffName = appointment?.staff?.full_name || fetchedStaff?.full_name || "";
   const appointmentDate = safeAppointmentDate;
 
   const mainLine = useMemo(() => {
@@ -820,8 +850,13 @@ export function AppointmentDetailView({
                       <div>
                         <p className="font-medium">{serviceName}</p>
                         <p className="text-xs text-muted-foreground">
-                          {formatTime(appointment.start_time, "12h")} • {serviceDuration} min{staffName ? ` • ${staffName}` : ""}
+                          {formatTime(appointment.start_time, "12h")} • {serviceDuration} min
                         </p>
+                        {staffName && (
+                          <p className="text-xs text-muted-foreground mt-1">
+                            {language === "es" ? "Atendido por:" : "Attended by:"} {staffName}
+                          </p>
+                        )}
                       </div>
                       <p className="font-semibold">DOP {Number(servicePrice || 0).toFixed(0)}</p>
                     </div>
@@ -830,7 +865,7 @@ export function AppointmentDetailView({
                   {/* Add-on services */}
                   {(addonItems || []).map((it: any, idx: number) => {
                     const addName = it.services?.name || (language === "es" ? "Servicio" : "Service");
-                    const addStaff = it.staff?.full_name || "";
+                    const addStaff = it.staff?.full_name || appointment?.staff?.full_name || fetchedStaff?.full_name || "";
                     const addDur = it.duration_minutes ?? it.services?.duration_minutes;
                     const addTime = it.start_time || appointment.start_time;
                     const qty = Number(it.quantity || 1);
@@ -839,13 +874,15 @@ export function AppointmentDetailView({
                     return (
                       <div key={`${it.service_id}-${it.start_time || "na"}-${idx}`} className="flex justify-between items-center py-2 border-b border-border">
                         <div>
-                          <p className="font-medium">{addName}</p>
+                          <p className="font-medium">{addName} {qty > 1 ? `(x${qty})` : ""}</p>
                           <p className="text-xs text-muted-foreground">
-                            {formatTime(addTime, "12h")}
-                            {addDur ? ` • ${addDur} min` : ""}
-                            {addStaff ? ` • ${addStaff}` : ""}
-                            {qty > 1 ? ` • x${qty}` : ""}
+                            {formatTime(addTime, "12h")} • {addDur ? `${addDur} min` : ""}
                           </p>
+                          {addStaff && (
+                            <p className="text-xs text-muted-foreground mt-1">
+                              {language === "es" ? "Atendido por:" : "Attended by:"} {addStaff}
+                            </p>
+                          )}
                         </div>
                         <p className="font-semibold">DOP {amt.toFixed(0)}</p>
                       </div>
@@ -1013,7 +1050,7 @@ export function AppointmentDetailView({
             {/* Add-on services (appointment_services) */}
             {(addonItems || []).map((it: any, idx: number) => {
               const addName = it.services?.name || (language === "es" ? "Servicio" : "Service");
-              const addStaff = it.staff?.full_name || "";
+              const addStaff = it.staff?.full_name || appointment?.staff?.full_name || fetchedStaff?.full_name || "";
               const addDur = it.duration_minutes ?? it.services?.duration_minutes;
               const addTime = it.start_time || appointment.start_time;
               const qty = Number(it.quantity || 1);

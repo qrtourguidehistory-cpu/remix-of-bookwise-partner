@@ -21,7 +21,10 @@ export function BookingNavigation({
   const { t } = useLanguage();
 
   return (
-    <div className="fixed bottom-20 left-0 right-0 p-4 bg-background border-t">
+    <div 
+      className="fixed bottom-20 left-0 right-0 p-4 bg-background border-t"
+      style={{ paddingBottom: `calc(1rem + env(safe-area-inset-bottom, 0px))` }}
+    >
       <div className="flex gap-3 max-w-2xl mx-auto">
         {step > 1 && (
           <Button variant="outline" onClick={onBack} className="flex-1">

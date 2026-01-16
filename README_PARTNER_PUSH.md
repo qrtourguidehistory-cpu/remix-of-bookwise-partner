@@ -283,3 +283,4 @@ Versión 2.0 - Enero 2026
 
 **Solo falta compilar, testear y desplegar. 🚀**
 
+

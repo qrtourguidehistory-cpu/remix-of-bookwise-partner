@@ -287,7 +287,9 @@ export default function MobileLayout({ children }: MobileLayoutProps) {
           message,
           read,
           created_at,
-          link
+          link,
+          meta,
+          appointment_id
         `)
         .eq('user_id', finalOwnerId) // ✅ Usar owner_id, no profile.id
         .order('created_at', { ascending: false })
@@ -339,6 +341,11 @@ export default function MobileLayout({ children }: MobileLayoutProps) {
           locale: language === 'es' ? es : enUS
         });
 
+        // Extract appointment_id from meta or direct field
+        const meta = notif.meta as any;
+        const appointmentId = notif.appointment_id || meta?.appointment_id || meta?.appointmentId;
+        const appointmentDate = meta?.appointment_date || meta?.appointmentDate;
+
         return {
           id: notif.id,
           title: notif.title || (language === 'es' ? 'Notificación' : 'Notification'),
@@ -349,6 +356,8 @@ export default function MobileLayout({ children }: MobileLayoutProps) {
           notificationId: notif.id,
           notificationTable: 'notifications',
           link: notif.link,
+          appointmentId,
+          appointmentDate,
         };
       });
 
@@ -440,41 +449,114 @@ export default function MobileLayout({ children }: MobileLayoutProps) {
     // Close notifications sheet
     setNotificationsOpen(false);
     
-    // Dispatch a custom event that calendar components can listen to
-    window.dispatchEvent(new CustomEvent('openAppointmentDetail', {
-      detail: { appointmentId, appointmentDate }
-    }));
+    // Navigate to calendar first if not already there
+    const currentPath = window.location.pathname;
+    if (!currentPath.includes('/calendar') && !currentPath.includes('/mobile/calendar')) {
+      navigate('/mobile/calendar');
+      // Wait a bit for navigation, then dispatch event
+      setTimeout(() => {
+        window.dispatchEvent(new CustomEvent('openAppointmentDetail', {
+          detail: { appointmentId, appointmentDate }
+        }));
+      }, 100);
+    } else {
+      // Already on calendar page, dispatch immediately
+      window.dispatchEvent(new CustomEvent('openAppointmentDetail', {
+        detail: { appointmentId, appointmentDate }
+      }));
+    }
   };
 
   const handleNotificationClick = async (notification: Notification) => {
-    // Marcar como leída solo cuando el usuario hace clic en ella
-    if (!notification.read && notification.notificationId) {
-      try {
-        const table = notification.notificationTable || 'client_notifications';
-        await (supabase
-          .from(table as any)
-          .update({ read: true } as any)
-          .eq('id', notification.notificationId) as any);
-
-        // Update local state
-        setNotifications(prev => 
-          prev.map(n => n.id === notification.id ? { ...n, read: true } : n)
-        );
-        setHasUnread(notifications.some(n => n.id !== notification.id && !n.read));
-      } catch (error) {
-        console.error('Error marking notification as read:', error);
-      }
-    }
+    // Close notifications sheet first
+    setNotificationsOpen(false);
 
     // Handle navigation based on notification type
-    if (notification.link) {
-      // Close notifications sheet
-      setNotificationsOpen(false);
-      // Navigate to the link
+    // Try to extract appointment ID from link or use appointmentId
+    let aptId = notification.appointmentId;
+    let aptDate = notification.appointmentDate;
+    
+    // If no appointmentId but we have a link, try to extract from link
+    if (!aptId && notification.link) {
+      // Try different patterns
+      const patterns = [
+        /\/admin\/calendar\/appointment\/([a-f0-9-]+)/i,
+        /\/mobile\/calendar\/appointment\/([a-f0-9-]+)/i,
+        /appointments\/([a-f0-9-]+)/i,
+        /appointment[_-]?id[=:]([a-f0-9-]+)/i,
+        /appointmentId=([a-f0-9-]+)/i
+      ];
+      
+      for (const pattern of patterns) {
+        const match = notification.link.match(pattern);
+        if (match && match[1]) {
+          aptId = match[1];
+          break;
+        }
+      }
+      
+      // Try to extract date from link
+      const dateMatch = notification.link.match(/[?&]date=([^&]+)/i);
+      if (dateMatch && dateMatch[1]) {
+        aptDate = decodeURIComponent(dateMatch[1]);
+      }
+    }
+    
+    // If we have appointment ID, navigate to calendar and open it
+    if (aptId) {
+      // Navigate to calendar first
+      navigate('/mobile/calendar');
+      
+      // Wait a bit for navigation, then open appointment detail
+      setTimeout(() => {
+        openAppointmentDetail(aptId, aptDate);
+        
+        // Mark as read ONLY after successfully opening the appointment
+        if (!notification.read && notification.notificationId) {
+          const markAsRead = async () => {
+            try {
+              const table = notification.notificationTable || 'notifications';
+              await (supabase
+                .from(table as any)
+                .update({ read: true } as any)
+                .eq('id', notification.notificationId) as any);
+
+              // Update local state
+              setNotifications(prev => 
+                prev.map(n => n.id === notification.id ? { ...n, read: true } : n)
+              );
+              setHasUnread(notifications.some(n => n.id !== notification.id && !n.read));
+            } catch (error) {
+              console.error('Error marking notification as read:', error);
+            }
+          };
+          markAsRead();
+        }
+      }, 300);
+    } else if (notification.link && !notification.link.includes('/admin/appointments')) {
+      // Navigate to the link if it's not an appointment detail link and not the appointments page
       navigate(notification.link);
-    } else if (notification.type === 'appointment' && notification.appointmentId) {
-      // Open appointment detail if applicable
-      openAppointmentDetail(notification.appointmentId, notification.appointmentDate);
+      
+      // Mark as read after navigation
+      if (!notification.read && notification.notificationId) {
+        try {
+          const table = notification.notificationTable || 'notifications';
+          await (supabase
+            .from(table as any)
+            .update({ read: true } as any)
+            .eq('id', notification.notificationId) as any);
+
+          setNotifications(prev => 
+            prev.map(n => n.id === notification.id ? { ...n, read: true } : n)
+          );
+          setHasUnread(notifications.some(n => n.id !== notification.id && !n.read));
+        } catch (error) {
+          console.error('Error marking notification as read:', error);
+        }
+      }
+    } else {
+      // Fallback: navigate to calendar
+      navigate('/mobile/calendar');
     }
   };
 

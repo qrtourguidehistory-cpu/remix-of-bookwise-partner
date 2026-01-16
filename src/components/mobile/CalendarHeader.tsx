@@ -97,6 +97,9 @@ export function CalendarHeader({ currentDate, onDateChange, view, onViewChange, 
       onDateChange(subDays(currentDate, 1));
     } else if (view === "week") {
       onDateChange(subDays(currentDate, 7));
+    } else if (view === "staff") {
+      // Staff view navigates by day (not month)
+      onDateChange(subDays(currentDate, 1));
     } else {
       onDateChange(subMonths(currentDate, 1));
     }
@@ -107,6 +110,9 @@ export function CalendarHeader({ currentDate, onDateChange, view, onViewChange, 
       onDateChange(addDays(currentDate, 1));
     } else if (view === "week") {
       onDateChange(addDays(currentDate, 7));
+    } else if (view === "staff") {
+      // Staff view navigates by day (not month)
+      onDateChange(addDays(currentDate, 1));
     } else {
       onDateChange(addMonths(currentDate, 1));
     }
@@ -117,6 +123,7 @@ export function CalendarHeader({ currentDate, onDateChange, view, onViewChange, 
       return format(currentDate, "MMMM yyyy", { locale: es });
     }
     if (view === "staff") {
+      // Staff view shows day for day-by-day navigation
       return format(currentDate, "EEE d MMM", { locale: es });
     }
     return format(currentDate, "EEE d MMM", { locale: es });
@@ -173,6 +180,9 @@ export function CalendarHeader({ currentDate, onDateChange, view, onViewChange, 
             </DropdownMenuItem>
             <DropdownMenuItem onClick={() => onViewChange("staff")}>
               {t("calendar")} - Por Personal
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => onViewChange("next")}>
+              {t("calendarNextTurnow")}
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>

@@ -11,6 +11,7 @@ import { ServiceStep } from "@/components/mobile/booking/ServiceStep";
 import { StaffStep } from "@/components/mobile/booking/StaffStep";
 import { DateStep } from "@/components/mobile/booking/DateStep";
 import { TimeStep } from "@/components/mobile/booking/TimeStep";
+import { ClientNameStep } from "@/components/mobile/booking/ClientNameStep";
 import { ConfirmationStep } from "@/components/mobile/booking/ConfirmationStep";
 import { BookingProgress } from "@/components/mobile/booking/BookingProgress";
 import { BookingNavigation } from "@/components/mobile/booking/BookingNavigation";
@@ -32,6 +33,7 @@ export default function BookingFlow() {
   const [selectedStaff, setSelectedStaff] = useState("");
   const [selectedDate, setSelectedDate] = useState<Date>();
   const [selectedTime, setSelectedTime] = useState("");
+  const [clientName, setClientName] = useState("");
   const [services, setServices] = useState<any[]>([]);
   const [staff, setStaff] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
@@ -379,15 +381,25 @@ export default function BookingFlow() {
       let clientId = clientData?.id;
       
       if (!clientId) {
+        if (!clientName || !clientName.trim()) {
+          toast({
+            title: "Error",
+            description: language === "es" ? "Por favor ingresa el nombre del cliente" : "Please enter client name",
+            variant: "destructive",
+          });
+          setLoading(false);
+          return;
+        }
+        
         const newClientId = crypto.randomUUID();
         const { data: newClient, error: createError } = await supabase
           .from("clients")
           .insert({
             id: newClientId,
             business_id: profile.business_id,
-            full_name: "Demo Client",
-            email: "demo@example.com",
-            phone: "000-000-0000"
+            full_name: clientName.trim(),
+            email: `client-${Date.now()}@temp.com`,
+            phone: ""
           })
           .select()
           .single();
@@ -501,14 +513,16 @@ export default function BookingFlow() {
     (step === 1 && !!selectedService) ||
     (step === 2 && !!selectedStaff) ||
     (step === 3 && !!selectedDate) ||
-    (step === 4 && !!selectedTime);
+    (step === 4 && !!selectedTime) ||
+    (step === 5 && !!clientName?.trim()) ||
+    (step === 6);
 
   return (
     <MobileLayout>
       <div className="p-4 pb-24 max-w-2xl mx-auto">
         <h1 className="text-2xl font-bold mb-6">{t("bookAppointment")}</h1>
         
-        <BookingProgress currentStep={step} />
+        <BookingProgress currentStep={step} totalSteps={6} />
 
         {step === 1 && (
           <ServiceStep 
@@ -543,6 +557,13 @@ export default function BookingFlow() {
         )}
 
         {step === 5 && (
+          <ClientNameStep 
+            clientName={clientName}
+            onClientNameChange={setClientName}
+          />
+        )}
+
+        {step === 6 && (
           <ConfirmationStep 
             service={service} 
             staff={selectedStaffMember} 

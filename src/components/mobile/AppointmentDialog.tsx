@@ -22,8 +22,14 @@ import { useLanguage } from "@/contexts/LanguageContext";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/lib/supabaseClient";
 import { useAuth } from "@/contexts/AuthContext";
-import { AlertTriangle } from "lucide-react";
+import { AlertTriangle, X } from "lucide-react";
 import { inviteClientEarly } from "@/lib/earlyInviteService";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 interface AppointmentDialogProps {
   open: boolean;
@@ -61,6 +67,9 @@ export function AppointmentDialog({
     conflicts: any[];
     confirmed: boolean;
   }>({ hasConflicts: false, conflicts: [], confirmed: false });
+  const [newClientDialogOpen, setNewClientDialogOpen] = useState(false);
+  const [newClientData, setNewClientData] = useState({ full_name: "", phone: "" });
+  const [paymentMethod, setPaymentMethod] = useState<string>("cash");
   const [formData, setFormData] = useState<{
     client_id: string;
     service_id: string;
@@ -388,6 +397,18 @@ export function AppointmentDialog({
       return;
     }
 
+    // If status is completed and this is a new appointment (not editing), require payment method
+    if (formData.status === "completed" && !appointment) {
+      if (!paymentMethod) {
+        toast({
+          title: "Error",
+          description: language === "es" ? "Por favor selecciona un método de pago para citas completadas" : "Please select a payment method for completed appointments",
+          variant: "destructive",
+        });
+        return;
+      }
+    }
+
     // Check if there are conflicts and user hasn't confirmed
     if (availabilityWarning.hasConflicts && !availabilityWarning.confirmed) {
       toast({
@@ -426,7 +447,8 @@ export function AppointmentDialog({
         end_time: endTime24,
         notes: formData.notes,
         status: formData.status,
-        payment_amount: servicePrice,
+        payment_amount: formData.status === "completed" ? servicePrice : null,
+        payment_method: formData.status === "completed" ? (paymentMethod as any) : null,
       };
 
       // Add business_id only when creating new appointment
@@ -798,48 +820,58 @@ export function AppointmentDialog({
               <Label>
                 {t("selectClient") || "Client"} <span className="text-destructive">*</span>
               </Label>
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                onClick={async () => {
-                  try {
-                    const clientData = {
-                      id: crypto.randomUUID(),
-                      full_name: language === "es" ? "Cliente Sin Cita" : "Walk-in Client",
-                      email: `walk-in-${Date.now()}@temp.com`,
-                      phone: "",
-                    };
-                    
-                    if (!profile?.business_id) {
-                      throw new Error("Business ID is required");
+              <div className="flex gap-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={async () => {
+                    try {
+                      const clientData = {
+                        id: crypto.randomUUID(),
+                        full_name: language === "es" ? "Cliente Sin Cita" : "Walk-in Client",
+                        email: `walk-in-${Date.now()}@temp.com`,
+                        phone: "",
+                      };
+                      
+                      if (!profile?.business_id) {
+                        throw new Error("Business ID is required");
+                      }
+                      
+                      const { error } = await supabase
+                        .from("clients")
+                        .insert([{ ...clientData, business_id: profile.business_id }]);
+                      
+                      if (error) throw error;
+                      
+                      // Refresh client list
+                      await fetchData();
+                      
+                      toast({
+                        title: t("success") || "Success",
+                        description: language === "es" ? "Cliente walk-in creado. Selecciónalo de la lista." : "Walk-in client created. Select it from the list.",
+                      });
+                    } catch (error) {
+                      console.error("Error creating walk-in client:", error);
+                      toast({
+                        title: "Error",
+                        description: language === "es" ? "Error al crear cliente" : "Failed to create client",
+                        variant: "destructive",
+                      });
                     }
-                    
-                    const { error } = await supabase
-                      .from("clients")
-                      .insert([{ ...clientData, business_id: profile.business_id }]);
-                    
-                    if (error) throw error;
-                    
-                    // Refresh client list
-                    await fetchData();
-                    
-                    toast({
-                      title: t("success") || "Success",
-                      description: language === "es" ? "Cliente walk-in creado. Selecciónalo de la lista." : "Walk-in client created. Select it from the list.",
-                    });
-                  } catch (error) {
-                    console.error("Error creating walk-in client:", error);
-                    toast({
-                      title: "Error",
-                      description: language === "es" ? "Error al crear cliente" : "Failed to create client",
-                      variant: "destructive",
-                    });
-                  }
-                }}
-              >
-                + {language === "es" ? "Walk-in" : "Walk-in"}
-              </Button>
+                  }}
+                >
+                  + {language === "es" ? "Walk-in" : "Walk-in"}
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setNewClientDialogOpen(true)}
+                >
+                  + {language === "es" ? "Nuevo Cliente" : "New Client"}
+                </Button>
+              </div>
             </div>
             <Select value={formData.client_id} onValueChange={(value) => setFormData({ ...formData, client_id: value })}>
               <SelectTrigger className={`${!formData.client_id ? 'border-destructive/50' : ''}`}>
@@ -971,6 +1003,26 @@ export function AppointmentDialog({
             </Select>
           </div>
 
+          {/* Payment Method - Required when status is completed */}
+          {formData.status === "completed" && !appointment && (
+            <div>
+              <Label>
+                {language === "es" ? "Método de Pago" : "Payment Method"} <span className="text-destructive">*</span>
+              </Label>
+              <Select value={paymentMethod} onValueChange={setPaymentMethod}>
+                <SelectTrigger className="mt-2">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="cash">{language === "es" ? "Efectivo" : "Cash"}</SelectItem>
+                  <SelectItem value="card">{language === "es" ? "Tarjeta D/C" : "Card"}</SelectItem>
+                  <SelectItem value="bank_transfer">{language === "es" ? "Transferencia" : "Transfer"}</SelectItem>
+                  <SelectItem value="crypto">{language === "es" ? "Crypto moneda" : "Crypto"}</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+
           <div>
             <Label>{t("notes") || "Notes"}</Label>
             <Textarea
@@ -982,7 +1034,7 @@ export function AppointmentDialog({
             />
           </div>
 
-          <div className="flex gap-2 pt-4">
+          <div className="flex gap-2 pt-4" style={{ paddingBottom: 'calc(16px + env(safe-area-inset-bottom, 0px))' }}>
             <Button
               type="button"
               variant="outline"
@@ -997,6 +1049,117 @@ export function AppointmentDialog({
           </div>
         </form>
       </SheetContent>
+
+      {/* New Client Dialog */}
+      <Dialog open={newClientDialogOpen} onOpenChange={setNewClientDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{language === "es" ? "Nuevo Cliente" : "New Client"}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 mt-4">
+            <div>
+              <Label>
+                {language === "es" ? "Nombre" : "Name"} <span className="text-destructive">*</span>
+              </Label>
+              <Input
+                value={newClientData.full_name}
+                onChange={(e) => setNewClientData({ ...newClientData, full_name: e.target.value })}
+                className="mt-2"
+                placeholder={language === "es" ? "Nombre completo" : "Full name"}
+                required
+              />
+            </div>
+            <div>
+              <Label>
+                {language === "es" ? "Teléfono" : "Phone"} <span className="text-destructive">*</span>
+              </Label>
+              <Input
+                value={newClientData.phone}
+                onChange={(e) => setNewClientData({ ...newClientData, phone: e.target.value })}
+                className="mt-2"
+                placeholder={language === "es" ? "Número de teléfono" : "Phone number"}
+                type="tel"
+                required
+              />
+            </div>
+            <div className="flex gap-2 pt-4">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  setNewClientDialogOpen(false);
+                  setNewClientData({ full_name: "", phone: "" });
+                }}
+                className="flex-1"
+              >
+                {t("cancel")}
+              </Button>
+              <Button
+                type="button"
+                onClick={async () => {
+                  if (!newClientData.full_name.trim() || !newClientData.phone.trim()) {
+                    toast({
+                      title: "Error",
+                      description: language === "es" ? "Por favor completa todos los campos" : "Please complete all fields",
+                      variant: "destructive",
+                    });
+                    return;
+                  }
+
+                  setLoading(true);
+                  try {
+                    if (!profile?.business_id) {
+                      throw new Error("Business ID is required");
+                    }
+
+                    const { data: newClient, error } = await supabase
+                      .from("clients")
+                      .insert([{
+                        business_id: profile.business_id,
+                        full_name: newClientData.full_name.trim(),
+                        phone: newClientData.phone.trim(),
+                        email: `client-${Date.now()}@temp.com`, // Temporary email
+                      }])
+                      .select()
+                      .single();
+
+                    if (error) throw error;
+
+                    // Refresh client list
+                    await fetchData();
+
+                    // Select the new client
+                    if (newClient) {
+                      setFormData({ ...formData, client_id: newClient.id });
+                    }
+
+                    setNewClientDialogOpen(false);
+                    setNewClientData({ full_name: "", phone: "" });
+
+                    toast({
+                      title: t("success") || "Success",
+                      description: language === "es" ? "Cliente creado exitosamente" : "Client created successfully",
+                    });
+                  } catch (error: any) {
+                    console.error("Error creating client:", error);
+                    toast({
+                      title: "Error",
+                      description: error.message || (language === "es" ? "Error al crear cliente" : "Failed to create client"),
+                      variant: "destructive",
+                    });
+                  } finally {
+                    setLoading(false);
+                  }
+                }}
+                disabled={loading}
+                className="flex-1"
+              >
+                {loading ? t("loading") || "Loading..." : (t("save") || "Save")}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </Sheet>
   );
 }

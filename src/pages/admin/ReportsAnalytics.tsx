@@ -16,6 +16,7 @@ import { supabase } from "@/lib/supabaseClient";
 import { subDays, startOfDay, endOfDay } from "date-fns";
 import { exportAnalyticsToPDF, exportAnalyticsToExcel, exportAnalyticsToCSV, AnalyticsReportData } from "@/lib/exportUtils";
 import { toast } from "sonner";
+import { useLanguage } from "@/contexts/LanguageContext";
 
 interface RevenueData {
   total: number;
@@ -46,6 +47,7 @@ interface PopularService {
 
 export default function ReportsAnalytics() {
   const { profile } = useAuth();
+  const { t, language } = useLanguage();
   const [period, setPeriod] = useState("7days");
   const [loading, setLoading] = useState(true);
   const [revenue, setRevenue] = useState<RevenueData>({
@@ -450,8 +452,8 @@ export default function ReportsAnalytics() {
       <div className="space-y-6">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-3xl font-bold">Reports & Analytics</h1>
-            <p className="text-muted-foreground mt-1">Business insights and performance metrics</p>
+            <h1 className="text-3xl font-bold">{t("reportsAndAnalytics")}</h1>
+            <p className="text-muted-foreground mt-1">{t("businessInsights")}</p>
           </div>
           <div className="flex gap-2">
             <Select value={period} onValueChange={setPeriod}>
@@ -459,28 +461,28 @@ export default function ReportsAnalytics() {
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="7days">Last 7 days</SelectItem>
-                <SelectItem value="30days">Last 30 days</SelectItem>
-                <SelectItem value="90days">Last 90 days</SelectItem>
-                <SelectItem value="year">This year</SelectItem>
+                <SelectItem value="7days">{t("last7Days")}</SelectItem>
+                <SelectItem value="30days">{t("last30Days")}</SelectItem>
+                <SelectItem value="90days">{t("last90Days")}</SelectItem>
+                <SelectItem value="year">{t("thisYear")}</SelectItem>
               </SelectContent>
             </Select>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="outline">
                   <Download className="h-4 w-4 mr-2" />
-                  Export Report
+                  {t("exportReport")}
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent>
                 <DropdownMenuItem onClick={handleExportPDF}>
-                  Export as PDF
+                  {t("exportAsPDF")}
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={handleExportExcel}>
-                  Export as Excel
+                  {t("exportAsExcel")}
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={handleExportCSV}>
-                  Export as CSV
+                  {t("exportAsCSV")}
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
@@ -490,47 +492,47 @@ export default function ReportsAnalytics() {
         {/* Revenue Overview */}
         <Card>
           <CardHeader>
-            <CardTitle>Revenue Overview</CardTitle>
+            <CardTitle>{t("revenueOverview")}</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="space-y-6">
               <div className="grid gap-4 md:grid-cols-5">
                 <div className="space-y-2">
-                  <p className="text-sm text-muted-foreground">Total Revenue</p>
+                  <p className="text-sm text-muted-foreground">{t("totalRevenue")}</p>
                   <p className="text-2xl font-bold">{formatCurrency(revenue.total)}</p>
                   <div className="flex items-center gap-1 text-sm text-green-600">
                     <TrendingUp className="h-4 w-4" />
-                    <span>Revenue</span>
+                    <span>{language === "es" ? "Ingresos" : "Revenue"}</span>
                   </div>
                 </div>
                 <div className="space-y-2">
-                  <p className="text-sm text-muted-foreground">Cash Payments</p>
+                  <p className="text-sm text-muted-foreground">{t("cashPayments")}</p>
                   <p className="text-2xl font-bold">{formatCurrency(revenue.cash)}</p>
                   <p className="text-sm text-muted-foreground">
                     {revenue.total > 0
                       ? Math.round((revenue.cash / revenue.total) * 100)
                       : 0}
-                    % of total
+                    % {language === "es" ? "del total" : "of total"}
                   </p>
                 </div>
                 <div className="space-y-2">
-                  <p className="text-sm text-muted-foreground">Card Payments</p>
+                  <p className="text-sm text-muted-foreground">{t("cardPayments")}</p>
                   <p className="text-2xl font-bold">{formatCurrency(revenue.card)}</p>
                   <p className="text-sm text-muted-foreground">
                     {revenue.total > 0
                       ? Math.round((revenue.card / revenue.total) * 100)
                       : 0}
-                    % of total
+                    % {language === "es" ? "del total" : "of total"}
                   </p>
                 </div>
                 <div className="space-y-2">
-                  <p className="text-sm text-muted-foreground">Online Payments</p>
+                  <p className="text-sm text-muted-foreground">{t("onlinePayments")}</p>
                   <p className="text-2xl font-bold">{formatCurrency(revenue.online)}</p>
                   <p className="text-sm text-muted-foreground">
                     {revenue.total > 0
                       ? Math.round((revenue.online / revenue.total) * 100)
                       : 0}
-                    % of total
+                    % {language === "es" ? "del total" : "of total"}
                   </p>
                 </div>
                 <div className="space-y-2">
