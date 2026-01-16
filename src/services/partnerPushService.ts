@@ -2,6 +2,14 @@ import { PushNotifications } from '@capacitor/push-notifications';
 import { Capacitor } from '@capacitor/core';
 import { supabase } from '@/integrations/supabase/client';
 
+// Callback para navegación - se configura desde el componente que usa el servicio
+let navigationCallback: ((path: string) => void) | null = null;
+
+export const setNavigationCallback = (callback: (path: string) => void) => {
+  navigationCallback = callback;
+  console.log('[PartnerPush] Navigation callback configured');
+};
+
 export const initializePartnerPush = async (userId: string) => {
   console.log('[PartnerPush] START - User:', userId);
 
@@ -81,6 +89,36 @@ export const initializePartnerPush = async (userId: string) => {
 
     await PushNotifications.addListener('pushNotificationActionPerformed', (action) => {
       console.log('[PartnerPush] Notification tapped:', action);
+      
+      // Extraer datos de la notificación
+      const notification = action.notification;
+      const data = notification.data;
+      
+      console.log('[PartnerPush] Notification data:', data);
+      
+      // 1. Extraemos el ID de la cita que viene de Supabase
+      const appointmentId = data?.appointment_id;
+      const businessId = data?.business_id;
+      const notificationType = data?.type;
+      
+      console.log('[PartnerPush] Extracted:', {
+        appointmentId,
+        businessId,
+        notificationType
+      });
+      
+      // 2. Si el ID existe y tenemos callback de navegación, navegamos
+      if (appointmentId && navigationCallback) {
+        console.log('[PartnerPush] Navigating to appointment:', appointmentId);
+        // Navegar a la vista de detalles de la cita
+        navigationCallback(`/appointments/${appointmentId}`);
+      } else if (businessId && navigationCallback) {
+        console.log('[PartnerPush] Navigating to business:', businessId);
+        // Alternativa: navegar al negocio si no hay appointment_id
+        navigationCallback(`/businesses/${businessId}`);
+      } else {
+        console.log('[PartnerPush] No navigation target or callback not set');
+      }
     });
 
     console.log('[PartnerPush] Initialization COMPLETE');

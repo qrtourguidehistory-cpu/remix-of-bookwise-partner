@@ -3,7 +3,7 @@ import { User, Session } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { useNavigate } from "react-router-dom";
-import { initializePartnerPush, cleanupPartnerPush } from "../services/partnerPushService";
+import { initializePartnerPush, cleanupPartnerPush, setNavigationCallback } from "../services/partnerPushService";
 
 interface AuthContextType {
   user: User | null;
@@ -190,6 +190,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               
               if (profile?.role === 'partner') {
                 try {
+                  // Configurar callback de navegación antes de inicializar
+                  setNavigationCallback((path: string) => {
+                    console.log('[AuthContext] Navigating to:', path);
+                    navigate(path);
+                  });
                   await initializePartnerPush(currentUser.id);
                 } catch (err) {
                   console.error('[AuthContext] Push init failed but continuing:', err);
@@ -261,6 +266,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               
               if (profile?.role === 'partner') {
                 try {
+                  // Configurar callback de navegación antes de inicializar
+                  setNavigationCallback((path: string) => {
+                    console.log('[AuthContext] Navigating to:', path);
+                    navigate(path);
+                  });
                   await initializePartnerPush(currentUser.id);
                 } catch (err) {
                   console.error('[AuthContext] Push init failed but continuing:', err);
