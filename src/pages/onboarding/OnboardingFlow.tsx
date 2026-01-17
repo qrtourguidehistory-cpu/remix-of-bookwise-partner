@@ -9,6 +9,7 @@ import SelectCategories from "./steps/SelectCategories";
 import BusinessName from "./steps/BusinessName";
 import IndependentOrTeam from "./steps/IndependentOrTeam";
 import ServiceType from "./steps/ServiceType";
+import BusinessLocationStep from "./steps/BusinessLocationStep";
 import PhysicalLocationDetails from "./steps/PhysicalLocationDetails";
 import TeamSize from "./steps/TeamSize";
 import AddTeamMembers from "./steps/AddTeamMembers";
@@ -50,6 +51,7 @@ export default function OnboardingFlow() {
     { title: "Team size", component: TeamSize },
     { title: "Add team members", component: AddTeamMembers },
     { title: "Service type", component: ServiceType },
+    { title: "Business location", component: BusinessLocationStep },
     { title: "Location details", component: PhysicalLocationDetails },
     { title: "Review and complete", component: OnboardingSummary },
   ];
@@ -64,9 +66,9 @@ export default function OnboardingFlow() {
       return;
     }
     
-    // Skip location details if service type is not physical
+    // Skip location steps if service type is not physical
     if (currentStep === 5 && stepData.serviceType !== "physical") {
-      setCurrentStep(7);
+      setCurrentStep(8); // Skip both location steps
       return;
     }
     
@@ -81,15 +83,18 @@ export default function OnboardingFlow() {
     if (currentStep === 0) return; // Can't go back from first step
     
     // Handle special cases where steps were skipped
-    if (currentStep === 7) {
+    if (currentStep === 8) {
       // From summary, go back to location details or service type
       if (data.serviceType === "physical") {
-        setCurrentStep(6); // Go to PhysicalLocationDetails
+        setCurrentStep(7); // Go to PhysicalLocationDetails
       } else {
         setCurrentStep(5); // Go to ServiceType
       }
+    } else if (currentStep === 7) {
+      // From PhysicalLocationDetails, go to BusinessLocationStep
+      setCurrentStep(6);
     } else if (currentStep === 6) {
-      // From PhysicalLocationDetails, go to ServiceType
+      // From BusinessLocationStep, go to ServiceType
       setCurrentStep(5);
     } else if (currentStep === 5) {
       // From ServiceType, check if we skipped team steps
@@ -118,8 +123,10 @@ export default function OnboardingFlow() {
     if (!user) return;
 
     try {
-      // Extract google_maps_url from location details
+      // Extract location data from locationDetails
       const googleMapsUrl = finalData.locationDetails?.googleMapsUrl ?? null;
+      const latitude = finalData.locationDetails?.latitude ?? null;
+      const longitude = finalData.locationDetails?.longitude ?? null;
 
       // Prepare business data with defaults for required fields
       const businessData = {
@@ -135,6 +142,9 @@ export default function OnboardingFlow() {
         team_size: finalData.teamSize || "1",
         account_type: finalData.accountType || "independent",
         location_details: finalData.locationDetails || null,
+        latitude: latitude, // ⭐ Guardar coordenadas directamente
+        longitude: longitude, // ⭐ Guardar coordenadas directamente
+        google_maps_url: googleMapsUrl, // ⭐ Opcional
         onboarding_completed: true,
         is_public: false, // New businesses start with public visibility disabled
       };
