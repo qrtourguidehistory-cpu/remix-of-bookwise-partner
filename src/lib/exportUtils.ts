@@ -72,7 +72,7 @@ async function saveAndShareOnMobile(base64Data: string, filename: string, mimeTy
 /**
  * Universal export helper - handles both web and mobile
  */
-async function universalExport(blob: Blob, filename: string, mimeType: string): Promise<void> {
+export async function universalExport(blob: Blob, filename: string, mimeType: string): Promise<void> {
   if (Capacitor.isNativePlatform()) {
     // Convert blob to base64 for mobile
     const arrayBuffer = await blob.arrayBuffer();

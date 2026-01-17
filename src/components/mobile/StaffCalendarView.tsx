@@ -396,10 +396,10 @@ export function StaffCalendarView({ date, filters }: StaffCalendarViewProps) {
         return;
       }
 
-      // Toast con ID único para evitar duplicados
+      // Toast con ID fijo para evitar duplicados (Sonner reemplazará en lugar de duplicar)
       toast.success("Estado actualizado", {
-        id: `status-updated-${selectedAppointment.id}-${Date.now()}`,
-        duration: 4000,
+        id: 'appointment-status-updated',
+        duration: 3000,
       });
       
       // Notify next client when appointment is started

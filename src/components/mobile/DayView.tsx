@@ -492,10 +492,10 @@ export function DayView({ date, filters, appointmentToOpen, onAppointmentOpened 
         return;
       }
 
-      // Toast con ID único para evitar duplicados
+      // Toast con ID fijo para evitar duplicados (Sonner reemplazará en lugar de duplicar)
       toast.success("Estado actualizado", {
-        id: `status-updated-${selectedAppointment.id}-${Date.now()}`,
-        duration: 4000,
+        id: 'appointment-status-updated',
+        duration: 3000,
       });
 
       // Crear notificación para Partner sobre el cambio de status
@@ -728,9 +728,12 @@ export function DayView({ date, filters, appointmentToOpen, onAppointmentOpened 
                         top: `${position.top}px`, 
                         height: `${position.height}px`, 
                         left: `${left}%`, 
-                        width: `calc(${width}% - 2px)`, 
+                        width: `${width}%`, 
                         zIndex: columnZIndex,
-                        pointerEvents: 'auto'
+                        pointerEvents: 'auto',
+                        boxSizing: 'border-box',
+                        margin: 0,
+                        padding: 0
                       }}
                     >
                       <DraggableAppointment
@@ -739,7 +742,7 @@ export function DayView({ date, filters, appointmentToOpen, onAppointmentOpened 
                         onEdit={handleAppointmentClick}
                         isActive={activeId === appointment.id}
                         position={{ top: 0, height: position.height }}
-                        layout={{ left, width, column, totalColumns }}
+                        layout={{ left: 0, width: 100, column, totalColumns }}
                         timeFormat={timeFormat}
                       />
                     </div>
@@ -858,13 +861,15 @@ function DraggableAppointment({ appointment, onEdit, isActive, position, layout,
     position: 'absolute',
     top: `${position.top}px`,
     height: `${Math.max(position.height, 50)}px`,
-    left: `${layout.left}%`,
-    width: `calc(${layout.width}% - 2px)`,
+    left: `${layout.left}%`, // 0% when inside wrapper
+    width: `${layout.width}%`, // 100% when inside wrapper
     transform: transform ? `translate3d(${transform.x}px, ${transform.y}px, 0)` : undefined,
     zIndex: isDragging ? 1000 : (isActive ? 20 : 'inherit'), // Inherit z-index from parent wrapper
     opacity: isDragging ? 0.8 : 1,
     cursor: 'pointer',
     backgroundColor: bgColor,
+    boxSizing: 'border-box',
+    margin: 0,
   };
 
   return (
@@ -885,12 +890,8 @@ function DraggableAppointment({ appointment, onEdit, isActive, position, layout,
           {clientName}
         </div>
         {/* Second line: Time range */}
-        <div className="text-xs opacity-90 leading-tight mb-0.5 break-words line-clamp-1">
+        <div className="text-xs opacity-90 leading-tight break-words line-clamp-1">
           {timeRange}
-        </div>
-        {/* Third line: Service name */}
-        <div className="text-xs opacity-90 break-words line-clamp-2 flex-1 min-h-0">
-          {serviceName}
         </div>
       </div>
     </div>

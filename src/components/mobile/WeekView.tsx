@@ -340,10 +340,10 @@ export function WeekView({ date, filters }: WeekViewProps) {
               });
             }
 
-            // Toast con ID único para evitar duplicados
+            // Toast con ID fijo para evitar duplicados (Sonner reemplazará en lugar de duplicar)
             toast.success("Estado actualizado correctamente", {
-              id: `status-updated-${selectedAppointment.id}-${Date.now()}`,
-              duration: 4000,
+              id: 'appointment-status-updated',
+              duration: 3000,
             });
             fetchAppointments();
             setSelectedAppointment({ ...selectedAppointment, status });

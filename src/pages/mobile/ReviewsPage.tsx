@@ -25,11 +25,14 @@ interface Review {
   adminResponse: string | null;
 }
 
+type ReviewFilter = 'all' | 'good' | 'neutral' | 'critical';
+
 export default function ReviewsPage() {
   const [responses, setResponses] = useState<{ [key: string]: string }>({});
   const [showReplyFor, setShowReplyFor] = useState<string | null>(null);
   const [reviews, setReviews] = useState<Review[]>([]);
   const [loading, setLoading] = useState(true);
+  const [activeFilter, setActiveFilter] = useState<ReviewFilter>('all');
   const { t, language } = useLanguage();
   const { profile } = useAuth();
   const navigate = useNavigate();
@@ -172,19 +175,83 @@ export default function ReviewsPage() {
     );
   }
 
+  // Filter reviews based on active filter
+  const filteredReviews = reviews.filter(review => {
+    if (activeFilter === 'all') return true;
+    if (activeFilter === 'good') return review.rating >= 4;
+    if (activeFilter === 'neutral') return review.rating === 3;
+    if (activeFilter === 'critical') return review.rating <= 2;
+    return true;
+  });
+
+  // Count reviews by category
+  const counts = {
+    good: reviews.filter(r => r.rating >= 4).length,
+    neutral: reviews.filter(r => r.rating === 3).length,
+    critical: reviews.filter(r => r.rating <= 2).length,
+  };
+
   return (
     <MobileLayout>
       <div className="p-4 pb-24 max-w-2xl mx-auto">
-        <h1 className="text-2xl font-bold mb-6">{t("reviews")}</h1>
+        <h1 className="text-2xl font-bold mb-2">{t("reviews")}</h1>
+        
+        {/* Info Message */}
+        <div className="bg-muted/50 border border-border rounded-lg p-3 mb-4">
+          <p className="text-xs text-muted-foreground text-center">
+            {language === "es" 
+              ? "Solo se conservan las 10 reseñas más recientes de cada categoría para optimizar el rendimiento"
+              : "Only the 10 most recent reviews of each category are kept to optimize performance"}
+          </p>
+        </div>
+
+        {/* Filter Tabs */}
+        <div className="flex gap-2 mb-6 overflow-x-auto pb-2">
+          <Button
+            variant={activeFilter === 'all' ? 'default' : 'outline'}
+            size="sm"
+            onClick={() => setActiveFilter('all')}
+            className="flex-shrink-0"
+          >
+            {language === "es" ? "Todas" : "All"} ({reviews.length})
+          </Button>
+          <Button
+            variant={activeFilter === 'good' ? 'default' : 'outline'}
+            size="sm"
+            onClick={() => setActiveFilter('good')}
+            className="flex-shrink-0"
+          >
+            <Star className="w-3 h-3 mr-1 fill-yellow-400 text-yellow-400" />
+            {language === "es" ? "Buenas" : "Good"} ({counts.good})
+          </Button>
+          <Button
+            variant={activeFilter === 'neutral' ? 'default' : 'outline'}
+            size="sm"
+            onClick={() => setActiveFilter('neutral')}
+            className="flex-shrink-0"
+          >
+            <Star className="w-3 h-3 mr-1 fill-orange-400 text-orange-400" />
+            {language === "es" ? "Neutrales" : "Neutral"} ({counts.neutral})
+          </Button>
+          <Button
+            variant={activeFilter === 'critical' ? 'default' : 'outline'}
+            size="sm"
+            onClick={() => setActiveFilter('critical')}
+            className="flex-shrink-0"
+          >
+            <Star className="w-3 h-3 mr-1 fill-red-400 text-red-400" />
+            {language === "es" ? "Críticas" : "Critical"} ({counts.critical})
+          </Button>
+        </div>
 
         {/* Reviews List */}
-        {reviews.length === 0 ? (
+        {filteredReviews.length === 0 ? (
           <div className="text-center py-8 text-muted-foreground">
-            {language === "es" ? "No hay reseñas aún" : "No reviews yet"}
+            {language === "es" ? "No hay reseñas en esta categoría" : "No reviews in this category"}
           </div>
         ) : (
           <div className="space-y-4">
-            {reviews.map((review) => (
+            {filteredReviews.map((review) => (
               <div key={review.id} className="border rounded-lg p-4 space-y-3">
                 {/* Header */}
                 <div className="flex items-start justify-between">

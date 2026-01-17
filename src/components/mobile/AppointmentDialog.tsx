@@ -821,48 +821,48 @@ export function AppointmentDialog({
                 {t("selectClient") || "Client"} <span className="text-destructive">*</span>
               </Label>
               <div className="flex gap-2">
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  onClick={async () => {
-                    try {
-                      const clientData = {
-                        id: crypto.randomUUID(),
-                        full_name: language === "es" ? "Cliente Sin Cita" : "Walk-in Client",
-                        email: `walk-in-${Date.now()}@temp.com`,
-                        phone: "",
-                      };
-                      
-                      if (!profile?.business_id) {
-                        throw new Error("Business ID is required");
-                      }
-                      
-                      const { error } = await supabase
-                        .from("clients")
-                        .insert([{ ...clientData, business_id: profile.business_id }]);
-                      
-                      if (error) throw error;
-                      
-                      // Refresh client list
-                      await fetchData();
-                      
-                      toast({
-                        title: t("success") || "Success",
-                        description: language === "es" ? "Cliente walk-in creado. Selecciónalo de la lista." : "Walk-in client created. Select it from the list.",
-                      });
-                    } catch (error) {
-                      console.error("Error creating walk-in client:", error);
-                      toast({
-                        title: "Error",
-                        description: language === "es" ? "Error al crear cliente" : "Failed to create client",
-                        variant: "destructive",
-                      });
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={async () => {
+                  try {
+                    const clientData = {
+                      id: crypto.randomUUID(),
+                      full_name: language === "es" ? "Cliente Sin Cita" : "Walk-in Client",
+                      email: `walk-in-${Date.now()}@temp.com`,
+                      phone: "",
+                    };
+                    
+                    if (!profile?.business_id) {
+                      throw new Error("Business ID is required");
                     }
-                  }}
-                >
-                  + {language === "es" ? "Walk-in" : "Walk-in"}
-                </Button>
+                    
+                    const { error } = await supabase
+                      .from("clients")
+                      .insert([{ ...clientData, business_id: profile.business_id }]);
+                    
+                    if (error) throw error;
+                    
+                    // Refresh client list
+                    await fetchData();
+                    
+                    toast({
+                      title: t("success") || "Success",
+                      description: language === "es" ? "Cliente walk-in creado. Selecciónalo de la lista." : "Walk-in client created. Select it from the list.",
+                    });
+                  } catch (error) {
+                    console.error("Error creating walk-in client:", error);
+                    toast({
+                      title: "Error",
+                      description: language === "es" ? "Error al crear cliente" : "Failed to create client",
+                      variant: "destructive",
+                    });
+                  }
+                }}
+              >
+                + {language === "es" ? "Walk-in" : "Walk-in"}
+              </Button>
                 <Button
                   type="button"
                   size="sm"

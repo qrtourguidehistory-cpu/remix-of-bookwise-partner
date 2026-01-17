@@ -183,16 +183,9 @@ export default function SettingsPage() {
       items: [
         {
           icon: Bell,
-          label: language === "es" ? "Recordatorios" : "Reminders",
-          description: language === "es" ? "Configurar recordatorios automáticos" : "Configure automatic reminders",
+          label: language === "es" ? "Configurar Notificaciones" : "Notification Settings",
+          description: language === "es" ? "Gestiona notificaciones que recibes y envías" : "Manage notifications you receive and send",
           path: "/admin/notification-settings",
-          color: "text-black dark:text-white"
-        },
-        {
-          icon: MessageSquare,
-          label: language === "es" ? "Plantillas SMS" : "SMS Templates",
-          description: language === "es" ? "Personalizar mensajes de texto" : "Customize text messages",
-          path: "/admin/sms-templates",
           color: "text-black dark:text-white"
         }
       ]

@@ -53,7 +53,7 @@ function isOperativeType(type: string): boolean {
 
 /**
  * Crear notificación para Partner
- * ✅ ARQUITECTURA CORRECTA: Usa Edge Function (notify-partner) en lugar de insertar directamente
+ * ✅ ARQUITECTURA CORRECTA: Usa Edge Function (send_push_notification) con role='partner'
  * La Edge Function usa service role para insertar y enviar FCM
  */
 export async function createPartnerNotification(
@@ -65,22 +65,23 @@ export async function createPartnerNotification(
       console.warn(`⚠️ [PARTNER NOTIFICATION] Tipo no operativo ignorado: ${data.type}`);
       return { success: false, error: `Tipo de notificación no operativo: ${data.type}` };
     }
-
+npx 
     if (!data.user_id) {
       console.error('❌ [PARTNER NOTIFICATION] user_id es requerido');
       return { success: false, error: 'user_id es requerido' };
     }
 
-    console.log(`📨 [PARTNER NOTIFICATION] Llamando Edge Function 'notify-partner':`, {
+    console.log(`📨 [PARTNER NOTIFICATION] Llamando Edge Function 'send_push_notification' (role: partner):`, {
       type: data.type,
       user_id: data.user_id,
       business_id: data.business_id,
       appointment_id: data.appointment_id,
     });
 
-    // ✅ Llamar Edge Function en lugar de insertar directamente
-    const { data: result, error } = await supabase.functions.invoke('notify-partner', {
+    // ✅ Llamar Edge Function correcta: send_push_notification con role='partner'
+    const { data: result, error } = await supabase.functions.invoke('send_push_notification', {
       body: {
+        role: 'partner', // ⭐ IMPORTANTE: Especificar que es para partner
         business_id: data.business_id,
         user_id: data.user_id,
         type: data.type,

@@ -32,14 +32,14 @@ export interface FilterState {
 interface CalendarHeaderProps {
   currentDate: Date;
   onDateChange: (date: Date) => void;
-  view: "day" | "week" | "month" | "staff";
-  onViewChange: (view: "day" | "week" | "month" | "staff") => void;
+  view: "day" | "week" | "month" | "staff" | "next";
+  onViewChange: (view: "day" | "week" | "month" | "staff" | "next") => void;
   filters: FilterState;
   onFiltersChange: (filters: FilterState) => void;
 }
 
 export function CalendarHeader({ currentDate, onDateChange, view, onViewChange, filters, onFiltersChange }: CalendarHeaderProps) {
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
   const { profile } = useAuth();
   const { canShowTip, markTipAsSeen, setActiveTip, activeTip } = useTutorialTips();
   const [filterOpen, setFilterOpen] = useState(false);
@@ -93,32 +93,29 @@ export function CalendarHeader({ currentDate, onDateChange, view, onViewChange, 
     (filters.serviceIds.length > 0 ? 1 : 0);
 
   const handlePrev = () => {
-    if (view === "day") {
+    if (view === "day" || view === "staff" || view === "next") {
       onDateChange(subDays(currentDate, 1));
     } else if (view === "week") {
       onDateChange(subDays(currentDate, 7));
-    } else if (view === "staff") {
-      // Staff view navigates by day (not month)
-      onDateChange(subDays(currentDate, 1));
     } else {
       onDateChange(subMonths(currentDate, 1));
     }
   };
 
   const handleNext = () => {
-    if (view === "day") {
+    if (view === "day" || view === "staff" || view === "next") {
       onDateChange(addDays(currentDate, 1));
     } else if (view === "week") {
       onDateChange(addDays(currentDate, 7));
-    } else if (view === "staff") {
-      // Staff view navigates by day (not month)
-      onDateChange(addDays(currentDate, 1));
     } else {
       onDateChange(addMonths(currentDate, 1));
     }
   };
 
   const getDateDisplay = () => {
+    if (view === "next") {
+      return language === "es" ? "Próximas Citas" : "Next Appointments";
+    }
     if (view === "month") {
       return format(currentDate, "MMMM yyyy", { locale: es });
     }
@@ -188,15 +185,19 @@ export function CalendarHeader({ currentDate, onDateChange, view, onViewChange, 
         </DropdownMenu>
 
         <div className="flex items-center gap-2">
-          <Button variant="ghost" size="icon" onClick={handlePrev} className="text-foreground">
-            <ChevronLeft className="h-5 w-5" />
-          </Button>
+          {view !== "next" && (
+            <Button variant="ghost" size="icon" onClick={handlePrev} className="text-foreground">
+              <ChevronLeft className="h-5 w-5" />
+            </Button>
+          )}
           <span className="text-sm font-medium capitalize min-w-[120px] text-center text-foreground">
             {getDateDisplay()}
           </span>
-          <Button variant="ghost" size="icon" onClick={handleNext} className="text-foreground">
-            <ChevronRight className="h-5 w-5" />
-          </Button>
+          {view !== "next" && (
+            <Button variant="ghost" size="icon" onClick={handleNext} className="text-foreground">
+              <ChevronRight className="h-5 w-5" />
+            </Button>
+          )}
         </div>
 
         <div className="relative">

@@ -22,7 +22,8 @@ export function BookingNavigation({
 
   return (
     <div 
-      className="fixed bottom-20 left-0 right-0 p-4 bg-background border-t"
+      className="fixed left-0 right-0 p-4 bg-background border-t pb-safe"
+      style={{ bottom: "max(80px, calc(80px + var(--app-safe-bottom, 0px)))" }}
       style={{ paddingBottom: `calc(1rem + env(safe-area-inset-bottom, 0px))` }}
     >
       <div className="flex gap-3 max-w-2xl mx-auto">

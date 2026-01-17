@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect } from "react";
+import { useMemo, useState, useEffect, useRef } from "react";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
 import {
@@ -13,8 +13,11 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { useAuth } from "@/contexts/AuthContext";
-import { MapPin, Calendar, Clock, Scissors, User, DollarSign, Phone, Mail, Edit2, ChevronDown, MoreHorizontal, Plus, X, Check, Ban, UserX } from "lucide-react";
+import { MapPin, Calendar, Clock, Scissors, User, DollarSign, Phone, Mail, Edit2, ChevronDown, MoreHorizontal, Plus, X, Check, Ban, UserX, Download } from "lucide-react";
+import html2canvas from "html2canvas";
+import jsPDF from "jspdf";
 import { formatTime } from "@/lib/timeFormat";
+import { universalExport } from "@/lib/exportUtils";
 import { supabase } from "@/lib/supabaseClient";
 import { UserProfileModal } from "./UserProfileModal";
 import { toast } from "sonner";
@@ -58,6 +61,9 @@ export function AppointmentDetailView({
   const { language } = useLanguage();
   const { profile } = useAuth();
   const hasAppointment = Boolean(appointment);
+  const [isDownloading, setIsDownloading] = useState(false);
+  const receiptRef = useRef<HTMLDivElement>(null);
+  
   // ✅ FIX: Calculate reserverUserId with better fallback logic
   const reserverUserId = appointment?.user_id || 
                         appointment?.clients?.user_id || 
@@ -405,6 +411,59 @@ export function AppointmentDetailView({
   const safeStartTime = appointment?.start_time || "00:00:00";
   const safeEndTime = appointment?.end_time || "00:00:00";
   const safeAppointmentDate = appointment?.date || appointment?.appointment_date || null;
+
+  // Function to download/share receipt (mobile-friendly)
+  const handleDownloadReceipt = async () => {
+    if (!receiptRef.current || isDownloading) return;
+    
+    setIsDownloading(true);
+    try {
+      // Capture the receipt element as canvas with high quality
+      const canvas = await html2canvas(receiptRef.current, {
+        scale: 3, // Higher quality
+        backgroundColor: '#ffffff',
+        logging: false,
+        useCORS: true, // Important for images like logos
+        allowTaint: false,
+        imageTimeout: 0,
+      });
+
+      // Convert canvas to image data
+      const imgData = canvas.toDataURL('image/png');
+
+      // Create PDF using jsPDF (same as Reports & Analytics)
+      const pdf = new jsPDF({
+        orientation: 'portrait',
+        unit: 'mm',
+        format: 'a4',
+      });
+
+      // Calculate dimensions to fit the image in the PDF
+      const imgWidth = 190; // A4 width minus margins
+      const imgHeight = (canvas.height * imgWidth) / canvas.width;
+      
+      // Add image to PDF
+      pdf.addImage(imgData, 'PNG', 10, 10, imgWidth, imgHeight);
+      
+      // Generate filename
+      const clientNameForFile = clientName?.replace(/\s+/g, '_') || 'Cliente';
+      const dateForFile = appointmentDate ? format(new Date(appointmentDate), 'yyyy-MM-dd') : 'sin-fecha';
+      const filename = `Recibo_${clientNameForFile}_${dateForFile}.pdf`;
+
+      // Convert PDF to blob
+      const pdfBlob = pdf.output('blob');
+      
+      // Use universalExport (same as Reports & Analytics - works on both mobile and web)
+      await universalExport(pdfBlob, filename, 'application/pdf');
+      
+      toast.success(language === "es" ? "Recibo descargado exitosamente" : "Receipt downloaded successfully");
+    } catch (error) {
+      console.error('Error generating receipt:', error);
+      toast.error(language === "es" ? "Error al generar el recibo" : "Error generating receipt");
+    } finally {
+      setIsDownloading(false);
+    }
+  };
 
   const statusLabel = (status: string) => {
     switch (status) {
@@ -786,6 +845,18 @@ export function AppointmentDetailView({
             </h2>
 
             <div className="flex items-center gap-2">
+              {appointment.status === 'completed' && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={handleDownloadReceipt}
+                  disabled={isDownloading}
+                  className="text-primary-foreground hover:bg-primary-foreground/20"
+                  title={language === "es" ? "Descargar recibo" : "Download receipt"}
+                >
+                  <Download className={`h-5 w-5 ${isDownloading ? 'animate-bounce' : ''}`} />
+                </Button>
+              )}
               <Button
                 variant="outline"
                 size="sm"
@@ -810,7 +881,7 @@ export function AppointmentDetailView({
         <div className="p-4 space-y-4">
           {/* If completed, show only receipt */}
           {appointment.status === 'completed' ? (
-            <div className="space-y-4">
+            <div ref={receiptRef} className="space-y-4 bg-white p-4 rounded-lg">
               {/* Receipt Header */}
               <div className="text-center border-b border-border pb-4">
                 <h3 className="text-xl font-bold">{language === "es" ? "Recibo" : "Receipt"}</h3>

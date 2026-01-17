@@ -21,7 +21,7 @@ export default function MobileCalendar() {
   const { profile } = useAuth();
   const { canShowTip, markTipAsSeen, setActiveTip } = useTutorialTips();
   const [currentDate, setCurrentDate] = useState(new Date());
-  const [view, setView] = useState<"day" | "week" | "month" | "staff" | "next">("day");
+  const [view, setView] = useState<"day" | "week" | "month" | "staff" | "next" | "next-turnow">("day");
   const [filters, setFilters] = useState<FilterState>({
     searchQuery: "",
     statuses: [],

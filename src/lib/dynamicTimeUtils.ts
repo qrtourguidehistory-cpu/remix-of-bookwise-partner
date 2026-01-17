@@ -240,10 +240,7 @@ export const calculateOverlappingLayout = (
     totalColumns: number;
   }> = [];
 
-  // ✅ MEJORADO: Gap más visible y ancho mínimo para citas legibles
-  const GAP_PERCENT = 2; // Gap más visible entre columnas (2%)
-  const MIN_WIDTH_PERCENT = 30; // Ancho mínimo por cita (30% para mantener legibilidad)
-
+  // ✅ Igualdad de ancho para colisiones - sin gaps ni espacios sobrantes
   for (const cluster of clusters) {
     // Greedy column assignment for interval graphs
     const columnsEnd: number[] = [];
@@ -269,29 +266,12 @@ export const calculateOverlappingLayout = (
     }
 
     const totalColumns = Math.max(1, columnsEnd.length);
-    const totalGaps = totalColumns > 1 ? (totalColumns - 1) * GAP_PERCENT : 0;
-    const available = 100 - totalGaps;
-    
-    // ✅ MEJORADO: Calcular ancho asegurando mínimo legible
-    let width = totalColumns === 1 ? 98 : available / totalColumns;
-    
-    // Si el ancho calculado es menor al mínimo, ajustar
-    if (width < MIN_WIDTH_PERCENT && totalColumns > 1) {
-      // Recalcular con ancho mínimo garantizado
-      const minTotalWidth = MIN_WIDTH_PERCENT * totalColumns;
-      const minTotalGaps = (totalColumns - 1) * GAP_PERCENT;
-      const requiredWidth = minTotalWidth + minTotalGaps;
-      
-      if (requiredWidth <= 100) {
-        width = MIN_WIDTH_PERCENT;
-      } else {
-        // Si no cabe con mínimo, usar el máximo posible manteniendo gap
-        width = Math.max(MIN_WIDTH_PERCENT * 0.8, available / totalColumns);
-      }
-    }
+    // Dividir el ancho disponible en partes exactamente iguales (100% / número de columnas)
+    const width = 100 / totalColumns;
 
     for (const { appointment, column } of assignments) {
-      const left = column * (width + GAP_PERCENT);
+      // Calcular left como columna * ancho (sin gaps)
+      const left = column * width;
       result.push({ appointment, left, width, column, totalColumns });
     }
   }

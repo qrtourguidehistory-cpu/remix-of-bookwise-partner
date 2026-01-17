@@ -25,11 +25,14 @@ interface Review {
   adminResponse: string | null;
 }
 
+type ReviewFilter = 'all' | 'good' | 'neutral' | 'critical';
+
 export default function ReviewsManagement() {
   const { profile } = useAuth();
   const [reviews, setReviews] = useState<Review[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
+  const [activeFilter, setActiveFilter] = useState<ReviewFilter>('all');
   const [responses, setResponses] = useState<{ [key: string]: string }>({});
   const [stats, setStats] = useState({
     averageRating: 0,
@@ -199,12 +202,29 @@ export default function ReviewsManagement() {
     }
   };
 
-  const filteredReviews = reviews.filter(
+  // Filter by category first
+  const categoryFilteredReviews = reviews.filter(review => {
+    if (activeFilter === 'all') return true;
+    if (activeFilter === 'good') return review.rating >= 4;
+    if (activeFilter === 'neutral') return review.rating === 3;
+    if (activeFilter === 'critical') return review.rating <= 2;
+    return true;
+  });
+
+  // Then apply search filter
+  const filteredReviews = categoryFilteredReviews.filter(
     (review) =>
       review.client.toLowerCase().includes(searchQuery.toLowerCase()) ||
       review.service.toLowerCase().includes(searchQuery.toLowerCase()) ||
       review.comment?.toLowerCase().includes(searchQuery.toLowerCase())
   );
+
+  // Count reviews by category
+  const counts = {
+    good: reviews.filter(r => r.rating >= 4).length,
+    neutral: reviews.filter(r => r.rating === 3).length,
+    critical: reviews.filter(r => r.rating <= 2).length,
+  };
 
   if (loading) {
     return (
@@ -258,7 +278,7 @@ export default function ReviewsManagement() {
 
         <Card>
           <CardHeader>
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between flex-wrap gap-4">
               <CardTitle>Recent Reviews</CardTitle>
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -269,6 +289,48 @@ export default function ReviewsManagement() {
                   onChange={(e) => setSearchQuery(e.target.value)}
                 />
               </div>
+            </div>
+            
+            {/* Info Message */}
+            <div className="bg-muted/50 border border-border rounded-lg p-3 mt-4">
+              <p className="text-xs text-muted-foreground text-center">
+                Only the 10 most recent reviews of each category are kept to optimize performance
+              </p>
+            </div>
+
+            {/* Filter Buttons */}
+            <div className="flex gap-2 mt-4 flex-wrap">
+              <Button
+                variant={activeFilter === 'all' ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => setActiveFilter('all')}
+              >
+                All ({reviews.length})
+              </Button>
+              <Button
+                variant={activeFilter === 'good' ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => setActiveFilter('good')}
+              >
+                <Star className="w-4 h-4 mr-1 fill-yellow-400 text-yellow-400" />
+                Good (4-5★) ({counts.good})
+              </Button>
+              <Button
+                variant={activeFilter === 'neutral' ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => setActiveFilter('neutral')}
+              >
+                <Star className="w-4 h-4 mr-1 fill-orange-400 text-orange-400" />
+                Neutral (3★) ({counts.neutral})
+              </Button>
+              <Button
+                variant={activeFilter === 'critical' ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => setActiveFilter('critical')}
+              >
+                <Star className="w-4 h-4 mr-1 fill-red-400 text-red-400" />
+                Critical (1-2★) ({counts.critical})
+              </Button>
             </div>
           </CardHeader>
           <CardContent>

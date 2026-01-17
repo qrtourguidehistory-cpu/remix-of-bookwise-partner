@@ -3,6 +3,21 @@ import { supabase } from '@/lib/supabaseClient';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
 
+// Global flag to prevent duplicate toast notifications
+let lastNotificationTime = 0;
+const NOTIFICATION_DEBOUNCE_MS = 2000; // 2 seconds
+
+function showNotificationOnce(message: string, description?: string) {
+  const now = Date.now();
+  if (now - lastNotificationTime > NOTIFICATION_DEBOUNCE_MS) {
+    lastNotificationTime = now;
+    toast.success(message, {
+      description,
+      id: 'new-appointment-notification' // Fixed ID - Sonner will replace instead of duplicate
+    });
+  }
+}
+
 export function useRealtimeAppointments(onNewAppointment?: () => void) {
   const { profile } = useAuth();
   const callbackRef = useRef(onNewAppointment);
@@ -30,13 +45,14 @@ export function useRealtimeAppointments(onNewAppointment?: () => void) {
         },
         (payload) => {
           console.log('📅 Nueva cita INSERT:', payload.new);
-          toast.success('¡Nueva cita recibida!', {
-            description: 'Un cliente ha reservado una cita'
-          });
-          // Small delay to ensure database is ready
+          // Show notification only once even if multiple components are subscribed
+          showNotificationOnce('¡Nueva cita recibida!', 'Un cliente ha reservado una cita');
+          // Small delay to ensure database is ready, then refresh
           setTimeout(() => {
-            callbackRef.current?.();
-          }, 100);
+            if (callbackRef.current) {
+              callbackRef.current();
+            }
+          }, 200);
         }
       )
       .on(
@@ -49,21 +65,14 @@ export function useRealtimeAppointments(onNewAppointment?: () => void) {
         },
         (payload) => {
           console.log('📅 Cita UPDATE:', payload.new);
-          // Check if status, time, or date changed
-          const oldData = payload.old as any;
-          const newData = payload.new as any;
-          
-          const statusChanged = oldData?.status !== newData?.status;
-          const timeChanged = oldData?.start_time !== newData?.start_time || 
-                            oldData?.end_time !== newData?.end_time;
-          const dateChanged = oldData?.appointment_date !== newData?.appointment_date;
-          
-          if (statusChanged || timeChanged || dateChanged) {
-            // Small delay to ensure database is ready
-            setTimeout(() => {
-              callbackRef.current?.();
-            }, 100);
-          }
+          // Always refresh on any update - fetchAppointments will filter by date
+          // This ensures the calendar view updates in real-time
+          // Don't show toast for updates - let the component handle it if needed
+          setTimeout(() => {
+            if (callbackRef.current) {
+              callbackRef.current();
+            }
+          }, 200);
         }
       )
       .on(
@@ -76,10 +85,12 @@ export function useRealtimeAppointments(onNewAppointment?: () => void) {
         },
         (payload) => {
           console.log('📅 Cita DELETE:', payload.old);
-          // Small delay to ensure UI updates
+          // Always refresh on delete - fetchAppointments will filter by date
           setTimeout(() => {
-            callbackRef.current?.();
-          }, 100);
+            if (callbackRef.current) {
+              callbackRef.current();
+            }
+          }, 200);
         }
       )
       .subscribe((status) => {
