@@ -41,9 +41,12 @@ export default function BusinessMapDisplay({
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
 
-  // Token de Mapbox (mismo que la App Cliente)
+  // Token de Mapbox desde variables de entorno
   const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_ACCESS_TOKEN || 
-    'pk.eyJ1IjoibWl0b3Vybm93IiwiYSI6ImNta2hzYnN3aTBtaHIzZHB1MHgydTZ1OWMifQ.I90chYaZczEFiJ33M7hdxw';
+    (() => {
+      console.error('VITE_MAPBOX_ACCESS_TOKEN is not set in environment variables');
+      throw new Error('Mapbox access token is required');
+    })();
 
   const { isLoaded, loadError } = useMapbox({
     accessToken: MAPBOX_TOKEN,

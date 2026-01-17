@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
-import { ArrowLeft, Save, Eye, Globe, Building2, Image as ImageIcon, Phone, MapPin, Link2, Loader2, Star, Clock, CheckCircle2, Upload, X, AlertTriangle, CheckCircle, Scissors, Sparkles, Heart, Droplet, Users, HandMetal, Waves, Flame, Activity, Stethoscope, PawPrint, MoreHorizontal, AlertCircle, Pencil, Send, Ban, RefreshCw, FileCheck, XCircle } from "lucide-react";
+import { ArrowLeft, Save, Eye, Globe, Building2, Image as ImageIcon, Phone, MapPin, Link2, Loader2, Star, Clock, CheckCircle2, Upload, X, AlertTriangle, CheckCircle, Scissors, Sparkles, Heart, Droplet, Users, HandMetal, Waves, Flame, Activity, Stethoscope, PawPrint, MoreHorizontal, AlertCircle, Pencil, Send, Ban, RefreshCw, FileCheck, XCircle, Navigation } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -15,6 +15,10 @@ import { Badge } from "@/components/ui/badge";
 import { validatePublicVisibilityRequirements, PublicVisibilityRequirements } from "@/lib/validatePublicVisibility";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { canChangeBusinessName, canChangeBusinessCategories, recordBusinessNameChange, recordBusinessCategoryChange } from "@/lib/businessChangeLimits";
+import { useMapbox } from "@/hooks/useMapbox";
+import mapboxgl from 'mapbox-gl';
+import 'mapbox-gl/dist/mapbox-gl.css';
+import { Geolocation } from '@capacitor/geolocation';
 
 interface BusinessProfile {
   id: string;
@@ -34,6 +38,8 @@ interface BusinessProfile {
   onboarding_completed: boolean | null;
   location_details: any | null;
   google_maps_url: string | null;
+  latitude: number | null;
+  longitude: number | null;
   approval_status: 'draft' | 'pending' | 'approved' | 'rejected' | 'suspended' | null;
 }
 
@@ -71,6 +77,20 @@ export default function BusinessProfileSettings() {
   
   const logoInputRef = useRef<HTMLInputElement>(null);
   const coverInputRef = useRef<HTMLInputElement>(null);
+  const mapContainerRef = useRef<HTMLDivElement>(null);
+  const mapRef = useRef<mapboxgl.Map | null>(null);
+  const markerRef = useRef<mapboxgl.Marker | null>(null);
+  
+  // Token de Mapbox desde variables de entorno
+  const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_ACCESS_TOKEN || 
+    (() => {
+      console.error('VITE_MAPBOX_ACCESS_TOKEN is not set in environment variables');
+      throw new Error('Mapbox access token is required');
+    })();
+
+  const { isLoaded: mapLoaded } = useMapbox({
+    accessToken: MAPBOX_TOKEN,
+  });
   
   // Categories list (same as onboarding)
   const categories = [
@@ -110,7 +130,7 @@ export default function BusinessProfileSettings() {
     try {
       const { data, error } = await (supabase
         .from("businesses")
-        .select("id, business_name, is_public, slug, description, logo_url, cover_image_url, phone, address, website, primary_category, secondary_categories, average_rating, total_reviews, onboarding_completed, location_details, approval_status")
+        .select("id, business_name, is_public, slug, description, logo_url, cover_image_url, phone, address, website, primary_category, secondary_categories, average_rating, total_reviews, onboarding_completed, location_details, latitude, longitude, approval_status")
         .eq("id", profile.business_id)
         .maybeSingle() as any);
 
@@ -123,6 +143,8 @@ export default function BusinessProfileSettings() {
         setBusiness({
           ...data,
           google_maps_url: googleMapsUrl,
+          latitude: data.latitude,
+          longitude: data.longitude,
           approval_status: data.approval_status || 'draft',
         } as unknown as BusinessProfile);
         setTempBusinessName((data as any).business_name || "");
@@ -553,6 +575,125 @@ export default function BusinessProfileSettings() {
     }
   };
 
+  // Geocodificación inversa usando Mapbox
+  const reverseGeocode = async (lng: number, lat: number) => {
+    try {
+      const response = await fetch(
+        `https://api.mapbox.com/geocoding/v5/mapbox.places/${lng},${lat}.json?access_token=${MAPBOX_TOKEN}&language=es`
+      );
+      
+      if (!response.ok) throw new Error('Geocoding failed');
+      
+      const data = await response.json();
+      
+      if (data.features && data.features.length > 0) {
+        const feature = data.features[0];
+        const address = feature.place_name || feature.text || "";
+        
+        setBusiness(prev => prev ? {
+          ...prev,
+          address,
+          latitude: lat,
+          longitude: lng,
+        } : null);
+      }
+    } catch (error) {
+      console.error('Reverse geocoding error:', error);
+      // Si falla, solo guardar coordenadas
+      setBusiness(prev => prev ? {
+        ...prev,
+        latitude: lat,
+        longitude: lng,
+      } : null);
+    }
+  };
+
+  // Obtener ubicación actual del usuario (GPS)
+  const handleGetCurrentLocation = async () => {
+    toast({
+      title: language === "es" ? "Obteniendo ubicación..." : "Getting location...",
+      description: language === "es" ? "Esto puede tardar unos segundos" : "This may take a few seconds",
+    });
+
+    try {
+      const position = await Geolocation.getCurrentPosition({
+        enableHighAccuracy: true,
+        timeout: 10000,
+      });
+
+      const lat = position.coords.latitude;
+      const lng = position.coords.longitude;
+
+      if (mapRef.current && markerRef.current) {
+        // Animar el mapa hacia la nueva ubicación
+        mapRef.current.flyTo({
+          center: [lng, lat],
+          zoom: 16,
+          duration: 2000,
+        });
+        
+        markerRef.current.setLngLat([lng, lat]);
+        await reverseGeocode(lng, lat);
+      }
+
+      toast({
+        title: language === "es" ? "Ubicación obtenida" : "Location obtained",
+        description: language === "es" ? "El mapa se ha actualizado con tu ubicación" : "The map has been updated with your location",
+      });
+    } catch (error: any) {
+      console.error('Geolocation error:', error);
+      toast({
+        title: language === "es" ? "Error" : "Error",
+        description: language === "es" ? "No se pudo obtener tu ubicación" : "Could not get your location",
+        variant: "destructive",
+      });
+    }
+  };
+
+  // Inicializar mapa cuando se carga Mapbox y hay datos del negocio
+  useEffect(() => {
+    if (!mapLoaded || !mapContainerRef.current || mapRef.current || !business) return;
+
+    // Coordenadas por defecto o las existentes
+    const defaultLat = business.latitude || 19.4326;
+    const defaultLng = business.longitude || -99.1332;
+
+    // Crear mapa
+    const map = new mapboxgl.Map({
+      container: mapContainerRef.current,
+      style: 'mapbox://styles/mapbox/streets-v12',
+      center: [defaultLng, defaultLat],
+      zoom: business.latitude ? 16 : 12,
+    });
+
+    // Crear marcador draggable (rojo)
+    const marker = new mapboxgl.Marker({
+      draggable: true,
+      color: '#ef4444', // Rojo
+    })
+      .setLngLat([defaultLng, defaultLat])
+      .addTo(map);
+
+    // Evento: cuando el usuario arrastra el marcador
+    marker.on('dragend', () => {
+      const lngLat = marker.getLngLat();
+      reverseGeocode(lngLat.lng, lngLat.lat);
+    });
+
+    // Evento: cuando el usuario hace clic en el mapa
+    map.on('click', (e) => {
+      marker.setLngLat(e.lngLat);
+      reverseGeocode(e.lngLat.lng, e.lngLat.lat);
+    });
+
+    mapRef.current = map;
+    markerRef.current = marker;
+
+    return () => {
+      map.remove();
+    };
+  }, [mapLoaded, business?.id]);
+
   const handleSave = async () => {
     if (!business || !profile?.business_id) return;
     
@@ -570,10 +711,12 @@ export default function BusinessProfileSettings() {
 
     setSaving(true);
     try {
-      // Build updated location_details with googleMapsUrl
+      // Build updated location_details with googleMapsUrl and coordinates
       const updatedLocationDetails = {
         ...(business.location_details || {}),
         googleMapsUrl: business.google_maps_url || null,
+        latitude: business.latitude,
+        longitude: business.longitude,
       };
 
       // Note: is_public is NOT included - it can only be changed through the approval system
@@ -586,6 +729,8 @@ export default function BusinessProfileSettings() {
           cover_image_url: business.cover_image_url || null,
           phone: business.phone || null,
           address: business.address || null,
+          latitude: business.latitude,
+          longitude: business.longitude,
           location_details: updatedLocationDetails,
         })
         .eq("id", profile.business_id);
@@ -1448,6 +1593,58 @@ export default function BusinessProfileSettings() {
                       className="flex-1"
                     />
                   </div>
+                </div>
+
+                {/* Mapa interactivo */}
+                <div className="space-y-3 pt-2">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-sm font-medium">
+                      {language === "es" ? "Ubicación en el mapa" : "Map location"}
+                    </Label>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={handleGetCurrentLocation}
+                      disabled={!mapLoaded}
+                      className="gap-2"
+                    >
+                      <Navigation className="w-4 h-4" />
+                      {language === "es" ? "Mi ubicación" : "My location"}
+                    </Button>
+                  </div>
+                  
+                  <div 
+                    ref={mapContainerRef} 
+                    className="w-full h-[300px] rounded-lg border-2 border-border overflow-hidden bg-muted"
+                  >
+                    {!mapLoaded && (
+                      <div className="w-full h-full flex items-center justify-center">
+                        <div className="text-center space-y-2">
+                          <Loader2 className="w-6 h-6 animate-spin mx-auto text-primary" />
+                          <p className="text-xs text-muted-foreground">
+                            {language === "es" ? "Cargando mapa..." : "Loading map..."}
+                          </p>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  <p className="text-xs text-muted-foreground">
+                    💡 <strong>{language === "es" ? "Tip:" : "Tip:"}</strong>{" "}
+                    {language === "es" 
+                      ? "Arrastra el marcador rojo o haz clic en el mapa para ajustar tu ubicación exacta"
+                      : "Drag the red marker or click on the map to adjust your exact location"}
+                  </p>
+
+                  {business.latitude && business.longitude && (
+                    <div className="flex items-center gap-2 text-xs text-muted-foreground font-mono bg-muted p-2 rounded">
+                      <MapPin className="w-3 h-3" />
+                      <span>
+                        {business.latitude.toFixed(6)}, {business.longitude.toFixed(6)}
+                      </span>
+                    </div>
+                  )}
                 </div>
               </CardContent>
             </Card>

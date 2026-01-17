@@ -16,6 +16,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { MapPin, Calendar, Clock, Scissors, User, DollarSign, Phone, Mail, Edit2, ChevronDown, MoreHorizontal, Plus, X, Check, Ban, UserX, Download } from "lucide-react";
 import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
+import autoTable from "jspdf-autotable";
 import { formatTime } from "@/lib/timeFormat";
 import { universalExport } from "@/lib/exportUtils";
 import { supabase } from "@/lib/supabaseClient";
@@ -200,7 +201,7 @@ export function AppointmentDetailView({
       const fetchBusiness = async () => {
         const { data, error } = await supabase
           .from("businesses")
-          .select("business_name, address")
+          .select("business_name, address, phone")
           .eq("id", appointment.business_id)
           .single();
         
@@ -412,39 +413,237 @@ export function AppointmentDetailView({
   const safeEndTime = appointment?.end_time || "00:00:00";
   const safeAppointmentDate = appointment?.date || appointment?.appointment_date || null;
 
-  // Function to download/share receipt (mobile-friendly)
+  // Function to download/share receipt (mobile-friendly) - Redesign with professional format
   const handleDownloadReceipt = async () => {
-    if (!receiptRef.current || isDownloading) return;
+    if (isDownloading) return;
     
     setIsDownloading(true);
     try {
-      // Capture the receipt element as canvas with high quality
-      const canvas = await html2canvas(receiptRef.current, {
-        scale: 3, // Higher quality
-        backgroundColor: '#ffffff',
-        logging: false,
-        useCORS: true, // Important for images like logos
-        allowTaint: false,
-        imageTimeout: 0,
-      });
+      // Get business data
+      const businessName = appointment.businesses?.business_name || fetchedBusiness?.business_name || "";
+      const businessAddress = appointment.businesses?.address || fetchedBusiness?.address || "";
+      const businessPhone = appointment.businesses?.phone || profile?.phone || "";
 
-      // Convert canvas to image data
-      const imgData = canvas.toDataURL('image/png');
-
-      // Create PDF using jsPDF (same as Reports & Analytics)
+      // Create PDF
       const pdf = new jsPDF({
         orientation: 'portrait',
         unit: 'mm',
         format: 'a4',
       });
 
-      // Calculate dimensions to fit the image in the PDF
-      const imgWidth = 190; // A4 width minus margins
-      const imgHeight = (canvas.height * imgWidth) / canvas.width;
+      let yPos = 15; // Starting Y position
+
+      // ===== ENCABEZADO =====
+      // Título "Recibo" (centrado, negrita)
+      pdf.setFontSize(20);
+      pdf.setFont('helvetica', 'bold');
+      const receiptTitle = language === "es" ? "Recibo" : "Receipt";
+      const titleWidth = pdf.getTextWidth(receiptTitle);
+      pdf.text(receiptTitle, (210 - titleWidth) / 2, yPos); // Center horizontally
+      yPos += 8;
+
+      // Fecha
+      pdf.setFontSize(10);
+      pdf.setFont('helvetica', 'normal');
+      const formattedDate = appointmentDate 
+        ? format(new Date(appointmentDate), "EEE, d MMM yyyy", { locale: language === "es" ? es : undefined })
+        : format(new Date(), "EEE, d MMM yyyy", { locale: language === "es" ? es : undefined });
+      const dateWidth = pdf.getTextWidth(formattedDate);
+      pdf.text(formattedDate, (210 - dateWidth) / 2, yPos);
+      yPos += 15;
+
+      // Nombre del negocio (centrado, negrita)
+      if (businessName) {
+        pdf.setFontSize(16);
+        pdf.setFont('helvetica', 'bold');
+        const nameWidth = pdf.getTextWidth(businessName);
+        pdf.text(businessName, (210 - nameWidth) / 2, yPos);
+        yPos += 7;
+      }
+
+      // Dirección del negocio (centrado)
+      if (businessAddress) {
+        pdf.setFontSize(10);
+        pdf.setFont('helvetica', 'normal');
+        const addressWidth = pdf.getTextWidth(businessAddress);
+        pdf.text(businessAddress, (210 - addressWidth) / 2, yPos);
+        yPos += 5;
+      }
+
+      // Teléfono del negocio (centrado)
+      if (businessPhone) {
+        pdf.setFontSize(10);
+        pdf.setFont('helvetica', 'normal');
+        const phoneWidth = pdf.getTextWidth(businessPhone);
+        pdf.text(businessPhone, (210 - phoneWidth) / 2, yPos);
+        yPos += 10;
+      }
+
+      // Línea separadora
+      pdf.setDrawColor(200, 200, 200);
+      pdf.line(15, yPos, 195, yPos);
+      yPos += 8;
+
+      // ===== CLIENTE =====
+      pdf.setFontSize(11);
+      pdf.setFont('helvetica', 'bold');
+      pdf.text(language === "es" ? "Cliente:" : "Client:", 15, yPos);
+      yPos += 6;
       
-      // Add image to PDF
-      pdf.addImage(imgData, 'PNG', 10, 10, imgWidth, imgHeight);
+      pdf.setFont('helvetica', 'normal');
+      pdf.text(clientName || (language === "es" ? "Cliente" : "Client"), 15, yPos);
+      yPos += 4;
       
+      if (clientEmail) {
+        pdf.setFontSize(9);
+        pdf.text(clientEmail, 15, yPos);
+        yPos += 5;
+      }
+
+      yPos += 3;
+
+      // ===== TABLA DE SERVICIOS =====
+      const serviceRows: any[] = [];
+
+      // Servicio principal
+      if (serviceName) {
+        const serviceDetails = [
+          formatTime(appointment.start_time, "12h"),
+          `${serviceDuration} min`,
+          staffName || "-"
+        ].filter(Boolean).join(" • ");
+
+        serviceRows.push([
+          serviceName,
+          serviceDetails,
+          `DOP ${Number(servicePrice || 0).toFixed(0)}`
+        ]);
+      }
+
+      // Servicios adicionales
+      (addonItems || []).forEach((it: any) => {
+        const addName = it.services?.name || (language === "es" ? "Servicio" : "Service");
+        const addStaff = it.staff?.full_name || appointment?.staff?.full_name || fetchedStaff?.full_name || "-";
+        const addDur = it.duration_minutes ?? it.services?.duration_minutes;
+        const addTime = it.start_time || appointment.start_time;
+        const qty = Number(it.quantity || 1);
+        const amt = Number(it.price || 0) * qty;
+
+        const serviceDetails = [
+          formatTime(addTime, "12h"),
+          addDur ? `${addDur} min` : "",
+          addStaff
+        ].filter(Boolean).join(" • ");
+
+        const displayName = qty > 1 ? `${addName} (x${qty})` : addName;
+        
+        serviceRows.push([
+          displayName,
+          serviceDetails,
+          `DOP ${amt.toFixed(0)}`
+        ]);
+      });
+
+      // Crear tabla de servicios
+      autoTable(pdf, {
+        startY: yPos,
+        head: [[
+          language === "es" ? "Servicio" : "Service",
+          language === "es" ? "Detalles" : "Details",
+          language === "es" ? "Precio" : "Price"
+        ]],
+        body: serviceRows,
+        theme: 'grid',
+        headStyles: { 
+          fillColor: [147, 135, 245],
+          textColor: [255, 255, 255],
+          fontStyle: 'bold'
+        },
+        bodyStyles: { 
+          fontSize: 9,
+          textColor: [0, 0, 0]
+        },
+        columnStyles: {
+          0: { cellWidth: 70, fontStyle: 'bold' },
+          1: { cellWidth: 80, fontSize: 8 },
+          2: { cellWidth: 40, halign: 'right', fontStyle: 'bold' }
+        },
+        margin: { left: 15, right: 15 }
+      });
+
+      // Obtener posición Y después de la tabla
+      yPos = (pdf as any).lastAutoTable.finalY + 10;
+
+      // ===== RESUMEN DE PAGO =====
+      pdf.setFontSize(10);
+      pdf.setFont('helvetica', 'normal');
+      
+      // Subtotal
+      pdf.text(language === "es" ? "Subtotal" : "Subtotal", 140, yPos);
+      pdf.text(`DOP ${subtotal.toFixed(0)}`, 195, yPos, { align: 'right' });
+      yPos += 6;
+
+      // Impuestos
+      pdf.text(language === "es" ? "Impuestos" : "Tax", 140, yPos);
+      pdf.text(`DOP ${tax.toFixed(0)}`, 195, yPos, { align: 'right' });
+      yPos += 8;
+
+      // Línea separadora antes del total
+      pdf.setDrawColor(200, 200, 200);
+      pdf.line(140, yPos, 195, yPos);
+      yPos += 6;
+
+      // Total (negrita, más grande)
+      pdf.setFontSize(14);
+      pdf.setFont('helvetica', 'bold');
+      pdf.text(language === "es" ? "Total" : "Total", 140, yPos);
+      pdf.text(`DOP ${total.toFixed(0)}`, 195, yPos, { align: 'right' });
+      yPos += 12;
+
+      // Método de pago (si aplica)
+      if (appointment.payment_method && appointment.payment_amount) {
+        pdf.setFontSize(10);
+        pdf.setFont('helvetica', 'normal');
+        
+        const paymentMethodText = 
+          appointment.payment_method === "cash" ? (language === "es" ? "Efectivo" : "Cash") :
+          appointment.payment_method === "card" ? (language === "es" ? "Tarjeta D/C" : "Card") :
+          appointment.payment_method === "bank_transfer" ? (language === "es" ? "Transferencia" : "Transfer") :
+          appointment.payment_method === "crypto" ? (language === "es" ? "Crypto moneda" : "Crypto") :
+          appointment.payment_method;
+        
+        pdf.text(`${language === "es" ? "Método de pago:" : "Payment method:"} ${paymentMethodText}`, 15, yPos);
+        yPos += 5;
+        pdf.text(`${language === "es" ? "Pagado:" : "Paid:"} DOP ${Number(appointment.payment_amount || 0).toFixed(0)}`, 15, yPos);
+        yPos += 8;
+      } else {
+        pdf.setFontSize(10);
+        pdf.setFont('helvetica', 'italic');
+        pdf.setTextColor(255, 165, 0); // Naranja
+        pdf.text(language === "es" ? "Pendiente de pago (Crédito)" : "Pending payment (Credit)", 15, yPos);
+        pdf.setTextColor(0, 0, 0); // Reset a negro
+        yPos += 8;
+      }
+
+      // ===== PIE DE PÁGINA =====
+      yPos += 5;
+      pdf.setDrawColor(200, 200, 200);
+      pdf.line(15, yPos, 195, yPos);
+      yPos += 8;
+
+      pdf.setFontSize(11);
+      pdf.setFont('helvetica', 'bold');
+      const thankYouText = language === "es" ? "¡Gracias por su visita!" : "Thank you for your visit!";
+      const thankYouWidth = pdf.getTextWidth(thankYouText);
+      pdf.text(thankYouText, (210 - thankYouWidth) / 2, yPos);
+
+      // Ajustar tamaño de página si el contenido es corto
+      const pageHeight = pdf.internal.pageSize.height;
+      if (yPos + 20 < pageHeight) {
+        // Si hay espacio extra, el PDF se ajustará automáticamente al contenido
+        // jsPDF maneja esto bien con autoTable
+      }
+
       // Generate filename
       const clientNameForFile = clientName?.replace(/\s+/g, '_') || 'Cliente';
       const dateForFile = appointmentDate ? format(new Date(appointmentDate), 'yyyy-MM-dd') : 'sin-fecha';
