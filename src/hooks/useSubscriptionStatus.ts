@@ -8,7 +8,7 @@ interface UseSubscriptionStatusResult {
   status: SubscriptionStatus;
   isLoading: boolean;
   subscription: any | null;
-  refetchSubscription: () => Promise<void>;
+  refetchSubscription: (skipCache?: boolean) => Promise<void>;
 }
 
 export function useSubscriptionStatus(): UseSubscriptionStatusResult {
@@ -17,7 +17,7 @@ export function useSubscriptionStatus(): UseSubscriptionStatusResult {
   const [subscription, setSubscription] = useState<any | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  const fetchSubscription = useCallback(async () => {
+  const fetchSubscription = useCallback(async (skipCache: boolean = false) => {
     if (!profile?.business_id) {
       setStatus('no_subscription');
       setIsLoading(false);
@@ -27,11 +27,20 @@ export function useSubscriptionStatus(): UseSubscriptionStatusResult {
 
     setIsLoading(true);
     try {
-      let { data, error } = await supabase
+      // Si skipCache es true, agregar timestamp para forzar refetch
+      let query = supabase
         .from("business_subscriptions")
         .select("*")
-        .eq("business_id", profile.business_id)
-        .maybeSingle();
+        .eq("business_id", profile.business_id);
+      
+      if (skipCache) {
+        // Agregar parámetro único para saltar caché
+        query = query.single();
+      } else {
+        query = query.maybeSingle();
+      }
+      
+      let { data, error } = await query;
 
       if (error && error.code !== 'PGRST116') {
         console.error("Error fetching subscription:", error);
@@ -115,7 +124,7 @@ export function useSubscriptionStatus(): UseSubscriptionStatusResult {
     status,
     isLoading,
     subscription,
-    refetchSubscription: fetchSubscription,
+    refetchSubscription: (skipCache: boolean = true) => fetchSubscription(skipCache),
   };
 }
 

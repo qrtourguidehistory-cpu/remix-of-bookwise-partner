@@ -8,6 +8,7 @@ import { LanguageProvider } from "@/contexts/LanguageContext";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { useBackButton } from "@/hooks/useBackButton";
 import { usePaymentDeepLink } from "@/hooks/usePaymentDeepLink";
+import { useAppStateSubscriptionCheck } from "@/hooks/useAppStateSubscriptionCheck";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import SubscriptionGuard from "@/components/SubscriptionGuard";
 import LoginPage from "./pages/auth/LoginPage";
@@ -65,10 +66,11 @@ import SubscriptionsPage from "./pages/hub/SubscriptionsPage";
 
 const queryClient = new QueryClient();
 
-// Component to handle back button and payment deep links at the router level
+// Component to handle back button, payment deep links, and subscription checks at the router level
 function BackButtonHandler() {
   useBackButton();
   usePaymentDeepLink();
+  useAppStateSubscriptionCheck(); // Verificación automática de suscripciones pendientes
   return null;
 }
 

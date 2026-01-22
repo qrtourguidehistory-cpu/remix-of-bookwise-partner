@@ -198,6 +198,39 @@ serve(async (req) => {
               status: dbStatus,
               updated_data: JSON.stringify(updatedSubscription, null, 2)
             });
+
+            // Crear notificación de billing para el partner
+            if (dbStatus === 'active' || dbStatus === 'trialing') {
+              try {
+                // Obtener el owner_id de la suscripción
+                const { data: subData } = await supabase
+                  .from('business_subscriptions')
+                  .select('owner_id')
+                  .eq('id', subscriptionIdFromMeta)
+                  .single();
+
+                if (subData?.owner_id) {
+                  await supabase
+                    .from('notifications')
+                    .insert({
+                      user_id: subData.owner_id,
+                      title: 'Suscripción activa',
+                      message: 'Tu pago fue procesado correctamente. Tu suscripción Premium ya está activa.',
+                      type: 'billing',
+                      read: false,
+                      meta: {
+                        subscription_id: subscriptionIdFromMeta,
+                        business_id: businessId,
+                        status: dbStatus,
+                      },
+                    });
+                  console.log('📬 Billing notification created for owner:', subData.owner_id);
+                }
+              } catch (notifError) {
+                console.error('⚠️ Error creating billing notification (non-critical):', notifError);
+                // No fallar el webhook si la notificación falla
+              }
+            }
           } else {
             console.error('❌ Missing required metadata after all attempts:', { 
               has_business_id: !!businessId, 
@@ -246,15 +279,40 @@ serve(async (req) => {
             updateData.status = status;
           }
 
-          const { error: updateError } = await supabase
+          const { data: updatedSub, error: updateError } = await supabase
             .from('business_subscriptions')
             .update(updateData)
-            .eq('stripe_subscription_id', subscription.id);
+            .eq('stripe_subscription_id', subscription.id)
+            .select('owner_id, business_id')
+            .single();
 
           if (updateError) {
             console.error('Error updating subscription:', updateError);
           } else {
             console.log('Subscription updated:', subscriptionId, 'Status:', status);
+            
+            // Crear notificación si la suscripción se activó
+            if ((status === 'active' || status === 'trialing') && updatedSub?.owner_id) {
+              try {
+                await supabase
+                  .from('notifications')
+                  .insert({
+                    user_id: updatedSub.owner_id,
+                    title: 'Suscripción actualizada',
+                    message: `Tu suscripción Premium está ${status === 'active' ? 'activa' : 'en período de prueba'}.`,
+                    type: 'billing',
+                    read: false,
+                    meta: {
+                      subscription_id: subscriptionId,
+                      business_id: updatedSub.business_id,
+                      status: status,
+                    },
+                  });
+                console.log('📬 Billing notification created for subscription update');
+              } catch (notifError) {
+                console.error('⚠️ Error creating billing notification (non-critical):', notifError);
+              }
+            }
           }
         }
         break;
@@ -278,6 +336,129 @@ serve(async (req) => {
             console.error('Error canceling subscription:', updateError);
           } else {
             console.log('Subscription cancelled:', subscriptionId);
+          }
+        }
+        break;
+      }
+
+      case 'invoice.paid': {
+        const invoice = event.data.object as Stripe.Invoice;
+        const subscriptionId = invoice.subscription as string;
+        
+        if (subscriptionId && invoice.customer) {
+          console.log('💰 Invoice paid:', {
+            invoice_id: invoice.id,
+            subscription_id: subscriptionId,
+            amount: invoice.amount_paid,
+            currency: invoice.currency,
+          });
+
+          // Buscar la suscripción en nuestra base de datos
+          const { data: subData } = await supabase
+            .from('business_subscriptions')
+            .select('id, owner_id, business_id')
+            .eq('stripe_subscription_id', subscriptionId)
+            .single();
+
+          if (subData) {
+            // Guardar el recibo en subscription_invoices (si la tabla existe)
+            try {
+              const { error: invoiceError } = await supabase
+                .from('subscription_invoices')
+                .insert({
+                  subscription_id: subData.id,
+                  business_id: subData.business_id,
+                  stripe_invoice_id: invoice.id,
+                  amount: (invoice.amount_paid || 0) / 100, // Convertir de centavos
+                  currency: invoice.currency || 'usd',
+                  status: 'paid',
+                  period_start: invoice.period_start ? new Date(invoice.period_start * 1000).toISOString() : null,
+                  period_end: invoice.period_end ? new Date(invoice.period_end * 1000).toISOString() : null,
+                  invoice_pdf_url: invoice.invoice_pdf || null,
+                  created_at: new Date(invoice.created * 1000).toISOString(),
+                });
+
+              if (invoiceError) {
+                console.error('⚠️ Error saving invoice (table might not exist yet):', invoiceError);
+              } else {
+                console.log('✅ Invoice saved to subscription_invoices');
+              }
+            } catch (err) {
+              console.error('⚠️ Error saving invoice (non-critical):', err);
+            }
+
+            // Crear notificación de pago recibido
+            try {
+              await supabase
+                .from('notifications')
+                .insert({
+                  user_id: subData.owner_id,
+                  title: 'Pago recibido',
+                  message: `Tu pago de ${(invoice.amount_paid || 0) / 100} ${invoice.currency?.toUpperCase()} fue procesado correctamente.`,
+                  type: 'billing',
+                  read: false,
+                  meta: {
+                    subscription_id: subData.id,
+                    business_id: subData.business_id,
+                    invoice_id: invoice.id,
+                    amount: invoice.amount_paid,
+                    currency: invoice.currency,
+                  },
+                });
+              console.log('📬 Billing notification created for invoice.paid');
+            } catch (notifError) {
+              console.error('⚠️ Error creating billing notification (non-critical):', notifError);
+            }
+          }
+        }
+        break;
+      }
+
+      case 'invoice.created': {
+        const invoice = event.data.object as Stripe.Invoice;
+        const subscriptionId = invoice.subscription as string;
+        
+        if (subscriptionId && invoice.customer) {
+          console.log('📄 Invoice created:', {
+            invoice_id: invoice.id,
+            subscription_id: subscriptionId,
+            amount: invoice.amount_due,
+            currency: invoice.currency,
+          });
+
+          // Buscar la suscripción en nuestra base de datos
+          const { data: subData } = await supabase
+            .from('business_subscriptions')
+            .select('id, business_id')
+            .eq('stripe_subscription_id', subscriptionId)
+            .single();
+
+          if (subData) {
+            // Guardar el recibo en subscription_invoices
+            try {
+              const { error: invoiceError } = await supabase
+                .from('subscription_invoices')
+                .insert({
+                  subscription_id: subData.id,
+                  business_id: subData.business_id,
+                  stripe_invoice_id: invoice.id,
+                  amount: (invoice.amount_due || 0) / 100,
+                  currency: invoice.currency || 'usd',
+                  status: invoice.paid ? 'paid' : 'pending',
+                  period_start: invoice.period_start ? new Date(invoice.period_start * 1000).toISOString() : null,
+                  period_end: invoice.period_end ? new Date(invoice.period_end * 1000).toISOString() : null,
+                  invoice_pdf_url: invoice.invoice_pdf || null,
+                  created_at: new Date(invoice.created * 1000).toISOString(),
+                });
+
+              if (invoiceError) {
+                console.error('⚠️ Error saving invoice (table might not exist yet):', invoiceError);
+              } else {
+                console.log('✅ Invoice saved to subscription_invoices');
+              }
+            } catch (err) {
+              console.error('⚠️ Error saving invoice (non-critical):', err);
+            }
           }
         }
         break;

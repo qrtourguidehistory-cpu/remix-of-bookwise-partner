@@ -4,7 +4,7 @@
 
 Se ha actualizado el sistema de notificaciones push para soportar **múltiples proyectos de Firebase** según el rol del usuario:
 
-- **Partners** → Usan el proyecto `bookwise-partner`
+- **Partners** → Usan el proyecto `mi-turnow-partner`
 - **Clientes** → Usan el proyecto `mi-turnow-cliente`
 
 ## 🔧 Archivos Actualizados
@@ -27,10 +27,10 @@ Se ha actualizado el sistema de notificaciones push para soportar **múltiples p
 
 Debes configurar estas variables en el **Dashboard de Supabase** → **Settings** → **Edge Functions** → **Secrets**:
 
-### Para Partner (Bookwise Partner)
+### Para Partner (Mi Turnow Partner)
 ```bash
-FIREBASE_PARTNER_PROJECT_ID=bookwise-partner
-FIREBASE_PARTNER_CLIENT_EMAIL=firebase-adminsdk-fbsvc@bookwise-partner.iam.gserviceaccount.com
+FIREBASE_PARTNER_PROJECT_ID=mi-turnow-partner
+FIREBASE_PARTNER_CLIENT_EMAIL=firebase-adminsdk-fbsvc@mi-turnow-partner.iam.gserviceaccount.com
 FIREBASE_PARTNER_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n"
 ```
 
@@ -44,7 +44,7 @@ FIREBASE_CLIENT_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE 
 ## 📝 Cómo Obtener las Credenciales
 
 1. Ve a [Firebase Console](https://console.firebase.google.com/)
-2. Selecciona el proyecto correspondiente (`bookwise-partner` o `mi-turnow-cliente`)
+2. Selecciona el proyecto correspondiente (`mi-turnow-partner` o `mi-turnow-cliente`)
 3. Ve a **Project Settings** ⚙️ → **Service Accounts**
 4. Haz clic en **Generate New Private Key**
 5. Descarga el archivo JSON
@@ -73,8 +73,8 @@ supabase db push
 ### 2. Configurar Variables de Entorno
 ```bash
 # Usando Supabase CLI
-supabase secrets set FIREBASE_PARTNER_PROJECT_ID=bookwise-partner
-supabase secrets set FIREBASE_PARTNER_CLIENT_EMAIL=firebase-adminsdk-fbsvc@bookwise-partner.iam.gserviceaccount.com
+supabase secrets set FIREBASE_PARTNER_PROJECT_ID=mi-turnow-partner
+supabase secrets set FIREBASE_PARTNER_CLIENT_EMAIL=firebase-adminsdk-fbsvc@mi-turnow-partner.iam.gserviceaccount.com
 supabase secrets set FIREBASE_PARTNER_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n"
 
 supabase secrets set FIREBASE_CLIENT_PROJECT_ID=mi-turnow-cliente

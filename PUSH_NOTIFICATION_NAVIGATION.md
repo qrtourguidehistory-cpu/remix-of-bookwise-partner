@@ -118,7 +118,7 @@ INSERT INTO client_notifications (
 📦 Record extraído: {...}
 🔄 Procesando device ... (role: partner)
 🔑 Usando secret: FIREBASE_SERVICE_ACCOUNT para rol: partner
-✅ Service Account parseado - project_id: bookwise-partner
+✅ Service Account parseado - project_id: mi-turnow-partner
 📤 Enviando notificación a partner...
 ✅ Notificación enviada exitosamente
 ```
@@ -183,7 +183,7 @@ else if (businessId) {
 
 Asegúrate de tener configurados:
 
-1. **`FIREBASE_SERVICE_ACCOUNT`** (Partner - bookwise-partner)
+1. **`FIREBASE_SERVICE_ACCOUNT`** (Partner - mi-turnow-partner)
 2. **`FIREBASE_SERVICE_ACCOUNT_CLIENT`** (Cliente - mi-turnow-cliente)
 
 Ambos deben contener el JSON completo del Service Account.

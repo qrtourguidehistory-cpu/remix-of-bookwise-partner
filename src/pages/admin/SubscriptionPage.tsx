@@ -11,6 +11,9 @@ import { supabase } from "@/integrations/supabase/client";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { format } from "date-fns";
 import { useSubscriptionStatus } from "@/hooks/useSubscriptionStatus";
+import { savePendingSubscription, clearPendingSubscription } from "@/lib/subscriptionPersistence";
+import { App } from "@capacitor/app";
+import { Capacitor } from "@capacitor/core";
 import { 
   CreditCard, 
   Calendar, 
@@ -24,7 +27,11 @@ import {
   AlertTriangle,
   Shield,
   Settings,
-  RefreshCw
+  RefreshCw,
+  FileText,
+  Download,
+  ChevronDown,
+  ChevronUp
 } from "lucide-react";
 
 interface BusinessSubscription {
@@ -98,6 +105,9 @@ export default function SubscriptionPage() {
   const [processingPayment, setProcessingPayment] = useState(false);
   const [processingPortal, setProcessingPortal] = useState(false);
   const paymentStatus = searchParams.get('status');
+  const [invoices, setInvoices] = useState<any[]>([]);
+  const [loadingInvoices, setLoadingInvoices] = useState(false);
+  const [showInvoices, setShowInvoices] = useState(false);
 
   // Función fetchSubscription memoizada para evitar dependencias circulares
   const fetchSubscription = useCallback(async () => {
@@ -134,6 +144,101 @@ export default function SubscriptionPage() {
     if (profile?.business_id) {
       fetchSubscription();
     }
+  }, [profile?.business_id, fetchSubscription]);
+
+  // Cargar recibos cuando hay suscripción
+  const fetchInvoices = useCallback(async () => {
+    if (!subscription?.id || !profile?.business_id) return;
+
+    setLoadingInvoices(true);
+    try {
+      const { data, error } = await supabase
+        .from('subscription_invoices')
+        .select('*')
+        .eq('subscription_id', subscription.id)
+        .order('created_at', { ascending: false })
+        .limit(20);
+
+      if (error) {
+        console.error('[SubscriptionPage] Error fetching invoices:', error);
+      } else {
+        setInvoices(data || []);
+      }
+    } catch (error) {
+      console.error('[SubscriptionPage] Error in fetchInvoices:', error);
+    } finally {
+      setLoadingInvoices(false);
+    }
+  }, [subscription?.id, profile?.business_id]);
+
+  useEffect(() => {
+    if (subscription?.id && showInvoices) {
+      fetchInvoices();
+    }
+  }, [subscription?.id, showInvoices, fetchInvoices]);
+
+  // Escuchar cambios de estado de suscripción y refrescar automáticamente
+  useEffect(() => {
+    if (!profile?.business_id) return;
+
+    const channel = supabase
+      .channel(`subscription-page-${profile.business_id}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'business_subscriptions',
+          filter: `business_id=eq.${profile.business_id}`,
+        },
+        async (payload) => {
+          console.log('[SubscriptionPage] 🔄 Subscription changed via realtime, refreshing...');
+          // Refrescar inmediatamente cuando cambia el estado
+          await fetchSubscription();
+          
+          // Si la suscripción se activó, limpiar estado pendiente
+          if (payload.new && (payload.new as any).status === 'active' || (payload.new as any).status === 'trialing') {
+            await clearPendingSubscription();
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [profile?.business_id, fetchSubscription]);
+
+  // Escuchar cuando la app vuelve al foreground (solo mobile)
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform() || !profile?.business_id) return;
+
+    const appStateListener = App.addListener('appStateChange', ({ isActive }) => {
+      if (isActive) {
+        console.log('[SubscriptionPage] 📱 App returned to foreground, refreshing subscription...');
+        // Refrescar cuando la app vuelve al foreground
+        fetchSubscription();
+      }
+    });
+
+    return () => {
+      appStateListener.then(listener => listener.remove());
+    };
+  }, [profile?.business_id, fetchSubscription]);
+
+  // También refrescar cuando la ventana vuelve a tener foco (web)
+  useEffect(() => {
+    if (Capacitor.isNativePlatform() || !profile?.business_id) return;
+
+    const handleFocus = () => {
+      console.log('[SubscriptionPage] 🌐 Window focused, refreshing subscription...');
+      fetchSubscription();
+    };
+
+    window.addEventListener('focus', handleFocus);
+    return () => {
+      window.removeEventListener('focus', handleFocus);
+    };
   }, [profile?.business_id, fetchSubscription]);
 
   // Manejar el callback de Stripe Checkout después del pago
@@ -351,6 +456,12 @@ export default function SubscriptionPage() {
       }
 
       console.log('[SubscriptionPage] ✅ Redirecting to checkout URL:', data.checkout_url);
+      
+      // IMPORTANTE: Guardar estado pendiente ANTES de abrir Stripe
+      // El deep link es solo UX, la activación depende del webhook
+      await savePendingSubscription(profile.business_id, subscription?.subscription_plan || 'monthly');
+      console.log('[SubscriptionPage] 💾 Saved pending subscription state');
+      
       window.location.href = data.checkout_url;
     } catch (error: any) {
       console.error("Error al crear sesión Stripe Checkout:", error);
@@ -667,6 +778,108 @@ export default function SubscriptionPage() {
             </Button>
           )}
         </div>
+
+        {/* Historial de Recibos */}
+        {subscription?.id && (
+          <Card className="shadow-md border-0">
+            <CardHeader>
+              <Button
+                variant="ghost"
+                onClick={() => setShowInvoices(!showInvoices)}
+                className="w-full justify-between p-0 h-auto"
+              >
+                <CardTitle className="text-lg font-semibold flex items-center gap-2">
+                  <FileText className="h-5 w-5" />
+                  {language === "es" ? "Recibos" : "Invoices"}
+                </CardTitle>
+                {showInvoices ? (
+                  <ChevronUp className="h-5 w-5" />
+                ) : (
+                  <ChevronDown className="h-5 w-5" />
+                )}
+              </Button>
+              <CardDescription className="text-sm">
+                {language === "es" 
+                  ? "Historial de pagos de tu suscripción"
+                  : "Payment history for your subscription"}
+              </CardDescription>
+            </CardHeader>
+            {showInvoices && (
+              <CardContent>
+                {loadingInvoices ? (
+                  <div className="flex items-center justify-center py-8">
+                    <Loader2 className="h-6 w-6 animate-spin text-primary" />
+                  </div>
+                ) : invoices.length === 0 ? (
+                  <div className="text-center py-8 text-muted-foreground">
+                    <FileText className="h-12 w-12 mx-auto mb-3 opacity-50" />
+                    <p className="text-sm">
+                      {language === "es" 
+                        ? "No hay recibos disponibles aún"
+                        : "No invoices available yet"}
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {invoices.map((invoice) => (
+                      <div
+                        key={invoice.id}
+                        className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-gray-200"
+                      >
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className="font-semibold text-sm">
+                              {invoice.amount.toFixed(2)} {invoice.currency?.toUpperCase() || 'USD'}
+                            </span>
+                            <Badge
+                              variant={
+                                invoice.status === 'paid'
+                                  ? 'default'
+                                  : invoice.status === 'pending'
+                                  ? 'secondary'
+                                  : 'destructive'
+                              }
+                              className="text-xs"
+                            >
+                              {invoice.status === 'paid'
+                                ? language === "es" ? "Pagado" : "Paid"
+                                : invoice.status === 'pending'
+                                ? language === "es" ? "Pendiente" : "Pending"
+                                : language === "es" ? "Fallido" : "Failed"}
+                            </Badge>
+                          </div>
+                          <div className="text-xs text-muted-foreground">
+                            {invoice.period_start && invoice.period_end && (
+                              <span>
+                                {format(new Date(invoice.period_start), "dd/MM/yyyy")} -{" "}
+                                {format(new Date(invoice.period_end), "dd/MM/yyyy")}
+                              </span>
+                            )}
+                            {!invoice.period_start && invoice.created_at && (
+                              <span>
+                                {format(new Date(invoice.created_at), "dd/MM/yyyy")}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                        {invoice.invoice_pdf_url && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => window.open(invoice.invoice_pdf_url, '_blank')}
+                            className="ml-2"
+                          >
+                            <Download className="h-4 w-4" />
+                          </Button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            )}
+          </Card>
+        )}
 
         {/* Información adicional para período de prueba */}
         {subscription?.status === 'trialing' && (
