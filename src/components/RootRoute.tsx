@@ -2,6 +2,7 @@ import { Navigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import MobileCalendar from "@/pages/mobile/MobileCalendar";
 import ProtectedRoute from "@/components/ProtectedRoute";
+import SubscriptionGuard from "@/components/SubscriptionGuard";
 
 // Root route handler - redirects to WelcomePage if not authenticated, Calendar if authenticated
 export default function RootRoute() {
@@ -21,7 +22,9 @@ export default function RootRoute() {
   if (isAuthenticated) {
     return (
       <ProtectedRoute requireOnboarding key="protected-calendar">
-        <MobileCalendar />
+        <SubscriptionGuard>
+          <MobileCalendar />
+        </SubscriptionGuard>
       </ProtectedRoute>
     );
   }

@@ -72,17 +72,17 @@ export default function ClientList() {
 
   return (
     <MobileLayout>
-      <div className="p-4 pb-24 max-w-2xl mx-auto">
-        <div className="flex items-center justify-between mb-6">
+      <div className="p-4 pb-24 max-w-2xl mx-auto space-y-6">
+        <div className="flex items-center justify-between mb-2">
           <h1 className="text-2xl font-bold">{t("clients")}</h1>
-          <Button onClick={() => navigate("/admin/clients/new")}>
+          <Button onClick={() => navigate("/admin/clients/new")} className="rounded-xl font-semibold bg-black text-white hover:bg-black/90">
             <UserPlus className="h-4 w-4 mr-2" />
             {t("newClient")}
           </Button>
         </div>
 
         {/* Tabs */}
-        <div className="flex gap-2 mb-6 border-b border-border">
+        <div className="flex gap-2 mb-4 border-b border-border">
           <Button
             variant="default"
             className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary"
@@ -99,29 +99,29 @@ export default function ClientList() {
           </Button>
         </div>
 
-        <div className="relative mb-6">
+        <div className="relative mb-4">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
             placeholder={t("search") || "Buscar..."}
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-9"
+            className="pl-9 rounded-xl"
           />
         </div>
 
-        <div className="space-y-3">
+        <div className="space-y-4">
           {filteredClients.map((client) => (
-            <div key={client.id} className="p-4 border border-border rounded-lg bg-card">
+            <div key={client.id} className="p-4 shadow-md border-0 rounded-xl bg-gradient-to-br from-white to-gray-50/50">
               <div className="flex items-start gap-3">
-                <Avatar>
+                <Avatar className="shadow-sm border border-gray-200">
                   <AvatarImage src="" />
                   <AvatarFallback>{client.full_name?.split(" ").map((n: string) => n[0]).join("")}</AvatarFallback>
                 </Avatar>
                 <div className="flex-1 min-w-0">
-                  <h3 className="font-semibold truncate">{client.full_name}</h3>
-                  <p className="text-sm text-muted-foreground truncate">{client.email}</p>
-                  <p className="text-sm text-muted-foreground">{client.phone}</p>
-                  <Badge variant="secondary" className="mt-2">
+                  <h3 className="font-semibold text-base truncate">{client.full_name}</h3>
+                  <p className="text-sm text-muted-foreground truncate mt-1">{client.email}</p>
+                  <p className="text-sm text-muted-foreground mt-1">{client.phone}</p>
+                  <Badge variant="outline" className="mt-2 bg-green-50 text-green-700 border-green-200">
                     {client.total_bookings || 0} {t("appointments") || "citas"}
                   </Badge>
                 </div>
@@ -130,6 +130,7 @@ export default function ClientList() {
                     variant="ghost"
                     size="icon"
                     onClick={() => navigate(`/admin/clients/edit/${client.id}`)}
+                    className="rounded-lg"
                   >
                     <Edit className="h-4 w-4" />
                   </Button>
@@ -137,6 +138,7 @@ export default function ClientList() {
                     variant="ghost"
                     size="icon"
                     onClick={() => setDeleteId(client.id)}
+                    className="rounded-lg"
                   >
                     <Trash2 className="h-4 w-4 text-destructive" />
                   </Button>

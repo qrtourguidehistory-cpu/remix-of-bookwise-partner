@@ -1,21 +1,21 @@
 {
   "project_info": {
-    "project_number": "766564879842",
-    "project_id": "bookwise-partner",
-    "storage_bucket": "bookwise-partner.firebasestorage.app"
+    "project_number": "390618764603",
+    "project_id": "mi-turnow-partner",
+    "storage_bucket": "mi-turnow-partner.firebasestorage.app"
   },
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:766564879842:android:87f573c95c1180ce007dbb",
+        "mobilesdk_app_id": "1:390618764603:android:c0623885d3707f8ba4d31e",
         "android_client_info": {
-          "package_name": "com.bookwise.partner"
+          "package_name": "com.miturnow.partner"
         }
       },
       "oauth_client": [],
       "api_key": [
         {
-          "current_key": "AIzaSyDmAsfyBpNHLLocFygC8m9wszkv5ham52I"
+          "current_key": "AIzaSyCfFXsnM_fmqBVQG0I9mPSbs0sxGC8WVzA"
         }
       ],
       "services": {

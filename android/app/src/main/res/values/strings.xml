@@ -1,7 +1,7 @@
 <?xml version='1.0' encoding='utf-8'?>
 <resources>
-    <string name="app_name">Mí Turnow Partner</string>
-    <string name="title_activity_main">Mí Turnow Partner</string>
-    <string name="package_name">com.bookwise.partner</string>
-    <string name="custom_url_scheme">com.bookwise.partner</string>
+    <string name="app_name">Mi Turnow Partner</string>
+    <string name="title_activity_main">Mi Turnow Partner</string>
+    <string name="package_name">com.miturnow.partner</string>
+    <string name="custom_url_scheme">com.miturnow.partner</string>
 </resources>

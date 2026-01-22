@@ -33,6 +33,7 @@ export default function MobileCalendar() {
   const today = new Date();
   const isToday = isSameDay(currentDate, today);
 
+
   // Check if we should show the public profile tip
   useEffect(() => {
     const checkBusinessPublicStatus = async () => {

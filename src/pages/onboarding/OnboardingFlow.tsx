@@ -5,6 +5,9 @@ import { supabase } from "@/lib/supabaseClient";
 import { toast } from "sonner";
 import { AnimatePresence, motion } from "framer-motion";
 import ProgressStepper from "@/components/onboarding/ProgressStepper";
+import MobileLayout from "@/components/mobile/MobileLayout";
+import { Loader2, LogOut, User } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import SelectCategories from "./steps/SelectCategories";
 import BusinessName from "./steps/BusinessName";
 import IndependentOrTeam from "./steps/IndependentOrTeam";
@@ -33,8 +36,9 @@ export default function OnboardingFlow() {
     teamMembers: [] as any[],
     locationDetails: null as any,
   });
-  const { user, profile, refreshProfile, loading } = useAuth();
+  const { user, profile, refreshProfile, loading, signOut } = useAuth();
   const navigate = useNavigate();
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
 
   // Redirect if onboarding is already completed
   useEffect(() => {
@@ -43,6 +47,17 @@ export default function OnboardingFlow() {
       navigate("/admin", { replace: true });
     }
   }, [profile, loading, navigate]);
+
+  // Show loading state while auth is loading
+  if (loading) {
+    return (
+      <MobileLayout>
+        <div className="flex items-center justify-center min-h-[60vh]">
+          <Loader2 className="w-8 h-8 animate-spin text-primary" />
+        </div>
+      </MobileLayout>
+    );
+  }
 
   const steps = [
     { title: "Business name", component: BusinessName },
@@ -245,32 +260,95 @@ export default function OnboardingFlow() {
 
   const CurrentStepComponent = steps[currentStep].component;
 
-  return (
-    <div className="min-h-screen bg-background flex items-center justify-center p-6">
-      <div className="w-full max-w-2xl space-y-8">
-        <ProgressStepper
-          currentStep={currentStep}
-          totalSteps={steps.length}
-          stepTitle={steps[currentStep].title}
-        />
+  const handleLogout = async () => {
+    setShowLogoutConfirm(false);
+    await signOut();
+  };
 
-        <AnimatePresence mode="wait">
-          <motion.div
-            key={currentStep}
-            initial={{ opacity: 0, x: 20 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: -20 }}
-            transition={{ duration: 0.3, ease: "easeOut" }}
-          >
-            <CurrentStepComponent
-              data={data}
-              onNext={handleNext}
-              onBack={currentStep > 0 ? handleBack : undefined}
-              {...(currentStep === steps.length - 1 ? { onEdit: handleEdit } : {})}
-            />
-          </motion.div>
-        </AnimatePresence>
+  return (
+    <MobileLayout>
+      <div className="min-h-screen bg-background p-4 pb-24">
+        <div className="w-full max-w-2xl mx-auto space-y-6">
+          {/* Header with logout button */}
+          <div className="flex items-center justify-between mb-2">
+            <div className="flex-1">
+              <ProgressStepper
+                currentStep={currentStep}
+                totalSteps={steps.length}
+                stepTitle={steps[currentStep].title}
+              />
+            </div>
+            <div className="relative">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setShowLogoutConfirm(true)}
+                className="ml-2 flex items-center gap-2 text-muted-foreground hover:text-foreground"
+              >
+                <User className="w-4 h-4" />
+                <LogOut className="w-4 h-4" />
+              </Button>
+              
+              {/* Logout confirmation dialog */}
+              <AnimatePresence>
+                {showLogoutConfirm && (
+                  <div 
+                    className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+                    onClick={() => setShowLogoutConfirm(false)}
+                  >
+                    <motion.div
+                      initial={{ opacity: 0, scale: 0.95 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      exit={{ opacity: 0, scale: 0.95 }}
+                      onClick={(e) => e.stopPropagation()}
+                      className="bg-background rounded-lg p-6 max-w-sm w-full space-y-4 shadow-lg"
+                    >
+                      <h3 className="text-lg font-semibold">¿Cambiar de cuenta?</h3>
+                      <p className="text-sm text-muted-foreground">
+                        Se cerrará tu sesión actual y podrás iniciar sesión con otra cuenta.
+                      </p>
+                      <div className="flex gap-3">
+                        <Button
+                          variant="outline"
+                          onClick={() => setShowLogoutConfirm(false)}
+                          className="flex-1"
+                        >
+                          Cancelar
+                        </Button>
+                        <Button
+                          onClick={handleLogout}
+                          className="flex-1"
+                        >
+                          Cerrar sesión
+                        </Button>
+                      </div>
+                    </motion.div>
+                  </div>
+                )}
+              </AnimatePresence>
+            </div>
+          </div>
+
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={currentStep}
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -20 }}
+              transition={{ duration: 0.3, ease: "easeOut" }}
+            >
+              {CurrentStepComponent && (
+                <CurrentStepComponent
+                  data={data}
+                  onNext={handleNext}
+                  onBack={currentStep > 0 ? handleBack : undefined}
+                  {...(currentStep === steps.length - 1 ? { onEdit: handleEdit } : {})}
+                />
+              )}
+            </motion.div>
+          </AnimatePresence>
+        </div>
       </div>
-    </div>
+    </MobileLayout>
   );
 }

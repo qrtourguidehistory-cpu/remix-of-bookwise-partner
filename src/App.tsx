@@ -7,7 +7,9 @@ import { ThemeProvider } from "@/contexts/ThemeContext";
 import { LanguageProvider } from "@/contexts/LanguageContext";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { useBackButton } from "@/hooks/useBackButton";
+import { usePaymentDeepLink } from "@/hooks/usePaymentDeepLink";
 import ProtectedRoute from "@/components/ProtectedRoute";
+import SubscriptionGuard from "@/components/SubscriptionGuard";
 import LoginPage from "./pages/auth/LoginPage";
 import SignupPage from "./pages/auth/SignupPage";
 import ForgotPasswordPage from "./pages/auth/ForgotPasswordPage";
@@ -38,6 +40,7 @@ import BusinessHoursSettings from "./pages/admin/BusinessHoursSettings";
 import SettingsPage from "./pages/admin/SettingsPage";
 import PaymentMethodsPage from "./pages/admin/PaymentMethodsPage";
 import StaffCommissionsPage from "./pages/admin/StaffCommissionsPage";
+import SubscriptionPage from "./pages/admin/SubscriptionPage";
 import ThemeSettingsPage from "./pages/admin/ThemeSettingsPage";
 import LocaleSettingsPage from "./pages/admin/LocaleSettingsPage";
 import NotificationSettingsPage from "./pages/admin/NotificationSettingsPage";
@@ -58,12 +61,14 @@ import WelcomePage from "./pages/WelcomePage";
 import RootRoute from "./components/RootRoute";
 import HubDashboard from "./pages/hub/HubDashboard";
 import ModerationPage from "./pages/hub/ModerationPage";
+import SubscriptionsPage from "./pages/hub/SubscriptionsPage";
 
 const queryClient = new QueryClient();
 
-// Component to handle back button at the router level
+// Component to handle back button and payment deep links at the router level
 function BackButtonHandler() {
   useBackButton();
+  usePaymentDeepLink();
   return null;
 }
 
@@ -100,7 +105,9 @@ const App = () => (
                   path="/admin"
                   element={
                     <ProtectedRoute requireOnboarding>
-                      <MobileCalendar />
+                      <SubscriptionGuard>
+                        <MobileCalendar />
+                      </SubscriptionGuard>
                     </ProtectedRoute>
                   }
                 />
@@ -108,7 +115,9 @@ const App = () => (
                   path="/admin/sales"
                   element={
                     <ProtectedRoute requireOnboarding>
-                      <MobileSales />
+                      <SubscriptionGuard>
+                        <MobileSales />
+                      </SubscriptionGuard>
                     </ProtectedRoute>
                   }
                 />
@@ -116,7 +125,9 @@ const App = () => (
                   path="/admin/sales/new"
                   element={
                     <ProtectedRoute requireOnboarding>
-                      <SaleForm />
+                      <SubscriptionGuard>
+                        <SaleForm />
+                      </SubscriptionGuard>
                     </ProtectedRoute>
                   }
                 />
@@ -124,7 +135,9 @@ const App = () => (
                   path="/admin/sales/form"
                   element={
                     <ProtectedRoute requireOnboarding>
-                      <SaleForm />
+                      <SubscriptionGuard>
+                        <SaleForm />
+                      </SubscriptionGuard>
                     </ProtectedRoute>
                   }
                 />
@@ -132,7 +145,9 @@ const App = () => (
                   path="/admin/sales/summary"
                   element={
                     <ProtectedRoute requireOnboarding>
-                      <DailySalesSummary />
+                      <SubscriptionGuard>
+                        <DailySalesSummary />
+                      </SubscriptionGuard>
                     </ProtectedRoute>
                   }
                 />
@@ -140,7 +155,9 @@ const App = () => (
                   path="/admin/booking"
                   element={
                     <ProtectedRoute requireOnboarding>
-                      <BookingFlow />
+                      <SubscriptionGuard>
+                        <BookingFlow />
+                      </SubscriptionGuard>
                     </ProtectedRoute>
                   }
                 />
@@ -148,7 +165,9 @@ const App = () => (
                   path="/admin/profile"
                   element={
                     <ProtectedRoute requireOnboarding>
-                      <ProfilePage />
+                      <SubscriptionGuard>
+                        <ProfilePage />
+                      </SubscriptionGuard>
                     </ProtectedRoute>
                   }
                 />
@@ -156,7 +175,9 @@ const App = () => (
                   path="/admin/reviews"
                   element={
                     <ProtectedRoute requireOnboarding>
-                      <ReviewsPage />
+                      <SubscriptionGuard>
+                        <ReviewsPage />
+                      </SubscriptionGuard>
                     </ProtectedRoute>
                   }
                 />
@@ -164,7 +185,9 @@ const App = () => (
                   path="/admin/appointments"
                   element={
                     <ProtectedRoute requireOnboarding>
-                      <AppointmentsManagement />
+                      <SubscriptionGuard>
+                        <AppointmentsManagement />
+                      </SubscriptionGuard>
                     </ProtectedRoute>
                   }
                 />
@@ -172,7 +195,9 @@ const App = () => (
                   path="/admin/appointments/new"
                   element={
                     <ProtectedRoute requireOnboarding>
-                      <BookingFlow />
+                      <SubscriptionGuard>
+                        <BookingFlow />
+                      </SubscriptionGuard>
                     </ProtectedRoute>
                   }
                 />
@@ -180,7 +205,9 @@ const App = () => (
                   path="/admin/staff"
                   element={
                     <ProtectedRoute requireOnboarding>
-                      <StaffList />
+                      <SubscriptionGuard>
+                        <StaffList />
+                      </SubscriptionGuard>
                     </ProtectedRoute>
                   }
                 />
@@ -188,7 +215,9 @@ const App = () => (
                   path="/admin/staff/new"
                   element={
                     <ProtectedRoute requireOnboarding>
-                      <StaffForm />
+                      <SubscriptionGuard>
+                        <StaffForm />
+                      </SubscriptionGuard>
                     </ProtectedRoute>
                   }
                 />
@@ -196,7 +225,9 @@ const App = () => (
                   path="/admin/staff/edit/:id"
                   element={
                     <ProtectedRoute requireOnboarding>
-                      <StaffForm />
+                      <SubscriptionGuard>
+                        <StaffForm />
+                      </SubscriptionGuard>
                     </ProtectedRoute>
                   }
                 />
@@ -204,7 +235,9 @@ const App = () => (
                   path="/admin/services"
                   element={
                     <ProtectedRoute requireOnboarding>
-                      <ServicesManagement />
+                      <SubscriptionGuard>
+                        <ServicesManagement />
+                      </SubscriptionGuard>
                     </ProtectedRoute>
                   }
                 />
@@ -212,7 +245,9 @@ const App = () => (
                   path="/admin/services/new"
                   element={
                     <ProtectedRoute requireOnboarding>
-                      <ServiceForm />
+                      <SubscriptionGuard>
+                        <ServiceForm />
+                      </SubscriptionGuard>
                     </ProtectedRoute>
                   }
                 />
@@ -220,7 +255,9 @@ const App = () => (
                   path="/admin/services/:id"
                   element={
                     <ProtectedRoute requireOnboarding>
-                      <ServiceForm />
+                      <SubscriptionGuard>
+                        <ServiceForm />
+                      </SubscriptionGuard>
                     </ProtectedRoute>
                   }
                 />
@@ -228,7 +265,9 @@ const App = () => (
                   path="/admin/clients"
                   element={
                     <ProtectedRoute requireOnboarding>
-                      <ClientList />
+                      <SubscriptionGuard>
+                        <ClientList />
+                      </SubscriptionGuard>
                     </ProtectedRoute>
                   }
                 />
@@ -236,7 +275,9 @@ const App = () => (
                   path="/admin/blocked-clients"
                   element={
                     <ProtectedRoute requireOnboarding>
-                      <BlockedClients />
+                      <SubscriptionGuard>
+                        <BlockedClients />
+                      </SubscriptionGuard>
                     </ProtectedRoute>
                   }
                 />
@@ -244,7 +285,9 @@ const App = () => (
                   path="/admin/clients/new"
                   element={
                     <ProtectedRoute requireOnboarding>
-                      <ClientForm />
+                      <SubscriptionGuard>
+                        <ClientForm />
+                      </SubscriptionGuard>
                     </ProtectedRoute>
                   }
                 />
@@ -252,7 +295,9 @@ const App = () => (
                   path="/admin/clients/edit/:id"
                   element={
                     <ProtectedRoute requireOnboarding>
-                      <ClientForm />
+                      <SubscriptionGuard>
+                        <ClientForm />
+                      </SubscriptionGuard>
                     </ProtectedRoute>
                   }
                 />
@@ -260,7 +305,9 @@ const App = () => (
                   path="/admin/clients/credits"
                   element={
                     <ProtectedRoute requireOnboarding>
-                      <ClientCreditsList />
+                      <SubscriptionGuard>
+                        <ClientCreditsList />
+                      </SubscriptionGuard>
                     </ProtectedRoute>
                   }
                 />
@@ -268,7 +315,9 @@ const App = () => (
                   path="/admin/reports"
                   element={
                     <ProtectedRoute requireOnboarding>
-                      <ReportsAnalytics />
+                      <SubscriptionGuard>
+                        <ReportsAnalytics />
+                      </SubscriptionGuard>
                     </ProtectedRoute>
                   }
                 />
@@ -276,7 +325,9 @@ const App = () => (
                   path="/admin/schedule/new"
                   element={
                     <ProtectedRoute requireOnboarding>
-                      <MobileCalendar />
+                      <SubscriptionGuard>
+                        <MobileCalendar />
+                      </SubscriptionGuard>
                     </ProtectedRoute>
                   }
                 />
@@ -284,7 +335,9 @@ const App = () => (
                   path="/admin/gallery"
                   element={
                     <ProtectedRoute requireOnboarding>
-                      <ServiceImageGallery />
+                      <SubscriptionGuard>
+                        <ServiceImageGallery />
+                      </SubscriptionGuard>
                     </ProtectedRoute>
                   }
                 />
@@ -292,7 +345,9 @@ const App = () => (
                   path="/admin/schedules"
                   element={
                     <ProtectedRoute requireOnboarding>
-                      <StaffScheduleManagement />
+                      <SubscriptionGuard>
+                        <StaffScheduleManagement />
+                      </SubscriptionGuard>
                     </ProtectedRoute>
                   }
                 />
@@ -300,7 +355,9 @@ const App = () => (
                   path="/admin/business-hours"
                   element={
                     <ProtectedRoute requireOnboarding>
-                      <BusinessHoursSettings />
+                      <SubscriptionGuard>
+                        <BusinessHoursSettings />
+                      </SubscriptionGuard>
                     </ProtectedRoute>
                   }
                 />
@@ -308,7 +365,9 @@ const App = () => (
                   path="/admin/temporary-close"
                   element={
                     <ProtectedRoute requireOnboarding>
-                      <TemporaryClosePage />
+                      <SubscriptionGuard>
+                        <TemporaryClosePage />
+                      </SubscriptionGuard>
                     </ProtectedRoute>
                   }
                 />
@@ -316,7 +375,9 @@ const App = () => (
                   path="/admin/settings"
                   element={
                     <ProtectedRoute requireOnboarding>
-                      <SettingsPage />
+                      <SubscriptionGuard>
+                        <SettingsPage />
+                      </SubscriptionGuard>
                     </ProtectedRoute>
                   }
                 />
@@ -324,7 +385,9 @@ const App = () => (
                   path="/admin/payment-methods"
                   element={
                     <ProtectedRoute requireOnboarding>
-                      <PaymentMethodsPage />
+                      <SubscriptionGuard>
+                        <PaymentMethodsPage />
+                      </SubscriptionGuard>
                     </ProtectedRoute>
                   }
                 />
@@ -332,7 +395,17 @@ const App = () => (
                   path="/admin/commissions"
                   element={
                     <ProtectedRoute requireOnboarding>
-                      <StaffCommissionsPage />
+                      <SubscriptionGuard>
+                        <StaffCommissionsPage />
+                      </SubscriptionGuard>
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/admin/subscription"
+                  element={
+                    <ProtectedRoute requireOnboarding>
+                      <SubscriptionPage />
                     </ProtectedRoute>
                   }
                 />
@@ -340,7 +413,9 @@ const App = () => (
                   path="/admin/theme-settings"
                   element={
                     <ProtectedRoute requireOnboarding>
-                      <ThemeSettingsPage />
+                      <SubscriptionGuard>
+                        <ThemeSettingsPage />
+                      </SubscriptionGuard>
                     </ProtectedRoute>
                   }
                 />
@@ -348,7 +423,9 @@ const App = () => (
                   path="/admin/locale-settings"
                   element={
                     <ProtectedRoute requireOnboarding>
-                      <LocaleSettingsPage />
+                      <SubscriptionGuard>
+                        <LocaleSettingsPage />
+                      </SubscriptionGuard>
                     </ProtectedRoute>
                   }
                 />
@@ -356,7 +433,9 @@ const App = () => (
                   path="/admin/accessibility-settings"
                   element={
                     <ProtectedRoute requireOnboarding>
-                      <AccessibilitySettings />
+                      <SubscriptionGuard>
+                        <AccessibilitySettings />
+                      </SubscriptionGuard>
                     </ProtectedRoute>
                   }
                 />
@@ -364,7 +443,9 @@ const App = () => (
                   path="/admin/notification-settings"
                   element={
                     <ProtectedRoute requireOnboarding>
-                      <NotificationSettingsPage />
+                      <SubscriptionGuard>
+                        <NotificationSettingsPage />
+                      </SubscriptionGuard>
                     </ProtectedRoute>
                   }
                 />
@@ -372,7 +453,9 @@ const App = () => (
                   path="/admin/roles"
                   element={
                     <ProtectedRoute requireOnboarding>
-                      <RolesPermissionsPage />
+                      <SubscriptionGuard>
+                        <RolesPermissionsPage />
+                      </SubscriptionGuard>
                     </ProtectedRoute>
                   }
                 />
@@ -380,7 +463,9 @@ const App = () => (
                   path="/admin/inventory"
                   element={
                     <ProtectedRoute requireOnboarding>
-                      <InventoryManagement />
+                      <SubscriptionGuard>
+                        <InventoryManagement />
+                      </SubscriptionGuard>
                     </ProtectedRoute>
                   }
                 />
@@ -388,7 +473,9 @@ const App = () => (
                   path="/admin/inventory/dashboard"
                   element={
                     <ProtectedRoute requireOnboarding>
-                      <InventoryDashboard />
+                      <SubscriptionGuard>
+                        <InventoryDashboard />
+                      </SubscriptionGuard>
                     </ProtectedRoute>
                   }
                 />
@@ -396,7 +483,9 @@ const App = () => (
                   path="/admin/inventory/new"
                   element={
                     <ProtectedRoute requireOnboarding>
-                      <InventoryForm />
+                      <SubscriptionGuard>
+                        <InventoryForm />
+                      </SubscriptionGuard>
                     </ProtectedRoute>
                   }
                 />
@@ -404,7 +493,9 @@ const App = () => (
                   path="/admin/inventory/edit/:id"
                   element={
                     <ProtectedRoute requireOnboarding>
-                      <InventoryForm />
+                      <SubscriptionGuard>
+                        <InventoryForm />
+                      </SubscriptionGuard>
                     </ProtectedRoute>
                   }
                 />
@@ -412,7 +503,9 @@ const App = () => (
                   path="/admin/inventory/movements/:id"
                   element={
                     <ProtectedRoute requireOnboarding>
-                      <InventoryMovements />
+                      <SubscriptionGuard>
+                        <InventoryMovements />
+                      </SubscriptionGuard>
                     </ProtectedRoute>
                   }
                 />
@@ -420,7 +513,9 @@ const App = () => (
                   path="/admin/appointment-config"
                   element={
                     <ProtectedRoute requireOnboarding>
-                      <AppointmentConfigPage />
+                      <SubscriptionGuard>
+                        <AppointmentConfigPage />
+                      </SubscriptionGuard>
                     </ProtectedRoute>
                   }
                 />
@@ -428,7 +523,9 @@ const App = () => (
                   path="/admin/sms-templates"
                   element={
                     <ProtectedRoute requireOnboarding>
-                      <SMSTemplatesPage />
+                      <SubscriptionGuard>
+                        <SMSTemplatesPage />
+                      </SubscriptionGuard>
                     </ProtectedRoute>
                   }
                 />
@@ -436,7 +533,9 @@ const App = () => (
                   path="/admin/business-profile"
                   element={
                     <ProtectedRoute requireOnboarding>
-                      <BusinessProfileSettings />
+                      <SubscriptionGuard>
+                        <BusinessProfileSettings />
+                      </SubscriptionGuard>
                     </ProtectedRoute>
                   }
                 />
@@ -444,7 +543,9 @@ const App = () => (
                   path="/admin/permissions"
                   element={
                     <ProtectedRoute requireOnboarding>
-                      <PermissionsSettingsPage />
+                      <SubscriptionGuard>
+                        <PermissionsSettingsPage />
+                      </SubscriptionGuard>
                     </ProtectedRoute>
                   }
                 />
@@ -452,7 +553,9 @@ const App = () => (
                   path="/admin/delete-account"
                   element={
                     <ProtectedRoute requireOnboarding>
-                      <DeleteAccountPage />
+                      <SubscriptionGuard>
+                        <DeleteAccountPage />
+                      </SubscriptionGuard>
                     </ProtectedRoute>
                   }
                 />
@@ -460,7 +563,9 @@ const App = () => (
                   path="/client-portal"
                   element={
                     <ProtectedRoute requireOnboarding>
-                      <ClientPortal />
+                      <SubscriptionGuard>
+                        <ClientPortal />
+                      </SubscriptionGuard>
                     </ProtectedRoute>
                   }
                 />
@@ -479,6 +584,14 @@ const App = () => (
                   element={
                     <ProtectedRoute>
                       <ModerationPage />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/hub/subscriptions"
+                  element={
+                    <ProtectedRoute>
+                      <SubscriptionsPage />
                     </ProtectedRoute>
                   }
                 />

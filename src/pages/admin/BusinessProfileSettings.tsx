@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { ArrowLeft, Save, Eye, Globe, Building2, Image as ImageIcon, Phone, MapPin, Link2, Loader2, Star, Clock, CheckCircle2, Upload, X, AlertTriangle, CheckCircle, Scissors, Sparkles, Heart, Droplet, Users, HandMetal, Waves, Flame, Activity, Stethoscope, PawPrint, MoreHorizontal, AlertCircle, Pencil, Send, Ban, RefreshCw, FileCheck, XCircle, Navigation } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -19,6 +19,7 @@ import { useMapbox } from "@/hooks/useMapbox";
 import mapboxgl from 'mapbox-gl';
 import 'mapbox-gl/dist/mapbox-gl.css';
 import { Geolocation } from '@capacitor/geolocation';
+import MobileLayout from "@/components/mobile/MobileLayout";
 
 interface BusinessProfile {
   id: string;
@@ -54,7 +55,7 @@ interface ApprovalRequest {
 export default function BusinessProfileSettings() {
   const navigate = useNavigate();
   const { toast } = useToast();
-  const { profile } = useAuth();
+  const { profile, loading: authLoading } = useAuth();
   const { language } = useLanguage();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -74,6 +75,18 @@ export default function BusinessProfileSettings() {
   const [tempSecondaryCategories, setTempSecondaryCategories] = useState<string[]>([]);
   const [approvalRequest, setApprovalRequest] = useState<ApprovalRequest | null>(null);
   const [submittingRequest, setSubmittingRequest] = useState(false);
+  const [originalBusinessData, setOriginalBusinessData] = useState<BusinessProfile | null>(null);
+  
+  // Wait for auth to be ready before rendering content
+  if (authLoading) {
+    return (
+      <MobileLayout>
+        <div className="flex items-center justify-center h-64">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        </div>
+      </MobileLayout>
+    );
+  }
   
   const logoInputRef = useRef<HTMLInputElement>(null);
   const coverInputRef = useRef<HTMLInputElement>(null);
@@ -81,16 +94,17 @@ export default function BusinessProfileSettings() {
   const mapRef = useRef<mapboxgl.Map | null>(null);
   const markerRef = useRef<mapboxgl.Marker | null>(null);
   
-  // Token de Mapbox desde variables de entorno
-  const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_ACCESS_TOKEN || 
-    (() => {
-      console.error('VITE_MAPBOX_ACCESS_TOKEN is not set in environment variables');
-      throw new Error('Mapbox access token is required');
-    })();
-
+  // Token de Mapbox desde variables de entorno (opcional)
+  // Verificar ambos nombres posibles de variable de entorno
+  const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN || import.meta.env.VITE_MAPBOX_ACCESS_TOKEN || '';
+  
+  // Solo inicializar Mapbox si hay token disponible, de lo contrario usar string vacío
   const { isLoaded: mapLoaded } = useMapbox({
-    accessToken: MAPBOX_TOKEN,
+    accessToken: MAPBOX_TOKEN || 'dummy-token', // Usar dummy si no hay token real
   });
+  
+  // Si no hay token, marcar como no cargado para deshabilitar funciones del mapa
+  const hasMapboxToken = !!MAPBOX_TOKEN && MAPBOX_TOKEN !== 'dummy-token';
   
   // Categories list (same as onboarding)
   const categories = [
@@ -117,6 +131,72 @@ export default function BusinessProfileSettings() {
     fetchApprovalRequest();
   }, [profile?.business_id]);
 
+  // Suscripción realtime para escuchar cambios en la solicitud de aprobación
+  useEffect(() => {
+    if (!profile?.business_id) return;
+
+    const channel = supabase
+      .channel(`business-approval-${profile.business_id}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'business_approval_requests',
+          filter: `business_id=eq.${profile.business_id}`,
+        },
+        (payload) => {
+          console.log('Approval request changed:', payload);
+          fetchApprovalRequest();
+          fetchBusiness();
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'businesses',
+          filter: `id=eq.${profile.business_id}`,
+        },
+        (payload) => {
+          console.log('Business updated:', payload);
+          fetchBusiness();
+          
+          // Si fue aprobado o rechazado, actualizar y mostrar notificación
+          const newStatus = payload.new.approval_status;
+          const oldStatus = payload.old?.approval_status;
+          
+          if (newStatus === 'approved' && oldStatus !== 'approved') {
+            // Guardar los datos originales cuando se aprueba
+            fetchBusiness().then(() => {
+              // Los datos originales se guardarán en fetchBusiness
+            });
+            
+            toast({
+              title: language === "es" ? "¡Aprobado!" : "Approved!",
+              description: language === "es" 
+                ? "Tu negocio ha sido aprobado y ahora es visible en Mí Turnow Client. Se ha iniciado un período de prueba de 30 días."
+                : "Your business has been approved and is now visible on Mí Turnow Client. A 30-day trial period has started.",
+            });
+          } else if (newStatus === 'rejected' && oldStatus !== 'rejected') {
+            toast({
+              title: language === "es" ? "Solicitud rechazada" : "Request rejected",
+              description: language === "es" 
+                ? "Tu solicitud de publicación ha sido rechazada. Revisa los comentarios y envía una nueva solicitud."
+                : "Your publication request has been rejected. Review the comments and submit a new request.",
+              variant: "destructive",
+            });
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [profile?.business_id, business?.approval_status]);
+
   useEffect(() => {
     if (business?.id && business.approval_status !== 'approved') {
       // Check requirements when not approved
@@ -124,8 +204,32 @@ export default function BusinessProfileSettings() {
     }
   }, [business?.id, business?.approval_status]);
 
+  // Verificar si está bloqueado (solicitud pendiente) - usar useMemo para evitar problemas de inicialización
+  const isLocked = useMemo(() => {
+    return business ? (approvalRequest?.status === 'pending' || business.approval_status === 'pending') : false;
+  }, [business, approvalRequest?.status]);
+  
+  // Detectar cambios después de aprobación - usar useMemo para evitar problemas de inicialización
+  const hasChangesAfterApproval = useMemo(() => {
+    if (!business || business.approval_status !== 'approved' || !originalBusinessData) return false;
+    return (
+      business.business_name !== originalBusinessData.business_name ||
+      business.logo_url !== originalBusinessData.logo_url ||
+      business.cover_image_url !== originalBusinessData.cover_image_url ||
+      business.description !== originalBusinessData.description ||
+      business.phone !== originalBusinessData.phone ||
+      business.address !== originalBusinessData.address ||
+      business.google_maps_url !== originalBusinessData.google_maps_url ||
+      business.primary_category !== originalBusinessData.primary_category ||
+      JSON.stringify(business.secondary_categories) !== JSON.stringify(originalBusinessData.secondary_categories)
+    );
+  }, [business, originalBusinessData]);
+
   const fetchBusiness = async () => {
-    if (!profile?.business_id) return;
+    if (!profile?.business_id) {
+      setLoading(false);
+      return;
+    }
     
     try {
       const { data, error } = await (supabase
@@ -135,21 +239,29 @@ export default function BusinessProfileSettings() {
         .maybeSingle() as any);
 
       if (error) throw error;
+      
       if (data) {
         // Extract google_maps_url from location_details if not set directly
         const locationDetails = data.location_details as any;
         const googleMapsUrl = locationDetails?.googleMapsUrl || null;
         
-        setBusiness({
+        const businessData = {
           ...data,
           google_maps_url: googleMapsUrl,
           latitude: data.latitude,
           longitude: data.longitude,
           approval_status: data.approval_status || 'draft',
-        } as unknown as BusinessProfile);
+        } as unknown as BusinessProfile;
+        
+        setBusiness(businessData);
         setTempBusinessName((data as any).business_name || "");
         setTempPrimaryCategory((data as any).primary_category || "");
         setTempSecondaryCategories((data as any).secondary_categories || []);
+        
+        // Si el negocio está aprobado, guardar los datos originales para detectar cambios
+        if (businessData.approval_status === 'approved' && !originalBusinessData) {
+          setOriginalBusinessData(businessData);
+        }
         
         // Check change limits
         const nameLimit = await canChangeBusinessName(profile.business_id);
@@ -157,9 +269,13 @@ export default function BusinessProfileSettings() {
         
         const categoryLimit = await canChangeBusinessCategories(profile.business_id);
         setCategoryChangeLimit(categoryLimit);
+      } else {
+        // Si no hay datos, establecer business como null
+        setBusiness(null);
       }
     } catch (error) {
       console.error("Error fetching business:", error);
+      setBusiness(null);
       toast({
         title: language === "es" ? "Error" : "Error",
         description: language === "es" ? "No se pudo cargar el perfil" : "Could not load profile",
@@ -183,7 +299,20 @@ export default function BusinessProfileSettings() {
         .maybeSingle();
 
       if (error) throw error;
-      setApprovalRequest(data as ApprovalRequest | null);
+      const request = data as ApprovalRequest | null;
+      setApprovalRequest(request);
+      
+      // Si hay una solicitud pendiente, actualizar el approval_status del negocio
+      if (request?.status === 'pending') {
+        // Forzar actualización del estado en la BD si no está sincronizado
+        if (business?.approval_status !== 'pending') {
+          await supabase
+            .from("businesses")
+            .update({ approval_status: 'pending' })
+            .eq("id", profile.business_id);
+          setBusiness(prev => prev ? { ...prev, approval_status: 'pending' } : null);
+        }
+      }
     } catch (error) {
       console.error("Error fetching approval request:", error);
     }
@@ -220,8 +349,35 @@ export default function BusinessProfileSettings() {
       setCheckingRequirements(false);
     }
 
+    // BLOQUEO ESTRICTO: Verificar si ya existe una solicitud pendiente ANTES de hacer cualquier cosa
+    const { data: existingRequest } = await supabase
+      .from("business_approval_requests")
+      .select("id, status")
+      .eq("business_id", profile.business_id)
+      .eq("status", "pending")
+      .maybeSingle();
+
+    if (existingRequest) {
+      toast({
+        title: language === "es" ? "Solicitud existente" : "Existing request",
+        description: language === "es" 
+          ? "Ya tienes una solicitud pendiente de revisión. Espera a que sea aprobada o rechazada antes de enviar una nueva."
+          : "You already have a pending review request. Wait for it to be approved or rejected before submitting a new one.",
+        variant: "destructive",
+      });
+      setSubmittingRequest(false);
+      // Forzar actualización del estado
+      await fetchApprovalRequest();
+      return;
+    }
+
     setSubmittingRequest(true);
     try {
+      // Guardar los datos originales del negocio al momento de enviar la solicitud
+      if (business) {
+        setOriginalBusinessData({ ...business });
+      }
+
       const { data, error } = await supabase
         .from("business_approval_requests")
         .insert({
@@ -248,13 +404,20 @@ export default function BusinessProfileSettings() {
       }
 
       setApprovalRequest(data as ApprovalRequest);
+      
+      // Actualizar el negocio en la base de datos también
+      await supabase
+        .from("businesses")
+        .update({ approval_status: 'pending' })
+        .eq("id", profile.business_id);
+      
       setBusiness(prev => prev ? { ...prev, approval_status: 'pending' } : null);
       
       toast({
         title: language === "es" ? "¡Solicitud enviada!" : "Request submitted!",
         description: language === "es" 
-          ? "Tu solicitud será revisada en las próximas 24 horas."
-          : "Your request will be reviewed within 24 hours.",
+          ? "Tu solicitud será revisada en las próximas 24 horas. Te notificaremos cuando sea aprobada."
+          : "Your request will be reviewed within 24 hours. We'll notify you when it's approved.",
       });
     } catch (error) {
       console.error("Error submitting approval request:", error);
@@ -380,6 +543,19 @@ export default function BusinessProfileSettings() {
     const file = e.target.files?.[0];
     if (!file) return;
     
+    // BLOQUEO ESTRICTO: No permitir subir imágenes si hay solicitud pendiente
+    if (approvalRequest?.status === 'pending' || business?.approval_status === 'pending') {
+      toast({
+        title: language === "es" ? "Acción bloqueada" : "Action blocked",
+        description: language === "es" 
+          ? "No puedes modificar imágenes mientras hay una solicitud en revisión."
+          : "You cannot modify images while there is a request under review.",
+        variant: "destructive",
+      });
+      e.target.value = ''; // Reset input
+      return;
+    }
+    
     // Validate file type
     if (!file.type.startsWith('image/')) {
       toast({
@@ -387,6 +563,7 @@ export default function BusinessProfileSettings() {
         description: language === "es" ? "Solo se permiten imágenes" : "Only images are allowed",
         variant: "destructive",
       });
+      e.target.value = ''; // Reset input
       return;
     }
     
@@ -397,6 +574,7 @@ export default function BusinessProfileSettings() {
         description: language === "es" ? "La imagen no debe superar 5MB" : "Image must be less than 5MB",
         variant: "destructive",
       });
+      e.target.value = ''; // Reset input
       return;
     }
     
@@ -406,10 +584,30 @@ export default function BusinessProfileSettings() {
         ...prev, 
         [type === 'logo' ? 'logo_url' : 'cover_image_url']: url 
       } : null);
-      toast({
-        title: language === "es" ? "Imagen subida" : "Image uploaded",
-        description: language === "es" ? "Recuerda guardar los cambios" : "Remember to save changes",
-      });
+      
+      // Si estaba aprobado, marcar como draft por cambios
+      if (business?.approval_status === 'approved' && originalBusinessData) {
+        await supabase
+          .from("businesses")
+          .update({ approval_status: 'draft', is_public: false })
+          .eq("id", profile.business_id);
+        
+        setBusiness(prev => prev ? { ...prev, approval_status: 'draft', is_public: false } : null);
+        setOriginalBusinessData(null);
+        
+        toast({
+          title: language === "es" ? "Cambio detectado" : "Change detected",
+          description: language === "es" 
+            ? `Has cambiado la ${type === 'logo' ? 'logo' : 'imagen de portada'} de tu perfil aprobado. Debes enviar una nueva solicitud de aprobación.`
+            : `You have changed the ${type === 'logo' ? 'logo' : 'cover image'} of your approved profile. You must submit a new approval request.`,
+          variant: "default",
+        });
+      } else {
+        toast({
+          title: language === "es" ? "Imagen subida" : "Image uploaded",
+          description: language === "es" ? "Recuerda guardar los cambios" : "Remember to save changes",
+        });
+      }
     }
   };
 
@@ -577,6 +775,11 @@ export default function BusinessProfileSettings() {
 
   // Geocodificación inversa usando Mapbox
   const reverseGeocode = async (lng: number, lat: number) => {
+    if (!hasMapboxToken) {
+      console.warn('Mapbox token not available, skipping reverse geocoding');
+      return null;
+    }
+    
     try {
       const response = await fetch(
         `https://api.mapbox.com/geocoding/v5/mapbox.places/${lng},${lat}.json?access_token=${MAPBOX_TOKEN}&language=es`
@@ -652,7 +855,7 @@ export default function BusinessProfileSettings() {
 
   // Inicializar mapa cuando se carga Mapbox y hay datos del negocio
   useEffect(() => {
-    if (!mapLoaded || !mapContainerRef.current || mapRef.current || !business) return;
+    if (!mapLoaded || !mapContainerRef.current || mapRef.current || !business || !hasMapboxToken || isLocked) return;
 
     // Coordenadas por defecto o las existentes
     const defaultLat = business.latitude || 19.4326;
@@ -666,9 +869,9 @@ export default function BusinessProfileSettings() {
       zoom: business.latitude ? 16 : 12,
     });
 
-    // Crear marcador draggable (rojo)
+    // Crear marcador draggable (rojo) - BLOQUEAR si hay solicitud pendiente
     const marker = new mapboxgl.Marker({
-      draggable: true,
+      draggable: !isLocked, // Solo draggable si NO está bloqueado
       color: '#ef4444', // Rojo
     })
       .setLngLat([defaultLng, defaultLat])
@@ -676,12 +879,18 @@ export default function BusinessProfileSettings() {
 
     // Evento: cuando el usuario arrastra el marcador
     marker.on('dragend', () => {
+      if (isLocked) {
+        // Revertir posición si está bloqueado
+        marker.setLngLat([business.longitude || defaultLng, business.latitude || defaultLat]);
+        return;
+      }
       const lngLat = marker.getLngLat();
       reverseGeocode(lngLat.lng, lngLat.lat);
     });
 
     // Evento: cuando el usuario hace clic en el mapa
     map.on('click', (e) => {
+      if (isLocked) return; // Bloquear clics en el mapa
       marker.setLngLat(e.lngLat);
       reverseGeocode(e.lngLat.lng, e.lngLat.lat);
     });
@@ -692,18 +901,18 @@ export default function BusinessProfileSettings() {
     return () => {
       map.remove();
     };
-  }, [mapLoaded, business?.id]);
+  }, [mapLoaded, business?.id, isLocked]);
 
   const handleSave = async () => {
     if (!business || !profile?.business_id) return;
     
-    // Disable critical field edits when approval is pending
-    if (business.approval_status === 'pending') {
+    // BLOQUEO ESTRICTO: No permitir guardar si hay solicitud pendiente
+    if (isLocked) {
       toast({
-        title: language === "es" ? "Edición bloqueada" : "Editing blocked",
+        title: language === "es" ? "Acción bloqueada" : "Action blocked",
         description: language === "es" 
-          ? "No puedes editar el perfil mientras la solicitud está en revisión."
-          : "You cannot edit the profile while the request is under review.",
+          ? "No puedes modificar el perfil mientras hay una solicitud en revisión."
+          : "You cannot modify the profile while there is a request under review.",
         variant: "destructive",
       });
       return;
@@ -770,7 +979,7 @@ export default function BusinessProfileSettings() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-background">
+      <MobileLayout>
         <div className="flex items-center gap-3 p-4 border-b border-border bg-card">
           <Button variant="ghost" size="icon" onClick={() => navigate(-1)}>
             <ArrowLeft className="h-5 w-5" />
@@ -782,13 +991,13 @@ export default function BusinessProfileSettings() {
         <div className="flex items-center justify-center h-64">
           <Loader2 className="h-8 w-8 animate-spin text-primary" />
         </div>
-      </div>
+      </MobileLayout>
     );
   }
 
   if (!business) {
     return (
-      <div className="min-h-screen bg-background">
+      <MobileLayout>
         <div className="flex items-center gap-3 p-4 border-b border-border bg-card">
           <Button variant="ghost" size="icon" onClick={() => navigate(-1)}>
             <ArrowLeft className="h-5 w-5" />
@@ -800,12 +1009,15 @@ export default function BusinessProfileSettings() {
         <div className="p-4 text-center text-muted-foreground">
           {language === "es" ? "No se encontró el negocio" : "Business not found"}
         </div>
-      </div>
+      </MobileLayout>
     );
   }
 
-  // Preview Component
-  const LivePreview = () => (
+  // Preview Component - solo si business existe
+  const LivePreview = () => {
+    if (!business) return null;
+    
+    return (
     <div className="bg-card rounded-xl border border-border overflow-hidden shadow-lg">
       {/* Cover Image */}
       <div className="relative h-32 bg-gradient-to-br from-primary/20 to-primary/5">
@@ -879,12 +1091,14 @@ export default function BusinessProfileSettings() {
         </Button>
       </div>
     </div>
-  );
+    );
+  };
 
   return (
-    <div className="min-h-screen bg-background pb-20">
-      {/* Header */}
-      <div className="flex items-center justify-between p-4 border-b border-border bg-card sticky top-0 z-10">
+    <MobileLayout>
+      <div className="pb-20">
+        {/* Header */}
+        <div className="flex items-center justify-between p-4 border-b border-border bg-card sticky top-0 z-10">
         <div className="flex items-center gap-3">
           <Button variant="ghost" size="icon" onClick={() => navigate(-1)}>
             <ArrowLeft className="h-5 w-5" />
@@ -894,29 +1108,72 @@ export default function BusinessProfileSettings() {
           </h1>
         </div>
         <div className="flex items-center gap-2">
-          <Button 
-            variant="outline" 
-            size="sm"
-            onClick={() => setShowPreview(!showPreview)}
-            className="hidden sm:flex"
-          >
-            <Eye className="h-4 w-4 mr-2" />
-            {showPreview ? (language === "es" ? "Ocultar" : "Hide") : "Preview"}
-          </Button>
-          <Button onClick={handleSave} disabled={saving} size="sm">
-            {saving ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <>
-                <Save className="h-4 w-4 mr-2" />
-                {language === "es" ? "Guardar" : "Save"}
-              </>
-            )}
-          </Button>
+          {!isLocked && (
+            <>
+              <Button 
+                variant="outline" 
+                size="sm"
+                onClick={() => setShowPreview(!showPreview)}
+                className="hidden sm:flex"
+              >
+                <Eye className="h-4 w-4 mr-2" />
+                {showPreview ? (language === "es" ? "Ocultar" : "Hide") : "Preview"}
+              </Button>
+              <Button 
+                onClick={handleSave} 
+                disabled={saving || isLocked} 
+                size="sm"
+              >
+                {saving ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <>
+                    <Save className="h-4 w-4 mr-2" />
+                    {language === "es" ? "Guardar" : "Save"}
+                  </>
+                )}
+              </Button>
+            </>
+          )}
         </div>
       </div>
 
       <div className="p-4 max-w-4xl mx-auto">
+        {/* Si está bloqueado, mostrar SOLO la alerta, sin scroll */}
+        {isLocked && (
+          <div className="max-w-2xl mx-auto">
+            <Card className="border-amber-500/50 bg-amber-500/10">
+              <CardHeader>
+                <CardTitle className="text-amber-700 flex items-center gap-2">
+                  <Clock className="h-5 w-5" />
+                  {language === "es" ? "Establecimiento en revisión" : "Establishment under review"}
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <Alert className="border-amber-500/50 bg-amber-500/10">
+                  <Clock className="h-4 w-4 text-amber-600" />
+                  <AlertTitle className="text-amber-700">
+                    {language === "es" ? "Establecimiento en revisión" : "Establishment under review"}
+                  </AlertTitle>
+                  <AlertDescription className="text-amber-600">
+                    <p className="mb-2">
+                      {language === "es" 
+                        ? "Tu solicitud será revisada en las próximas 24 horas para saber si cumple con los estándares de seguridad. Te notificaremos cuando sea aprobada."
+                        : "Your request will be reviewed within 24 hours to verify it meets security standards. We'll notify you when it's approved."}
+                    </p>
+                    {approvalRequest?.submitted_at && (
+                      <p className="mt-2 text-xs">
+                        {language === "es" ? "Enviada: " : "Submitted: "}
+                        {new Date(approvalRequest.submitted_at).toLocaleString()}
+                      </p>
+                    )}
+                  </AlertDescription>
+                </Alert>
+              </CardContent>
+            </Card>
+          </div>
+        )}
+        {!isLocked && business && (
         <div className="grid gap-6 lg:grid-cols-2">
           {/* Form Column */}
           <div className="space-y-6">
@@ -992,30 +1249,47 @@ export default function BusinessProfileSettings() {
               <CardContent className="pt-0 space-y-4">
                 {/* APPROVED Status */}
                 {business.approval_status === 'approved' && (
-                  <Alert className="border-green-500/50 bg-green-500/10">
-                    <CheckCircle className="h-4 w-4 text-green-600" />
-                    <AlertTitle className="text-green-700">
-                      {language === "es" ? "¡Tu negocio está publicado!" : "Your business is published!"}
-                    </AlertTitle>
-                    <AlertDescription className="text-green-600">
-                      {language === "es" 
-                        ? "Los clientes pueden encontrarte en MiTurnow Client."
-                        : "Clients can find you on MiTurnow Client."}
-                    </AlertDescription>
-                  </Alert>
+                  <>
+                    <Alert className="border-green-500/50 bg-green-500/10">
+                      <CheckCircle className="h-4 w-4 text-green-600" />
+                      <AlertTitle className="text-green-700">
+                        {language === "es" ? "¡Tu negocio está publicado!" : "Your business is published!"}
+                      </AlertTitle>
+                      <AlertDescription className="text-green-600">
+                        {language === "es" 
+                          ? "Los clientes pueden encontrarte en MiTurnow Client."
+                          : "Clients can find you on MiTurnow Client."}
+                      </AlertDescription>
+                    </Alert>
+                    {hasChangesAfterApproval && (
+                      <Alert variant="destructive" className="mt-4">
+                        <AlertTriangle className="h-4 w-4" />
+                        <AlertTitle>
+                          {language === "es" ? "Cambios detectados" : "Changes detected"}
+                        </AlertTitle>
+                        <AlertDescription>
+                          {language === "es" 
+                            ? "Has realizado cambios en tu perfil aprobado. Debes enviar una nueva solicitud de aprobación para que estos cambios sean visibles."
+                            : "You have made changes to your approved profile. You must submit a new approval request for these changes to be visible."}
+                        </AlertDescription>
+                      </Alert>
+                    )}
+                  </>
                 )}
 
-                {/* PENDING Status */}
-                {business.approval_status === 'pending' && (
+                {/* PENDING Status - BLOQUEO TOTAL */}
+                {isLocked && (
                   <Alert className="border-amber-500/50 bg-amber-500/10">
                     <Clock className="h-4 w-4 text-amber-600" />
                     <AlertTitle className="text-amber-700">
-                      {language === "es" ? "Solicitud en revisión" : "Request under review"}
+                      {language === "es" ? "Establecimiento en revisión" : "Establishment under review"}
                     </AlertTitle>
                     <AlertDescription className="text-amber-600">
-                      {language === "es" 
-                        ? "Tu solicitud será revisada en las próximas 24 horas. Te notificaremos cuando sea aprobada."
-                        : "Your request will be reviewed within 24 hours. We'll notify you when it's approved."}
+                      <p className="mb-2">
+                        {language === "es" 
+                          ? "Tu solicitud será revisada en las próximas 24 horas para saber si cumple con los estándares de seguridad. Te notificaremos cuando sea aprobada."
+                          : "Your request will be reviewed within 24 hours to verify it meets security standards. We'll notify you when it's approved."}
+                      </p>
                       {approvalRequest?.submitted_at && (
                         <p className="mt-2 text-xs">
                           {language === "es" ? "Enviada: " : "Submitted: "}
@@ -1068,8 +1342,8 @@ export default function BusinessProfileSettings() {
                   </Alert>
                 )}
 
-                {/* DRAFT Status - Show requirements and submit button */}
-                {(!business.approval_status || business.approval_status === 'draft') && (
+                {/* DRAFT Status - Show requirements and submit button - SOLO si NO está bloqueado */}
+                {!isLocked && (!business.approval_status || business.approval_status === 'draft') && (
                   <>
                     {checkingRequirements && (
                       <div className="flex items-center gap-2 p-3 bg-muted rounded-lg">
@@ -1128,24 +1402,15 @@ export default function BusinessProfileSettings() {
                                 {language === "es" ? "Dirección del negocio" : "Business address"}
                               </span>
                             </div>
-                            <div className={`flex items-center gap-2 ${visibilityRequirements.requirements.googleMapsUrl ? 'text-green-600' : 'text-muted-foreground'}`}>
-                              {visibilityRequirements.requirements.googleMapsUrl ? (
-                                <CheckCircle className="h-4 w-4" />
-                              ) : (
-                                <X className="h-4 w-4" />
-                              )}
-                              <span className="text-sm">
-                                {language === "es" ? "URL de Google Maps" : "Google Maps URL"}
-                              </span>
-                            </div>
                           </div>
                         </AlertDescription>
                       </Alert>
                     )}
 
+                    {!isLocked && (
                     <Button 
                       onClick={handleSubmitApprovalRequest}
-                      disabled={submittingRequest || checkingRequirements || !visibilityRequirements?.isValid}
+                      disabled={submittingRequest || checkingRequirements || !visibilityRequirements?.isValid || isLocked}
                       className="w-full"
                       size="lg"
                     >
@@ -1156,6 +1421,7 @@ export default function BusinessProfileSettings() {
                       )}
                       {language === "es" ? "Solicitar publicación" : "Request publication"}
                     </Button>
+                    )}
                     
                     {visibilityRequirements && !visibilityRequirements.isValid && (
                       <p className="text-xs text-muted-foreground text-center">
@@ -1169,7 +1435,8 @@ export default function BusinessProfileSettings() {
               </CardContent>
             </Card>
 
-            {/* Business Info */}
+            {/* Business Info - SOLO si NO está bloqueado */}
+            {!isLocked && (
             <Card>
               <CardHeader className="pb-3">
                 <div className="flex items-center gap-3">
@@ -1180,10 +1447,22 @@ export default function BusinessProfileSettings() {
                 </div>
               </CardHeader>
               <CardContent className="space-y-4">
+                {/* Bloquear edición si hay solicitud pendiente */}
+                {((business.approval_status === 'pending' || approvalRequest?.status === 'pending') && (
+                  <Alert className="border-amber-500/50 bg-amber-500/10">
+                    <AlertTriangle className="h-4 w-4 text-amber-600" />
+                    <AlertDescription className="text-amber-600 text-sm">
+                      {language === "es" 
+                        ? "No puedes modificar la información del negocio mientras tu solicitud está en revisión."
+                        : "You cannot modify business information while your request is under review."}
+                    </AlertDescription>
+                  </Alert>
+                ))}
+                
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
                     <Label>{language === "es" ? "Nombre" : "Name"}</Label>
-                    {!editingName && (
+                    {!editingName && !(business.approval_status === 'pending' || approvalRequest?.status === 'pending') && (
                       <Button
                         variant="ghost"
                         size="sm"
@@ -1198,7 +1477,7 @@ export default function BusinessProfileSettings() {
                             });
                           }
                         }}
-                        disabled={!nameChangeLimit?.canChange}
+                        disabled={!nameChangeLimit?.canChange || business.approval_status === 'pending' || approvalRequest?.status === 'pending'}
                       >
                         <Pencil className="h-4 w-4 mr-2" />
                         {language === "es" ? "Editar" : "Edit"}
@@ -1211,6 +1490,7 @@ export default function BusinessProfileSettings() {
                         value={tempBusinessName} 
                         onChange={(e) => setTempBusinessName(e.target.value)}
                         placeholder={language === "es" ? "Nombre del negocio" : "Business name"}
+                        disabled={business.approval_status === 'pending' || approvalRequest?.status === 'pending'}
                       />
                       {nameChangeLimit && !nameChangeLimit.canChange && (
                         <Alert variant="destructive">
@@ -1224,7 +1504,7 @@ export default function BusinessProfileSettings() {
                         <Button
                           size="sm"
                           onClick={handleSaveName}
-                          disabled={saving || !tempBusinessName.trim()}
+                          disabled={saving || !tempBusinessName.trim() || business.approval_status === 'pending' || approvalRequest?.status === 'pending'}
                         >
                           {language === "es" ? "Guardar" : "Save"}
                         </Button>
@@ -1241,7 +1521,11 @@ export default function BusinessProfileSettings() {
                       </div>
                     </div>
                   ) : (
-                    <Input value={business.business_name} disabled className="bg-muted" />
+                    <Input 
+                      value={business.business_name} 
+                      disabled 
+                      className="bg-muted" 
+                    />
                   )}
                 </div>
                 <div className="space-y-2">
@@ -1250,6 +1534,7 @@ export default function BusinessProfileSettings() {
                     placeholder={language === "es" ? "Describe tu negocio para atraer clientes..." : "Describe your business to attract clients..."}
                     value={business.description || ""}
                     onChange={(e) => setBusiness(prev => prev ? { ...prev, description: e.target.value } : null)}
+                    disabled={business.approval_status === 'pending' || approvalRequest?.status === 'pending'}
                     rows={3}
                   />
                   <p className="text-xs text-muted-foreground">
@@ -1261,7 +1546,7 @@ export default function BusinessProfileSettings() {
                 <div className="space-y-2 pt-4 border-t">
                   <div className="flex items-center justify-between">
                     <Label>{language === "es" ? "Categorías" : "Categories"}</Label>
-                    {!editingCategories && (
+                    {!editingCategories && !(business.approval_status === 'pending' || approvalRequest?.status === 'pending') && (
                       <Button
                         variant="ghost"
                         size="sm"
@@ -1276,7 +1561,7 @@ export default function BusinessProfileSettings() {
                             });
                           }
                         }}
-                        disabled={!categoryChangeLimit?.canChange}
+                        disabled={!categoryChangeLimit?.canChange || business.approval_status === 'pending' || approvalRequest?.status === 'pending'}
                       >
                         <Pencil className="h-4 w-4 mr-2" />
                         {language === "es" ? "Editar" : "Edit"}
@@ -1306,12 +1591,14 @@ export default function BusinessProfileSettings() {
                               <button
                                 key={category.id}
                                 onClick={() => {
+                                  if (business.approval_status === 'pending' || approvalRequest?.status === 'pending') return;
                                   if (isPrimary) {
                                     setTempPrimaryCategory("");
                                   } else {
                                     setTempPrimaryCategory(category.id);
                                   }
                                 }}
+                                disabled={business.approval_status === 'pending' || approvalRequest?.status === 'pending'}
                                 className={`relative p-3 rounded-lg border-2 transition-all ${
                                   isPrimary
                                     ? "border-primary bg-primary/5"
@@ -1347,8 +1634,11 @@ export default function BusinessProfileSettings() {
                                 return (
                                   <button
                                     key={category.id}
-                                    onClick={() => handleCategoryClick(category.id)}
-                                    disabled={!isSecondary && tempSecondaryCategories.length >= 3}
+                                    onClick={() => {
+                                      if (business.approval_status === 'pending' || approvalRequest?.status === 'pending') return;
+                                      handleCategoryClick(category.id);
+                                    }}
+                                    disabled={(!isSecondary && tempSecondaryCategories.length >= 3) || business.approval_status === 'pending' || approvalRequest?.status === 'pending'}
                                     className={`relative p-3 rounded-lg border-2 transition-all ${
                                       isSecondary
                                         ? "border-primary bg-primary/5"
@@ -1380,7 +1670,7 @@ export default function BusinessProfileSettings() {
                         <Button
                           size="sm"
                           onClick={handleSaveCategories}
-                          disabled={saving || !tempPrimaryCategory}
+                          disabled={saving || !tempPrimaryCategory || business.approval_status === 'pending' || approvalRequest?.status === 'pending'}
                         >
                           {language === "es" ? "Guardar" : "Save"}
                         </Button>
@@ -1428,8 +1718,10 @@ export default function BusinessProfileSettings() {
                 </div>
               </CardContent>
             </Card>
+            )}
 
-            {/* Images - Direct Upload */}
+            {/* Images - Direct Upload - SOLO si NO está bloqueado */}
+            {!isLocked && (
             <Card>
               <CardHeader className="pb-3">
                 <div className="flex items-center gap-3">
@@ -1461,8 +1753,11 @@ export default function BusinessProfileSettings() {
                         <Button 
                           variant="outline" 
                           size="sm"
-                          onClick={() => logoInputRef.current?.click()}
-                          disabled={uploadingLogo}
+                          onClick={() => {
+                            if (business.approval_status === 'pending' || approvalRequest?.status === 'pending') return;
+                            logoInputRef.current?.click();
+                          }}
+                          disabled={uploadingLogo || business.approval_status === 'pending' || approvalRequest?.status === 'pending'}
                         >
                           {uploadingLogo ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4 mr-1" />}
                           {language === "es" ? "Cambiar" : "Change"}
@@ -1480,8 +1775,11 @@ export default function BusinessProfileSettings() {
                     <Button 
                       variant="outline" 
                       className="w-full h-20 border-dashed"
-                      onClick={() => logoInputRef.current?.click()}
-                      disabled={uploadingLogo}
+                      onClick={() => {
+                        if (business.approval_status === 'pending' || approvalRequest?.status === 'pending') return;
+                        logoInputRef.current?.click();
+                      }}
+                      disabled={uploadingLogo || business.approval_status === 'pending' || approvalRequest?.status === 'pending'}
                     >
                       {uploadingLogo ? (
                         <Loader2 className="h-5 w-5 animate-spin" />
@@ -1521,8 +1819,11 @@ export default function BusinessProfileSettings() {
                         <Button 
                           variant="outline" 
                           size="sm"
-                          onClick={() => coverInputRef.current?.click()}
-                          disabled={uploadingCover}
+                          onClick={() => {
+                            if (business.approval_status === 'pending' || approvalRequest?.status === 'pending') return;
+                            coverInputRef.current?.click();
+                          }}
+                          disabled={uploadingCover || business.approval_status === 'pending' || approvalRequest?.status === 'pending'}
                         >
                           {uploadingCover ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4 mr-1" />}
                           {language === "es" ? "Cambiar" : "Change"}
@@ -1540,8 +1841,11 @@ export default function BusinessProfileSettings() {
                     <Button 
                       variant="outline" 
                       className="w-full h-24 border-dashed"
-                      onClick={() => coverInputRef.current?.click()}
-                      disabled={uploadingCover}
+                      onClick={() => {
+                        if (business.approval_status === 'pending' || approvalRequest?.status === 'pending') return;
+                        coverInputRef.current?.click();
+                      }}
+                      disabled={uploadingCover || business.approval_status === 'pending' || approvalRequest?.status === 'pending'}
                     >
                       {uploadingCover ? (
                         <Loader2 className="h-5 w-5 animate-spin" />
@@ -1561,8 +1865,10 @@ export default function BusinessProfileSettings() {
                 </div>
               </CardContent>
             </Card>
+            )}
 
-            {/* Contact */}
+            {/* Contact - SOLO si NO está bloqueado */}
+            {!isLocked && (
             <Card>
               <CardHeader className="pb-3">
                 <div className="flex items-center gap-3">
@@ -1579,6 +1885,7 @@ export default function BusinessProfileSettings() {
                     placeholder="+1 234 567 8900"
                     value={business.phone || ""}
                     onChange={(e) => setBusiness(prev => prev ? { ...prev, phone: e.target.value } : null)}
+                    disabled={business.approval_status === 'pending' || approvalRequest?.status === 'pending'}
                   />
                 </div>
                 <div className="space-y-2">
@@ -1589,6 +1896,7 @@ export default function BusinessProfileSettings() {
                       placeholder={language === "es" ? "Tu dirección completa..." : "Your full address..."}
                       value={business.address || ""}
                       onChange={(e) => setBusiness(prev => prev ? { ...prev, address: e.target.value } : null)}
+                      disabled={business.approval_status === 'pending' || approvalRequest?.status === 'pending'}
                       rows={2}
                       className="flex-1"
                     />
@@ -1606,7 +1914,7 @@ export default function BusinessProfileSettings() {
                       variant="outline"
                       size="sm"
                       onClick={handleGetCurrentLocation}
-                      disabled={!mapLoaded}
+                      disabled={!mapLoaded || !hasMapboxToken || business.approval_status === 'pending' || approvalRequest?.status === 'pending'}
                       className="gap-2"
                     >
                       <Navigation className="w-4 h-4" />
@@ -1618,7 +1926,18 @@ export default function BusinessProfileSettings() {
                     ref={mapContainerRef} 
                     className="w-full h-[300px] rounded-lg border-2 border-border overflow-hidden bg-muted"
                   >
-                    {!mapLoaded && (
+                    {!hasMapboxToken ? (
+                      <div className="w-full h-full flex items-center justify-center">
+                        <div className="text-center space-y-2 p-4">
+                          <AlertTriangle className="w-6 h-6 mx-auto text-amber-600" />
+                          <p className="text-sm text-muted-foreground">
+                            {language === "es" 
+                              ? "El token de Mapbox no está configurado. Configura VITE_MAPBOX_TOKEN en tu archivo .env para habilitar el mapa." 
+                              : "Mapbox token is not configured. Set VITE_MAPBOX_TOKEN in your .env file to enable the map."}
+                          </p>
+                        </div>
+                      </div>
+                    ) : !mapLoaded ? (
                       <div className="w-full h-full flex items-center justify-center">
                         <div className="text-center space-y-2">
                           <Loader2 className="w-6 h-6 animate-spin mx-auto text-primary" />
@@ -1627,7 +1946,7 @@ export default function BusinessProfileSettings() {
                           </p>
                         </div>
                       </div>
-                    )}
+                    ) : null}
                   </div>
 
                   <p className="text-xs text-muted-foreground">
@@ -1648,8 +1967,10 @@ export default function BusinessProfileSettings() {
                 </div>
               </CardContent>
             </Card>
+            )}
 
-            {/* Google Maps URL */}
+            {/* Google Maps URL - SOLO si NO está bloqueado */}
+            {!isLocked && (
             <Card>
               <CardHeader className="pb-3">
                 <div className="flex items-center gap-3">
@@ -1673,6 +1994,7 @@ export default function BusinessProfileSettings() {
                     placeholder={language === "es" ? "https://maps.google.com/..." : "https://maps.google.com/..."}
                     value={business.google_maps_url || ""}
                     onChange={(e) => setBusiness(prev => prev ? { ...prev, google_maps_url: e.target.value } : null)}
+                    disabled={isLocked}
                   />
                   <p className="text-xs text-muted-foreground">
                     {language === "es" 
@@ -1682,9 +2004,11 @@ export default function BusinessProfileSettings() {
                 </div>
               </CardContent>
             </Card>
+            )}
           </div>
 
-          {/* Preview Column */}
+          {/* Preview Column - SOLO si NO está bloqueado */}
+          {!isLocked && (
           <div className={`space-y-4 ${showPreview ? 'block' : 'hidden lg:block'}`}>
             <div className="sticky top-24">
               <Card className="border-dashed">
@@ -1700,7 +2024,7 @@ export default function BusinessProfileSettings() {
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <LivePreview />
+                  {business && <LivePreview />}
                 </CardContent>
               </Card>
 
@@ -1728,13 +2052,6 @@ export default function BusinessProfileSettings() {
                           {language === "es" ? "Contacto y dirección" : "Contact and address"}
                         </span>
                       </div>
-                      {/* URL de Google Maps */}
-                      <div className="flex items-center gap-2">
-                        <CheckCircle2 className={`h-4 w-4 ${visibilityRequirements.requirements.googleMapsUrl ? 'text-green-500' : 'text-muted-foreground'}`} />
-                        <span className={`text-sm ${visibilityRequirements.requirements.googleMapsUrl ? 'text-foreground' : 'text-muted-foreground'}`}>
-                          {language === "es" ? "Ubicación mapa (URL Google Maps)" : "Map location (Google Maps URL)"}
-                        </span>
-                      </div>
                     </>
                   ) : (
                     <>
@@ -1748,12 +2065,6 @@ export default function BusinessProfileSettings() {
                         <CheckCircle2 className="h-4 w-4 text-muted-foreground" />
                         <span className="text-sm text-muted-foreground">
                           {language === "es" ? "Contacto y dirección" : "Contact and address"}
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <CheckCircle2 className="h-4 w-4 text-muted-foreground" />
-                        <span className="text-sm text-muted-foreground">
-                          {language === "es" ? "Ubicación mapa (URL Google Maps)" : "Map location (Google Maps URL)"}
                         </span>
                       </div>
                     </>
@@ -1772,20 +2083,25 @@ export default function BusinessProfileSettings() {
               </Card>
             </div>
           </div>
+          )}
         </div>
-
-        {/* Mobile Preview Toggle Button */}
-        <div className="fixed bottom-20 right-4 sm:hidden">
-          <Button 
-            size="lg"
-            className="rounded-full shadow-lg"
-            onClick={() => setShowPreview(!showPreview)}
-          >
-            <Eye className="h-5 w-5 mr-2" />
-            {showPreview ? "Editar" : "Preview"}
-          </Button>
-        </div>
+        )}
       </div>
-    </div>
+
+      {/* Mobile Preview Toggle Button - SOLO si NO está bloqueado */}
+      {!isLocked && business && (
+      <div className="fixed bottom-20 right-4 sm:hidden">
+        <Button 
+          size="lg"
+          className="rounded-full shadow-lg"
+          onClick={() => setShowPreview(!showPreview)}
+        >
+          <Eye className="h-5 w-5 mr-2" />
+          {showPreview ? "Editar" : "Preview"}
+        </Button>
+      </div>
+      )}
+      </div>
+    </MobileLayout>
   );
 }

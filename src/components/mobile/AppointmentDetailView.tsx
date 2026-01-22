@@ -32,7 +32,9 @@ import { PaymentSheet, type PaymentMethod } from "./appointment/PaymentSheet";
 import { ClientNoteDialog } from "./clients/ClientNoteDialog";
 import { AddNoteSheet } from "./appointment/AddNoteSheet";
 import { ClientActivityView } from "./appointment/ClientActivityView";
+import { MoveAppointmentSheet } from "./appointment/MoveAppointmentSheet";
 import { createEarlyArrivalRequest } from "@/lib/earlyArrivalRequestService";
+import { sendNotificationToClient } from "@/lib/notificationService";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -112,6 +114,7 @@ export function AppointmentDetailView({
   const [addNoteOpen, setAddNoteOpen] = useState(false);
   const [clientActivityOpen, setClientActivityOpen] = useState(false);
   const [hasPendingRequest, setHasPendingRequest] = useState(false);
+  const [moveAppointmentOpen, setMoveAppointmentOpen] = useState(false);
 
   // Fetch service for this appointment
   useEffect(() => {
@@ -1023,6 +1026,67 @@ export function AppointmentDetailView({
     }
   };
 
+  const handleMoveAppointment = async (newDate: string, newStartTime: string, newEndTime: string) => {
+    if (!profile?.business_id || !appointment?.id) return;
+
+    setActionBusy(true);
+    try {
+      // Update appointment date and times
+      const { error: updateError } = await supabase
+        .from("appointments")
+        .update({
+          appointment_date: newDate,
+          start_time: newStartTime,
+          end_time: newEndTime,
+        })
+        .eq("id", appointment.id)
+        .eq("business_id", profile.business_id);
+
+      if (updateError) throw updateError;
+
+      // Format date and time for notification
+      const newDateObj = new Date(newDate);
+      const formattedDate = format(newDateObj, "dd/MM/yyyy", { locale: language === "es" ? es : undefined });
+      const formattedTime = formatTime(newStartTime, "12h");
+
+      // Send notification to client
+      if (clientId || reserverUserId) {
+        await sendNotificationToClient({
+          appointmentId: appointment.id,
+          clientId: clientId || undefined,
+          clientEmail: clientEmail || undefined,
+          clientPhone: clientPhone || undefined,
+          clientName: clientName || undefined,
+          type: "moved",
+          appointmentDate: formattedDate,
+          appointmentTime: formattedTime,
+          businessId: profile.business_id,
+        });
+      }
+
+      toast.success(
+        language === "es"
+          ? `Cita movida al ${formattedDate} a las ${formattedTime}`
+          : `Appointment moved to ${formattedDate} at ${formattedTime}`
+      );
+
+      // Refresh appointment data
+      if (onQuickAction) {
+        onQuickAction(appointment.status as AppointmentStatus);
+      }
+
+      // Update local appointment object
+      (appointment as any).appointment_date = newDate;
+      (appointment as any).start_time = newStartTime;
+      (appointment as any).end_time = newEndTime;
+    } catch (e: any) {
+      console.error("Error moving appointment:", e);
+      toast.error(e?.message || (language === "es" ? "No se pudo mover la cita" : "Could not move appointment"));
+    } finally {
+      setActionBusy(false);
+    }
+  };
+
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent side="bottom" className="bg-card border-t border-border h-[90vh] overflow-y-auto p-0" hideDefaultClose>
@@ -1586,6 +1650,7 @@ export function AppointmentDetailView({
         onAddAllergy={() => setAllergyOpen(true)}
         onBlockClient={() => setBlockOpen(true)}
         onDeleteClient={() => setConfirmDeleteOpen(true)}
+        onMoveAppointment={() => setMoveAppointmentOpen(true)}
       />
 
       <AppointmentQuickActionsSheet
@@ -1760,6 +1825,13 @@ export function AppointmentDetailView({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <MoveAppointmentSheet
+        open={moveAppointmentOpen}
+        onOpenChange={setMoveAppointmentOpen}
+        appointment={appointment}
+        onMove={handleMoveAppointment}
+      />
     </Sheet>
   );
 }

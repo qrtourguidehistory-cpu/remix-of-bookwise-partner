@@ -22,6 +22,8 @@ import { useLanguage } from "@/contexts/LanguageContext";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/lib/supabaseClient";
 import { useAuth } from "@/contexts/AuthContext";
+import { useSubscriptionStatus } from "@/hooks/useSubscriptionStatus";
+import { useNavigate } from "react-router-dom";
 import { AlertTriangle, X } from "lucide-react";
 import { inviteClientEarly } from "@/lib/earlyInviteService";
 import {
@@ -58,6 +60,9 @@ export function AppointmentDialog({
   const { language, t } = useLanguage();
   const { toast } = useToast();
   const { profile } = useAuth();
+  const { status: subscriptionStatus, isLoading: subscriptionLoading } = useSubscriptionStatus();
+  const subscriptionActive = subscriptionStatus === 'active' || subscriptionStatus === 'trialing';
+  const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [clients, setClients] = useState<any[]>([]);
   const [services, setServices] = useState<any[]>([]);
@@ -362,6 +367,21 @@ export function AppointmentDialog({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    // Check subscription status - only allow creating new appointments if active
+    if (!appointment && !subscriptionLoading && !subscriptionActive) {
+      toast({
+        title: language === "es" ? "Suscripción Requerida" : "Subscription Required",
+        description: language === "es" 
+          ? "Tu suscripción debe estar activa para crear citas. Por favor, activa tu suscripción primero."
+          : "Your subscription must be active to create appointments. Please activate your subscription first.",
+        variant: "destructive",
+      });
+      setTimeout(() => {
+        navigate("/admin/subscription");
+      }, 2000);
+      return;
+    }
     
     // Validate required fields
     if (!formData.client_id) {

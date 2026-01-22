@@ -104,7 +104,7 @@ export function AddActionSheet({ open, onOpenChange }: AddActionSheetProps) {
                   <div className={cn("p-2.5 rounded-full bg-muted", action.color)}>
                     <Icon className="h-5 w-5" />
                   </div>
-                  <span className="text-xs font-medium leading-tight line-clamp-2 text-center px-1">
+                  <span className="text-xs font-semibold leading-tight line-clamp-2 text-center px-1">
                     {action.label}
                   </span>
                 </Button>

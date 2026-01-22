@@ -1,6 +1,6 @@
 import { Globe } from "lucide-react";
 import { useLanguage } from "@/contexts/LanguageContext";
-import MiTurnowTicketLogo from "@/components/ui/MiTurnowTicketLogo";
+import MiTurnowMTLogo from "@/components/ui/MiTurnowMTLogo";
 
 interface AuthLayoutProps {
   children: React.ReactNode;
@@ -16,7 +16,7 @@ export default function AuthLayout({ children, title, subtitle }: AuthLayoutProp
       {/* Header */}
       <header className="p-6 flex justify-between items-center border-b">
         <div className="flex items-center gap-3">
-          <MiTurnowTicketLogo size={36} animated={false} />
+          <MiTurnowMTLogo size={48} animated={false} />
           <div className="flex flex-col leading-none">
             <span className="text-xl font-black">Mí Turnow</span>
             <span className="text-xs font-semibold text-muted-foreground tracking-widest uppercase">partner</span>

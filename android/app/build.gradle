@@ -1,10 +1,18 @@
 apply plugin: 'com.android.application'
 
 android {
-    namespace = "com.bookwise.partner"
+    signingConfigs {
+        config_pro {
+            storeFile file('C:\\Users\\laptop\\Desktop\\LLAVE PARTNER TUNROW\\llave_miturnow.jks')
+            storePassword '1Delarosa'
+            keyAlias 'produccion'
+            keyPassword '1Delarosa'
+        }
+    }
+    namespace = "com.miturnow.partner"
     compileSdk = rootProject.ext.compileSdkVersion
     defaultConfig {
-        applicationId "com.bookwise.partner"
+        applicationId "com.miturnow.partner"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 1
@@ -20,6 +28,7 @@ android {
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+            signingConfig signingConfigs.config_pro
         }
     }
 }

@@ -3,8 +3,10 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sh
 import { Button } from "@/components/ui/button";
 import { useNavigate } from "react-router-dom";
 import { useLanguage } from "@/contexts/LanguageContext";
+import { useAuth } from "@/contexts/AuthContext";
 import { useState, useEffect } from "react";
 import { cn } from "@/lib/utils";
+import { supabase } from "@/integrations/supabase/client";
 
 interface SettingsSheetProps {
   open: boolean;
@@ -14,14 +16,50 @@ interface SettingsSheetProps {
 export function SettingsSheet({ open, onOpenChange }: SettingsSheetProps) {
   const navigate = useNavigate();
   const { t, language } = useLanguage();
+  const { profile } = useAuth();
   const [viewMode, setViewMode] = useState<"list" | "grid">(() => {
     const saved = localStorage.getItem("menu-view-mode");
     return (saved as "list" | "grid") || "list";
   });
+  const [hasPendingPayment, setHasPendingPayment] = useState(false);
 
   useEffect(() => {
     localStorage.setItem("menu-view-mode", viewMode);
   }, [viewMode]);
+
+  useEffect(() => {
+    if (profile?.business_id) {
+      checkPendingPayment();
+    }
+  }, [profile?.business_id]);
+
+  const checkPendingPayment = async () => {
+    if (!profile?.business_id) return;
+    
+    try {
+      const { data, error } = await supabase
+        .from("business_subscriptions")
+        .select("status, payment_due_date")
+        .eq("business_id", profile.business_id)
+        .maybeSingle();
+
+      if (error && error.code !== 'PGRST116') {
+        console.error("Error checking subscription:", error);
+        return;
+      }
+
+      if (data) {
+        const isPastDue = data.status === 'past_due' || data.status === 'suspended';
+        const isTrialingExpired = data.status === 'trialing' && 
+          data.payment_due_date && 
+          new Date(data.payment_due_date) < new Date();
+        
+        setHasPendingPayment(isPastDue || isTrialingExpired);
+      }
+    } catch (error) {
+      console.error("Error checking pending payment:", error);
+    }
+  };
 
   const menuItems = [
     { icon: Home, label: t("home"), path: "/admin" },
@@ -79,34 +117,44 @@ export function SettingsSheet({ open, onOpenChange }: SettingsSheetProps) {
           <div className="flex flex-col gap-2 mt-6">
             {menuItems.map((item) => {
               const Icon = item.icon;
+              const showIndicator = item.path === "/admin/settings" && hasPendingPayment;
               return (
                 <Button
                   key={item.label}
                   variant="ghost"
                   onClick={() => handleNavigate(item.path)}
-                  className="justify-start gap-3 h-12"
+                  className="justify-start gap-3 h-12 relative"
                 >
                   <Icon className="h-5 w-5 text-primary" />
                   <span>{item.label}</span>
+                  {showIndicator && (
+                    <div className="ml-auto w-2 h-2 bg-red-500 rounded-full animate-pulse" />
+                  )}
                 </Button>
               );
             })}
           </div>
         ) : (
-          <div className="grid grid-cols-2 gap-2 mt-6">
+          <div className="grid grid-cols-2 gap-3 mt-6">
             {menuItems.map((item) => {
               const Icon = item.icon;
+              const showIndicator = item.path === "/admin/settings" && hasPendingPayment;
               return (
                 <Button
                   key={item.label}
                   variant="outline"
                   onClick={() => handleNavigate(item.path)}
-                  className="flex flex-col items-center justify-center gap-1.5 h-auto min-h-[90px] p-3"
+                  className="flex flex-col items-center justify-center gap-1.5 h-auto min-h-[90px] p-3 relative shadow-md border-0 rounded-xl bg-gradient-to-br from-white to-gray-50/50 hover:shadow-lg transition-shadow"
                 >
-                  <Icon className="h-5 w-5 text-primary flex-shrink-0" />
-                  <span className="text-xs font-medium leading-tight line-clamp-2 text-center px-1">
+                  <div className="p-2 rounded-lg bg-gray-50 shadow-sm">
+                    <Icon className="h-5 w-5 text-primary flex-shrink-0" />
+                  </div>
+                  <span className="text-xs font-semibold leading-tight line-clamp-2 text-center px-1">
                     {item.label}
                   </span>
+                  {showIndicator && (
+                    <div className="absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full animate-pulse" />
+                  )}
                 </Button>
               );
             })}

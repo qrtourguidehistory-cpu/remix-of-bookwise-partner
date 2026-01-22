@@ -3,9 +3,11 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useNavigate } from "react-router-dom";
 import { useLanguage } from "@/contexts/LanguageContext";
+import { useAuth } from "@/contexts/AuthContext";
 import { useState, useEffect } from "react";
 import { cn } from "@/lib/utils";
 import { BUILD_INFO } from "@/lib/buildInfo";
+import { supabase } from "@/integrations/supabase/client";
 import { 
   Clock, 
   Users, 
@@ -69,14 +71,50 @@ function FooterText() {
 export default function SettingsPage() {
   const navigate = useNavigate();
   const { language } = useLanguage();
+  const { profile } = useAuth();
   const [viewMode, setViewMode] = useState<"list" | "grid">(() => {
     const saved = localStorage.getItem("settings-view-mode");
     return (saved as "list" | "grid") || "list";
   });
+  const [hasPendingPayment, setHasPendingPayment] = useState(false);
 
   useEffect(() => {
     localStorage.setItem("settings-view-mode", viewMode);
   }, [viewMode]);
+
+  useEffect(() => {
+    if (profile?.business_id) {
+      checkPendingPayment();
+    }
+  }, [profile?.business_id]);
+
+  const checkPendingPayment = async () => {
+    if (!profile?.business_id) return;
+    
+    try {
+      const { data, error } = await supabase
+        .from("business_subscriptions")
+        .select("status, payment_due_date")
+        .eq("business_id", profile.business_id)
+        .maybeSingle();
+
+      if (error && error.code !== 'PGRST116') {
+        console.error("Error checking subscription:", error);
+        return;
+      }
+
+      if (data) {
+        const isPastDue = data.status === 'past_due' || data.status === 'suspended';
+        const isTrialingExpired = data.status === 'trialing' && 
+          data.payment_due_date && 
+          new Date(data.payment_due_date) < new Date();
+        
+        setHasPendingPayment(isPastDue || isTrialingExpired);
+      }
+    } catch (error) {
+      console.error("Error checking pending payment:", error);
+    }
+  };
 
   const settingSections = [
     {
@@ -155,6 +193,13 @@ export default function SettingsPage() {
           label: language === "es" ? "Dashboard de Inventario" : "Inventory Dashboard",
           description: language === "es" ? "Gráficos y alertas de stock" : "Charts and stock alerts",
           path: "/admin/inventory/dashboard",
+          color: "text-black dark:text-white"
+        },
+        {
+          icon: DollarSign,
+          label: language === "es" ? "Suscripción" : "Subscription",
+          description: language === "es" ? "Gestiona tu suscripción y método de pago" : "Manage your subscription and payment method",
+          path: "/admin/subscription",
           color: "text-black dark:text-white"
         }
       ]
@@ -262,32 +307,36 @@ export default function SettingsPage() {
           <div className="space-y-6">
             {settingSections.map((section) => (
               <div key={section.title}>
-                <h2 className="text-sm font-semibold text-muted-foreground mb-3 uppercase">
+                <h2 className="text-sm font-semibold text-muted-foreground mb-4 uppercase">
                   {section.title}
                 </h2>
-                <Card>
+                <Card className="shadow-md border-0 rounded-xl bg-gradient-to-br from-white to-gray-50/50">
                   <CardContent className="p-0">
                     {section.items.map((item, index) => {
                       const Icon = item.icon;
+                      const showIndicator = item.path === "/admin/subscription" && hasPendingPayment;
                       return (
                         <Button
                           key={item.label}
                           variant="ghost"
                           onClick={() => navigate(item.path)}
-                          className={`w-full justify-start h-auto p-4 ${
-                            index !== section.items.length - 1 ? 'border-b' : ''
-                          }`}
+                          className={`w-full justify-start h-auto p-4 relative rounded-none ${
+                            index !== section.items.length - 1 ? 'border-b border-gray-100' : ''
+                          } ${index === 0 ? 'rounded-t-xl' : ''} ${index === section.items.length - 1 ? 'rounded-b-xl' : ''}`}
                         >
                           <div className="flex items-center gap-4 flex-1">
-                            <div className={`${item.color}`}>
-                              <Icon className="h-6 w-6" />
+                            <div className={`${item.color} p-2 rounded-lg bg-gray-50 shadow-sm`}>
+                              <Icon className="h-5 w-5" />
                             </div>
                             <div className="flex-1 text-left">
-                              <p className="font-medium text-base">{item.label}</p>
-                              <p className="text-sm text-muted-foreground">
+                              <p className="font-semibold text-base">{item.label}</p>
+                              <p className="text-sm text-muted-foreground mt-0.5">
                                 {item.description}
                               </p>
                             </div>
+                            {showIndicator && (
+                              <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse" />
+                            )}
                           </div>
                         </Button>
                       );
@@ -301,30 +350,31 @@ export default function SettingsPage() {
           <div className="space-y-6">
             {settingSections.map((section) => (
               <div key={section.title}>
-                <h2 className="text-sm font-semibold text-muted-foreground mb-3 uppercase">
+                <h2 className="text-sm font-semibold text-muted-foreground mb-4 uppercase">
                   {section.title}
                 </h2>
-                <div className="grid grid-cols-2 gap-2">
+                <div className="grid grid-cols-2 gap-3">
                   {section.items.map((item) => {
                     const Icon = item.icon;
+                    const showIndicator = item.path === "/admin/subscription" && hasPendingPayment;
                     return (
                       <Button
                         key={item.label}
                         variant="outline"
                         onClick={() => navigate(item.path)}
-                        className="flex flex-col items-center justify-start gap-1.5 h-auto min-h-[110px] p-3 w-full whitespace-normal"
+                        className="flex flex-col items-center justify-start gap-1.5 h-auto min-h-[110px] p-3 w-full whitespace-normal relative shadow-md border-0 rounded-xl bg-gradient-to-br from-white to-gray-50/50 hover:shadow-lg transition-shadow"
                       >
-                        <div className={`${item.color} flex-shrink-0`}>
+                        <div className={`${item.color} flex-shrink-0 p-2 rounded-lg bg-gray-50 shadow-sm`}>
                           <Icon className="h-7 w-7 stroke-[1.5]" />
                         </div>
                         <div className="text-center w-full flex flex-col gap-0.5 flex-1 min-w-0 px-1 overflow-visible">
-                          <p className="font-medium text-sm leading-tight w-full break-words">
+                          <p className="font-semibold text-sm leading-tight w-full break-words">
                             {item.label}
                           </p>
-                          <p className="text-xs text-muted-foreground leading-tight w-full break-words">
-                            {item.description}
-                          </p>
                         </div>
+                        {showIndicator && (
+                          <div className="absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full animate-pulse" />
+                        )}
                       </Button>
                     );
                   })}

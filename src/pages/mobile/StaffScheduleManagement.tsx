@@ -318,15 +318,16 @@ export default function StaffScheduleManagement() {
       for (const appointment of affectedAppointments) {
         const client = appointment.clients;
         if (client && client.user_id && profile?.business_id) {
-          // ✅ Usar Edge Function notify-client en lugar de insertar directamente
+          // ✅ Usar Edge Function send-push-notification con role='cliente'
           try {
-            await supabase.functions.invoke('notify-client', {
+            await supabase.functions.invoke('send-push-notification', {
               body: {
+                role: 'cliente', // ⭐ IMPORTANTE: Especificar que es para cliente
                 business_id: profile.business_id,
                 user_id: client.user_id,
                 client_id: appointment.client_id,
                 appointment_id: appointment.id,
-                type: 'status_change', // Mapear a tipo permitido
+                type: 'status_change',
                 title: language === "es" 
                   ? "Cita necesita re-agendamiento" 
                   : "Appointment needs rescheduling",

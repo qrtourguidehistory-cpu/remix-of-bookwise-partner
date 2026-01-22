@@ -103,11 +103,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const finalBusinessId = businessData?.id || profileData?.business_id || null;
       
       // Set profile with business_id - this is what ProtectedRoute checks
-      setProfile({
+      const updatedProfile = {
         ...finalProfile,
         business_id: finalBusinessId,
         businesses: businessData
-      });
+      };
+      
+      setProfile(updatedProfile);
+      
+      // Return the final business_id for potential redirect logic
+      return finalBusinessId;
     } catch (error) {
       // Fallback to prevent loading hang - set minimal profile
       // Even if there's an error, try to get business by owner_id as last resort
@@ -126,10 +131,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           });
         } else {
           setProfile({ id: userId });
+          return null;
         }
       } catch (fallbackError) {
         // Last resort - minimal profile
         setProfile({ id: userId });
+        return null;
       }
     } finally {
       fetchingProfileRef.current = false;
@@ -249,7 +256,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         // Fetch profile if we have a user
         if (currentUser) {
           setLoading(true);
-          fetchUserProfile(currentUser.id).finally(() => {
+          fetchUserProfile(currentUser.id).then((businessId) => {
+            // After profile is fetched, check if new user needs onboarding
+            // Only redirect if we're on root route and this is a SIGNED_IN event (OAuth completion)
+            if (mounted && event === 'SIGNED_IN' && window.location.pathname === '/' && !businessId) {
+              // Small delay to ensure profile state is set
+              setTimeout(() => {
+                if (window.location.pathname === '/') {
+                  // New user without business - redirect to onboarding
+                  navigate('/onboarding', { replace: true });
+                }
+              }, 500);
+            }
+          }).finally(() => {
             if (mounted) {
               setLoading(false);
             }
@@ -410,7 +429,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     lastUserIdRef.current = null;
     isInitializedRef.current = false;
     toast.success("Sesión cerrada");
-    window.location.href = "/auth/login";
+    window.location.href = "/welcome";
   };
 
   const resetPassword = async (email: string) => {

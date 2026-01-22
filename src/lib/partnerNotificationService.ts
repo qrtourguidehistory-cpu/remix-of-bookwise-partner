@@ -71,15 +71,15 @@ npx
       return { success: false, error: 'user_id es requerido' };
     }
 
-    console.log(`📨 [PARTNER NOTIFICATION] Llamando Edge Function 'send_push_notification' (role: partner):`, {
+    console.log(`📨 [PARTNER NOTIFICATION] Llamando Edge Function 'send-push-notification' (role: partner):`, {
       type: data.type,
       user_id: data.user_id,
       business_id: data.business_id,
       appointment_id: data.appointment_id,
     });
 
-    // ✅ Llamar Edge Function correcta: send_push_notification con role='partner'
-    const { data: result, error } = await supabase.functions.invoke('send_push_notification', {
+    // ✅ Llamar Edge Function correcta: send-push-notification con role='partner'
+    const { data: result, error } = await supabase.functions.invoke('send-push-notification', {
       body: {
         role: 'partner', // ⭐ IMPORTANTE: Especificar que es para partner
         business_id: data.business_id,

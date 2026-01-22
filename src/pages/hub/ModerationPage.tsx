@@ -178,7 +178,8 @@ export default function ModerationPage() {
   const handleApprove = async (request: ApprovalRequest) => {
     setProcessing(true);
     try {
-      const { error } = await supabase
+      // Actualizar la solicitud de aprobación
+      const { error: requestError } = await supabase
         .from("business_approval_requests")
         .update({
           status: "approved",
@@ -186,13 +187,56 @@ export default function ModerationPage() {
         })
         .eq("id", request.id);
 
-      if (error) throw error;
+      if (requestError) throw requestError;
+
+      // Actualizar el negocio para marcarlo como aprobado y público
+      // Esto activará el trigger que crea la suscripción de trial
+      const { error: businessError } = await supabase
+        .from("businesses")
+        .update({
+          approval_status: "approved",
+          is_public: true,
+        })
+        .eq("id", request.business_id);
+
+      if (businessError) throw businessError;
+
+      // Enviar notificación al propietario del negocio (solo una vez)
+      // Verificar si ya se envió una notificación para esta aprobación
+      const { data: existingNotification } = await supabase
+        .from("client_notifications")
+        .select("id")
+        .eq("user_id", request.owner_id)
+        .eq("business_id", request.business_id)
+        .eq("type", "business_approved")
+        .eq("read", false)
+        .maybeSingle();
+
+      if (!existingNotification) {
+        const { error: notificationError } = await supabase
+          .from("client_notifications")
+          .insert({
+            user_id: request.owner_id,
+            business_id: request.business_id,
+            type: "business_approved",
+            title: language === "es" ? "¡Tu negocio ha sido aprobado!" : "Your business has been approved!",
+            message: language === "es" 
+              ? "Tu solicitud de publicación ha sido aprobada. Tu negocio ahora es visible en Mí Turnow Client y se ha iniciado un período de prueba de 30 días."
+              : "Your publication request has been approved. Your business is now visible on Mí Turnow Client and a 30-day trial period has started.",
+            role: "partner",
+          });
+
+        if (notificationError) {
+          console.error("Error sending notification:", notificationError);
+          // No fallar si la notificación falla
+        }
+      }
 
       toast({
         title: language === "es" ? "¡Aprobado!" : "Approved!",
         description: language === "es" 
-          ? "El negocio ha sido aprobado y ahora es visible en Mí Turnow Client"
-          : "The business has been approved and is now visible on Mí Turnow Client",
+          ? "El negocio ha sido aprobado y ahora es visible en Mí Turnow Client. Se ha iniciado un período de prueba de 30 días."
+          : "The business has been approved and is now visible on Mí Turnow Client. A 30-day trial period has started.",
       });
 
       fetchRequests();
@@ -235,6 +279,46 @@ export default function ModerationPage() {
         .eq("id", request.id);
 
       if (error) throw error;
+
+      // Actualizar el negocio para marcarlo como rechazado
+      const { error: businessError } = await supabase
+        .from("businesses")
+        .update({
+          approval_status: "rejected",
+          is_public: false,
+        })
+        .eq("id", request.business_id);
+
+      if (businessError) throw businessError;
+
+      // Enviar notificación al propietario del negocio (solo una vez)
+      const { data: existingNotification } = await supabase
+        .from("client_notifications")
+        .select("id")
+        .eq("user_id", request.owner_id)
+        .eq("business_id", request.business_id)
+        .eq("type", "business_rejected")
+        .eq("read", false)
+        .maybeSingle();
+
+      if (!existingNotification) {
+        const { error: notificationError } = await supabase
+          .from("client_notifications")
+          .insert({
+            user_id: request.owner_id,
+            business_id: request.business_id,
+            type: "business_rejected",
+            title: language === "es" ? "Solicitud rechazada" : "Request rejected",
+            message: language === "es" 
+              ? `Tu solicitud de publicación ha sido rechazada. Motivo: ${rejectionReason}. Por favor, corrige los problemas y envía una nueva solicitud.`
+              : `Your publication request has been rejected. Reason: ${rejectionReason}. Please fix the issues and submit a new request.`,
+            role: "partner",
+          });
+
+        if (notificationError) {
+          console.error("Error sending notification:", notificationError);
+        }
+      }
 
       toast({
         title: language === "es" ? "Rechazado" : "Rejected",
@@ -611,10 +695,6 @@ export default function ModerationPage() {
                     <RequirementCheck 
                       met={!!selectedRequest.business?.address}
                       label={language === "es" ? "Dirección" : "Address"}
-                    />
-                    <RequirementCheck 
-                      met={!!selectedRequest.business?.google_maps_url}
-                      label="Google Maps URL"
                     />
                   </div>
                 </div>

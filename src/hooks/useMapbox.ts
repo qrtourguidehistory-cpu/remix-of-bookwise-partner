@@ -36,8 +36,10 @@ export function useMapbox(options: UseMapboxOptions): UseMapboxReturn {
 
   useEffect(() => {
     try {
-      if (!options.accessToken) {
-        throw new Error('Mapbox access token is required');
+      // Si no hay token o es un token dummy, no inicializar Mapbox
+      if (!options.accessToken || options.accessToken === 'dummy-token') {
+        setIsLoaded(false);
+        return;
       }
 
       // Configurar el token de acceso
@@ -48,6 +50,7 @@ export function useMapbox(options: UseMapboxOptions): UseMapboxReturn {
     } catch (error) {
       console.error('Error initializing Mapbox:', error);
       setLoadError(error as Error);
+      setIsLoaded(false);
     }
   }, [options.accessToken]);
 

@@ -2,7 +2,7 @@ import type React from "react";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
-import { Eye, UserMinus, FileEdit, Ban, Trash2, X, AlertTriangle } from "lucide-react";
+import { Eye, UserMinus, FileEdit, Ban, Trash2, X, AlertTriangle, CalendarClock } from "lucide-react";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { cn } from "@/lib/utils";
 
@@ -15,6 +15,7 @@ interface AppointmentClientActionsSheetProps {
   onEditClientDetails?: () => void;
   onBlockClient?: () => void;
   onDeleteClient?: () => void;
+  onMoveAppointment?: () => void;
 }
 
 export function AppointmentClientActionsSheet({
@@ -26,6 +27,7 @@ export function AppointmentClientActionsSheet({
   onEditClientDetails,
   onBlockClient,
   onDeleteClient,
+  onMoveAppointment,
 }: AppointmentClientActionsSheetProps) {
   const { language } = useLanguage();
 
@@ -76,6 +78,8 @@ export function AppointmentClientActionsSheet({
           <Row Icon={Eye} label={language === "es" ? "Ver cliente" : "View client"} onClick={onViewClient} />
           <Row Icon={FileEdit} label={language === "es" ? "Editar detalles del cliente" : "Edit client details"} onClick={onEditClientDetails} />
           <Row Icon={UserMinus} label={language === "es" ? "Quitar cliente de la cita" : "Remove client from appointment"} onClick={onRemoveClient} />
+          <Separator />
+          <Row Icon={CalendarClock} label={language === "es" ? "Mover cita" : "Move appointment"} onClick={onMoveAppointment} />
           <Separator />
           <Row Icon={AlertTriangle} label={language === "es" ? "Agregar alergia" : "Add allergy"} onClick={onAddAllergy} />
           <Row Icon={Ban} label={language === "es" ? "Bloquear cliente" : "Block client"} onClick={onBlockClient} />

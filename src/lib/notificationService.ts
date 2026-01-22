@@ -6,7 +6,7 @@ export interface NotificationData {
   clientEmail?: string | null;
   clientPhone?: string | null;
   clientName?: string | null;
-  type: 'confirmation' | 'completion' | 'cancellation' | 'reminder' | 'next_in_queue' | 'review_request';
+  type: 'confirmation' | 'completion' | 'cancellation' | 'reminder' | 'next_in_queue' | 'review_request' | 'moved';
   appointmentDate?: string;
   appointmentTime?: string;
   businessId: string;
@@ -187,6 +187,9 @@ function generateNotificationMessage(
 
     case 'review_request':
       return `Hola ${clientName}, nos encantaría conocer tu opinión sobre tu última visita. ¿Podrías dejarnos una reseña?`;
+
+    case 'moved':
+      return `Hola ${clientName}, tu cita ha sido movida al ${appointmentDate} a las ${appointmentTime}. ¡Te esperamos en la nueva fecha y hora!`;
 
     default:
       return `Hola ${clientName}, tienes una actualización sobre tu cita.`;

@@ -13,11 +13,37 @@ export const setNavigationCallback = (callback: (path: string) => void) => {
 export const initializePartnerPush = async (userId: string) => {
   console.log('[PartnerPush] START - User:', userId);
 
-  if (!Capacitor.isNativePlatform()) {
-    console.log('[PartnerPush] Not native, skipping');
-    return;
+  const isNative = Capacitor.isNativePlatform();
+
+  // ✅ WEB: Solicitar permisos usando Web Notification API (aunque no se guarde token FCM)
+  if (!isNative) {
+    console.log('[PartnerPush] Web platform detected, requesting Web Notification permissions...');
+    
+    if (!('Notification' in window)) {
+      console.log('[PartnerPush] Web Notifications not supported in this browser');
+      return;
+    }
+
+    try {
+      // Solicitar permisos de notificaciones web
+      const permission = await Notification.requestPermission();
+      console.log('[PartnerPush] Web Notification permission:', permission);
+      
+      if (permission === 'granted') {
+        console.log('[PartnerPush] ✅ Web Notification permission granted');
+        // En web no guardamos token FCM, las notificaciones se manejan diferente
+        // Pero sí solicitamos permisos para mejorar UX
+      } else {
+        console.log('[PartnerPush] ⚠️ Web Notification permission denied');
+      }
+    } catch (error) {
+      console.error('[PartnerPush] Error requesting web notification permission:', error);
+    }
+    
+    return; // Web no usa FCM, solo solicita permisos
   }
 
+  // ✅ NATIVE: Flujo completo de FCM (Android/iOS)
   try {
     // Step 1: Create channel (Android only)
     if (Capacitor.getPlatform() === 'android') {
@@ -35,7 +61,7 @@ export const initializePartnerPush = async (userId: string) => {
     }
 
     // Step 2: Request permissions
-    console.log('[PartnerPush] Requesting permissions...');
+    console.log('[PartnerPush] Requesting native permissions...');
     const result = await PushNotifications.requestPermissions();
     console.log('[PartnerPush] Permission result:', result.receive);
 
@@ -45,7 +71,7 @@ export const initializePartnerPush = async (userId: string) => {
     }
 
     // Step 3: Register
-    console.log('[PartnerPush] Registering...');
+    console.log('[PartnerPush] Registering for FCM...');
     await PushNotifications.register();
     console.log('[PartnerPush] Register called');
 

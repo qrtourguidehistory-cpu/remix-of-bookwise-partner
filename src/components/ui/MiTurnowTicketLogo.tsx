@@ -23,14 +23,97 @@ export default function MiTurnowTicketLogo({
   const ticketBg = variant === "dark" ? "#ffffff" : "#1a365d";
   const textColor = variant === "dark" ? "#1a365d" : "#ffffff";
 
+  // Use regular SVG when not animated for better compatibility
+  if (!animated) {
+    return (
+      <svg
+        width={size}
+        height={size}
+        viewBox="0 0 64 64"
+        className={className}
+        style={{ display: 'block', flexShrink: 0 }}
+      >
+        {/* Background circle */}
+        <circle cx="32" cy="32" r="30" fill={primaryColor} />
+        
+        {/* Ticket shape with perforated edge */}
+        <g>
+          {/* Main ticket body */}
+          <rect
+            x="18"
+            y="14"
+            width="28"
+            height="36"
+            rx="3"
+            fill={ticketBg}
+          />
+          
+          {/* Perforated line (semi-circles on sides) */}
+          <circle cx="18" cy="28" r="3" fill={primaryColor} />
+          <circle cx="46" cy="28" r="3" fill={primaryColor} />
+          
+          {/* Dotted line across ticket */}
+          <line
+            x1="22"
+            y1="28"
+            x2="42"
+            y2="28"
+            stroke={accentColor}
+            strokeWidth="1.5"
+            strokeDasharray="2 2"
+          />
+          
+          {/* Turn number */}
+          <text
+            x="32"
+            y="23"
+            textAnchor="middle"
+            fill={textColor}
+            fontSize="8"
+            fontWeight="bold"
+            fontFamily="system-ui, sans-serif"
+          >
+            TURNO
+          </text>
+          
+          {/* Number */}
+          <text
+            x="32"
+            y="42"
+            textAnchor="middle"
+            fill={accentColor}
+            fontSize="16"
+            fontWeight="bold"
+            fontFamily="system-ui, sans-serif"
+          >
+            01
+          </text>
+          
+          {/* Arrow indicators */}
+          <g>
+            <polygon
+              points="24,38 26,42 24,46"
+              fill={accentColor}
+            />
+            <polygon
+              points="40,38 38,42 40,46"
+              fill={accentColor}
+            />
+          </g>
+        </g>
+      </svg>
+    );
+  }
+
   return (
     <motion.svg
       width={size}
       height={size}
       viewBox="0 0 64 64"
       className={className}
-      initial={animated ? { opacity: 0, scale: 0.8 } : undefined}
-      animate={animated ? { opacity: 1, scale: 1 } : undefined}
+      style={{ display: 'block', flexShrink: 0 }}
+      initial={{ opacity: 0, scale: 0.8 }}
+      animate={{ opacity: 1, scale: 1 }}
       transition={{ duration: 0.5, ease: "easeOut" }}
     >
       {/* Background circle */}
@@ -38,8 +121,8 @@ export default function MiTurnowTicketLogo({
       
       {/* Ticket shape with perforated edge */}
       <motion.g
-        initial={animated ? { y: -10, opacity: 0 } : undefined}
-        animate={animated ? { y: 0, opacity: 1 } : undefined}
+        initial={{ y: -10, opacity: 0 }}
+        animate={{ y: 0, opacity: 1 }}
         transition={{ duration: 0.6, delay: 0.2, ease: "easeOut" }}
       >
         {/* Main ticket body */}
@@ -89,8 +172,8 @@ export default function MiTurnowTicketLogo({
           fontSize="16"
           fontWeight="bold"
           fontFamily="system-ui, sans-serif"
-          initial={animated ? { opacity: 0, scale: 0.5 } : undefined}
-          animate={animated ? { opacity: 1, scale: 1 } : undefined}
+          initial={{ opacity: 0, scale: 0.5 }}
+          animate={{ opacity: 1, scale: 1 }}
           transition={{ duration: 0.4, delay: 0.5, ease: "easeOut" }}
         >
           01
@@ -98,8 +181,8 @@ export default function MiTurnowTicketLogo({
         
         {/* Arrow indicators */}
         <motion.g
-          initial={animated ? { opacity: 0 } : undefined}
-          animate={animated ? { opacity: 1 } : undefined}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
           transition={{ duration: 0.3, delay: 0.7 }}
         >
           <polygon

@@ -6,6 +6,7 @@ import { useNavigate } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/lib/supabaseClient";
 import { useAuth } from "@/contexts/AuthContext";
+import { useSubscriptionStatus } from "@/hooks/useSubscriptionStatus";
 import { generateTimeSlotsFromBusinessHours, convertTo24Hour } from "@/lib/timeFormat";
 import { ServiceStep } from "@/components/mobile/booking/ServiceStep";
 import { StaffStep } from "@/components/mobile/booking/StaffStep";
@@ -43,6 +44,8 @@ export default function BookingFlow() {
   const navigate = useNavigate();
   const { toast } = useToast();
   const { profile } = useAuth();
+  const { status: subscriptionStatus, isLoading: subscriptionLoading } = useSubscriptionStatus();
+  const subscriptionActive = subscriptionStatus === 'active' || subscriptionStatus === 'trialing';
   
   // Hook para consultar disponibilidad del staff
   const { schedules, timeOff, earlyDepartures, isLoading: availabilityLoading, refetch: refetchAvailability } = useStaffAvailability(
@@ -360,6 +363,21 @@ export default function BookingFlow() {
   };
 
   const handleConfirm = async () => {
+    // Check subscription status - only allow creating appointments if active
+    if (!subscriptionLoading && !subscriptionActive) {
+      toast({
+        title: language === "es" ? "Suscripción Requerida" : "Subscription Required",
+        description: language === "es" 
+          ? "Tu suscripción debe estar activa para crear citas. Por favor, activa tu suscripción primero."
+          : "Your subscription must be active to create appointments. Please activate your subscription first.",
+        variant: "destructive",
+      });
+      setTimeout(() => {
+        navigate("/admin/subscription");
+      }, 2000);
+      return;
+    }
+
     setLoading(true);
     try {
       if (!profile?.business_id) {

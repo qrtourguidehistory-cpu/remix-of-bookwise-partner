@@ -40,3 +40,12 @@ android/local.properties
 android/.idea/
 android/*.iml
 android/app/*.iml
+
+# Firebase Admin SDK credentials (secrets)
+android/*firebase-adminsdk*.json
+**/firebase-adminsdk*.json
+*.json
+!package.json
+!package-lock.json
+!tsconfig*.json
+!components.json

@@ -1,4 +1,4 @@
-import { ReactNode, useState, useEffect, createContext, useContext } from "react";
+import { ReactNode, useState, useEffect, createContext, useContext, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { Bell } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -10,6 +10,8 @@ import { Badge } from "@/components/ui/badge";
 import { supabase } from "@/lib/supabaseClient";
 import { formatDistanceToNow } from "date-fns";
 import { es, enUS } from "date-fns/locale";
+import { Capacitor } from "@capacitor/core";
+import { initializePartnerPush, setNavigationCallback } from "@/services/partnerPushService";
 
 // Context for handling appointment detail view from notifications
 interface AppointmentDetailContextType {
@@ -68,6 +70,45 @@ export default function MobileLayout({ children }: MobileLayoutProps) {
     'approval_rejected',
   ] as const;
 
+  // ✅ Solicitar permisos de notificaciones al abrir la app
+  const notificationPermissionRequested = useRef(false);
+  
+  useEffect(() => {
+    if (!profile?.id || notificationPermissionRequested.current) return;
+
+    const requestNotificationPermissions = async () => {
+      try {
+        notificationPermissionRequested.current = true;
+        console.log('[MobileLayout] 🔔 Solicitando permisos de notificaciones...');
+
+        // Llamar initializePartnerPush que maneja tanto web como nativo
+        await initializePartnerPush(profile.id);
+        
+        console.log('[MobileLayout] ✅ Permisos de notificaciones procesados');
+      } catch (error) {
+        console.error('[MobileLayout] ❌ Error solicitando permisos de notificaciones:', error);
+      }
+    };
+
+    // Solo solicitar si el usuario está autenticado y es partner
+    if (profile?.business_id) {
+      requestNotificationPermissions();
+    }
+  }, [profile?.id, profile?.business_id]);
+
+  // ✅ Configurar callback de navegación para push notifications
+  useEffect(() => {
+    setNavigationCallback((path: string) => {
+      console.log('[MobileLayout] 🧭 Navegando desde notificación push:', path);
+      navigate(path);
+    });
+
+    return () => {
+      // Cleanup: remover callback cuando el componente se desmonta
+      setNavigationCallback(() => {});
+    };
+  }, [navigate]);
+
   useEffect(() => {
     if (!profile?.id) return;
 
@@ -79,18 +120,30 @@ export default function MobileLayout({ children }: MobileLayoutProps) {
       let ownerId: string | null = null;
       let channel: ReturnType<typeof supabase.channel> | null = null;
       let isSubscribed = false;
+      let cleanupExecuted = false;
 
       const setupRealtimeSubscription = async () => {
+        // ⚠️ PREVENIR SUSCRIPCIONES DUPLICADAS
+        if (isSubscribed || cleanupExecuted) {
+          console.log('⚠️ [REALTIME] Suscripción ya activa o limpieza ejecutada, ignorando setup');
+          return;
+        }
+
         try {
           // Obtener owner_id del negocio
           const { data: business, error: businessError } = await supabase
             .from('businesses')
             .select('owner_id')
             .eq('id', profile.business_id!)
-            .single();
+            .maybeSingle();
 
-          if (businessError || !business?.owner_id) {
+          if (businessError) {
             console.error('❌ [REALTIME] Error obteniendo owner_id:', businessError);
+            return;
+          }
+
+          if (!business || !business.owner_id) {
+            console.warn('⚠️ [REALTIME] No se encontró negocio o owner_id para:', profile.business_id);
             return;
           }
 
@@ -100,8 +153,21 @@ export default function MobileLayout({ children }: MobileLayoutProps) {
           // Cargar notificaciones iniciales con owner_id
           await fetchNotifications(ownerId);
 
-          // Crear canal único para evitar duplicados
-          const channelName = `notifications-partner-${ownerId}-${Date.now()}`;
+          // ✅ USAR NOMBRE FIJO DEL CANAL (NO Date.now()) para evitar duplicados
+          const channelName = `notifications-partner-${ownerId}`;
+          
+          // ⚠️ LIMPIAR CANAL ANTERIOR SI EXISTE
+          const existingChannel = supabase.channel(channelName);
+          if (existingChannel) {
+            try {
+              await supabase.removeChannel(existingChannel);
+              console.log('🧹 [REALTIME] Canal anterior removido');
+            } catch (err) {
+              console.warn('⚠️ [REALTIME] No se pudo remover canal anterior (puede no existir):', err);
+            }
+          }
+
+          // Crear nuevo canal con nombre fijo
           channel = supabase.channel(channelName, {
             config: {
               broadcast: { self: false },
@@ -197,33 +263,35 @@ export default function MobileLayout({ children }: MobileLayoutProps) {
                 console.log('✅ [REALTIME] Suscrito correctamente a notifications');
               } else if (status === 'CHANNEL_ERROR') {
                 console.error('❌ [REALTIME] Error en canal:', status);
+                isSubscribed = false;
               }
             });
 
           isSubscribed = true;
         } catch (error) {
           console.error('❌ [REALTIME] Error en setup:', error);
+          isSubscribed = false;
         }
       };
 
       setupRealtimeSubscription();
 
-      // Manejo de ciclo de vida: Re-suscribirse al volver de background
-      const handleVisibilityChange = () => {
-        if (document.visibilityState === 'visible' && !isSubscribed && ownerId) {
-          console.log('🔄 [REALTIME] Re-suscribiendo después de volver de background');
-          setupRealtimeSubscription();
-        }
-      };
-
-      document.addEventListener('visibilitychange', handleVisibilityChange);
+      // ✅ NO RE-SUSCRIBIR AUTOMÁTICAMENTE AL VOLVER DE BACKGROUND
+      // El cleanup del useEffect se encarga de limpiar correctamente
 
       return () => {
-        document.removeEventListener('visibilitychange', handleVisibilityChange);
+        cleanupExecuted = true;
+        isSubscribed = false;
         if (channel) {
           console.log('🧹 [REALTIME] Limpiando suscripción');
-          supabase.removeChannel(channel);
-          isSubscribed = false;
+          supabase
+            .removeChannel(channel)
+            .then(() => {
+              console.log('✅ [REALTIME] Canal removido exitosamente');
+            })
+            .catch((err) => {
+              console.error('❌ [REALTIME] Error removiendo canal:', err);
+            });
         }
       };
     } else {

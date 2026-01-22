@@ -4,7 +4,6 @@ import { Button } from "@/components/ui/button";
 import { useLocation, useNavigate } from "react-router-dom";
 import { cn } from "@/lib/utils";
 import { AddActionSheet } from "./AddActionSheet";
-import { ClientActionSheet } from "./ClientActionSheet";
 import { SettingsSheet } from "./SettingsSheet";
 import { TutorialTip } from "./TutorialTip";
 import { useTutorialTips } from "@/hooks/useTutorialTips";
@@ -20,7 +19,6 @@ export function MobileBottomNav() {
   const { t } = useLanguage();
   const { canShowTip, markTipAsSeen, setActiveTip } = useTutorialTips();
   const [addSheetOpen, setAddSheetOpen] = useState(false);
-  const [clientSheetOpen, setClientSheetOpen] = useState(false);
   const [settingsSheetOpen, setSettingsSheetOpen] = useState(false);
   const [showAddTip, setShowAddTip] = useState(false);
   const [showFooterText, setShowFooterText] = useState(() => {
@@ -59,16 +57,11 @@ export function MobileBottomNav() {
     setAddSheetOpen(true);
   };
 
-  // Clients button click - no tip
-  const handleClientsButtonClick = () => {
-    setClientSheetOpen(true);
-  };
-
   const navItems = [
     { icon: CalendarDays, label: t("calendar"), path: "/", onClick: () => navigate("/") },
     { icon: Tag, label: t("sales"), path: "/admin/sales", onClick: () => navigate("/admin/sales") },
     { icon: Plus, label: t("add"), isSpecial: true, onClick: handleAddButtonClick },
-    { icon: Smile, label: t("clients"), onClick: handleClientsButtonClick },
+    { icon: Smile, label: t("clients"), path: "/admin/clients", onClick: () => navigate("/admin/clients") },
     { icon: LayoutGrid, label: t("menu"), onClick: () => setSettingsSheetOpen(true) },
   ];
 
@@ -117,7 +110,6 @@ export function MobileBottomNav() {
       </nav>
 
       <AddActionSheet open={addSheetOpen} onOpenChange={setAddSheetOpen} />
-      <ClientActionSheet open={clientSheetOpen} onOpenChange={setClientSheetOpen} />
       <SettingsSheet open={settingsSheetOpen} onOpenChange={setSettingsSheetOpen} />
 
       {/* Tutorial tip for add button */}

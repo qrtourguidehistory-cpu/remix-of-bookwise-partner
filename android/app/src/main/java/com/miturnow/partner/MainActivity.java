@@ -1,4 +1,4 @@
-package com.bookwise.partner;
+package com.miturnow.partner;
 
 import com.getcapacitor.BridgeActivity;
 

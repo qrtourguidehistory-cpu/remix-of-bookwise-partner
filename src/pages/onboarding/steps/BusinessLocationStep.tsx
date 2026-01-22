@@ -1,5 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { ArrowLeft, MapPin, Loader2, CheckCircle2, AlertCircle, Navigation } from "lucide-react";
 import { toast } from "sonner";
 import { useMapbox } from "@/hooks/useMapbox";
@@ -43,19 +45,28 @@ export default function BusinessLocationStep({
   const [isConfirmed, setIsConfirmed] = useState(false);
   const [isGeolocating, setIsGeolocating] = useState(false);
 
-  // Token de Mapbox desde variables de entorno
-  const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_ACCESS_TOKEN || 
-    (() => {
-      console.error('VITE_MAPBOX_ACCESS_TOKEN is not set in environment variables');
-      throw new Error('Mapbox access token is required');
-    })();
+  // Token de Mapbox desde variables de entorno (opcional)
+  const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_ACCESS_TOKEN || import.meta.env.VITE_MAPBOX_TOKEN;
+  const hasMapboxToken = !!MAPBOX_TOKEN;
 
   const { isLoaded, loadError } = useMapbox({
-    accessToken: MAPBOX_TOKEN,
+    accessToken: MAPBOX_TOKEN || '',
+    enabled: hasMapboxToken, // Solo habilitar si hay token
   });
 
   // Geocodificación inversa usando Mapbox Geocoding API
   const reverseGeocode = async (lng: number, lat: number) => {
+    if (!hasMapboxToken) {
+      // Si no hay token, solo guardar coordenadas
+      setLocation(prev => ({
+        ...prev,
+        latitude: lat,
+        longitude: lng,
+      }));
+      toast.info("Coordenadas guardadas (Mapbox no disponible)");
+      return;
+    }
+
     try {
       const response = await fetch(
         `https://api.mapbox.com/geocoding/v5/mapbox.places/${lng},${lat}.json?access_token=${MAPBOX_TOKEN}&language=es`
@@ -108,7 +119,7 @@ export default function BusinessLocationStep({
 
   // Inicializar mapa
   useEffect(() => {
-    if (!isLoaded || !mapContainerRef.current || mapRef.current) return;
+    if (!hasMapboxToken || !isLoaded || !mapContainerRef.current || mapRef.current) return;
 
     // Coordenadas por defecto (Ciudad de México)
     const defaultLat = location.latitude || 19.4326;
@@ -155,7 +166,7 @@ export default function BusinessLocationStep({
     return () => {
       map.remove();
     };
-  }, [isLoaded]);
+  }, [isLoaded, hasMapboxToken]);
 
   // Obtener ubicación actual del usuario (GPS)
   const handleGetCurrentLocation = async () => {
@@ -230,6 +241,100 @@ export default function BusinessLocationStep({
       }
     });
   };
+
+  // Manejo de errores de carga o falta de token
+  if (!hasMapboxToken) {
+    return (
+      <div className="space-y-6">
+        <Card className="p-6 border-orange-500">
+          <div className="flex items-center gap-3 text-orange-600">
+            <AlertCircle className="w-6 h-6" />
+            <div>
+              <h3 className="font-semibold">Mapbox no configurado</h3>
+              <p className="text-sm text-muted-foreground">
+                Para usar el mapa interactivo, configura VITE_MAPBOX_ACCESS_TOKEN en tus variables de entorno.
+              </p>
+            </div>
+          </div>
+        </Card>
+        <div className="space-y-4">
+          <div className="p-4 border rounded-lg space-y-3">
+            <Label className="text-sm font-medium">Ubicación manual</Label>
+            <p className="text-sm text-muted-foreground">
+              Puedes ingresar la dirección manualmente o usar coordenadas GPS.
+            </p>
+            <div className="grid gap-2">
+              <div>
+                <Label className="text-xs text-muted-foreground">Dirección</Label>
+                <Input
+                  value={location.address}
+                  onChange={(e) => setLocation(prev => ({ ...prev, address: e.target.value }))}
+                  placeholder="Calle, número, colonia"
+                />
+              </div>
+              <div className="grid grid-cols-3 gap-2">
+                <div>
+                  <Label className="text-xs text-muted-foreground">Ciudad</Label>
+                  <Input
+                    value={location.city}
+                    onChange={(e) => setLocation(prev => ({ ...prev, city: e.target.value }))}
+                    placeholder="Ciudad"
+                  />
+                </div>
+                <div>
+                  <Label className="text-xs text-muted-foreground">Estado</Label>
+                  <Input
+                    value={location.state}
+                    onChange={(e) => setLocation(prev => ({ ...prev, state: e.target.value }))}
+                    placeholder="Estado"
+                  />
+                </div>
+                <div>
+                  <Label className="text-xs text-muted-foreground">País</Label>
+                  <Input
+                    value={location.country}
+                    onChange={(e) => setLocation(prev => ({ ...prev, country: e.target.value }))}
+                    placeholder="País"
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div className="space-y-3 pt-2">
+          <Button
+            onClick={() => {
+              if (!location.city || !location.state || !location.country) {
+                toast.error("Por favor completa ciudad, estado y país");
+                return;
+              }
+              setIsConfirmed(true);
+              onNext({
+                address: location.address || `${location.city}, ${location.state}, ${location.country}`,
+                locationDetails: {
+                  ...data.locationDetails,
+                  address: location.address || `${location.city}, ${location.state}, ${location.country}`,
+                  city: location.city,
+                  state: location.state,
+                  country: location.country,
+                }
+              });
+            }}
+            className="w-full h-12 text-base"
+            disabled={!location.city || !location.state || !location.country}
+          >
+            Continuar
+          </Button>
+          {onBack && (
+            <Button variant="outline" onClick={onBack} className="w-full h-12 text-base">
+              <ArrowLeft className="w-4 h-4 mr-2" />
+              Atrás
+            </Button>
+          )}
+        </div>
+      </div>
+    );
+  }
 
   // Manejo de errores de carga
   if (loadError) {

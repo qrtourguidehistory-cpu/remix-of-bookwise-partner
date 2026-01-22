@@ -13,6 +13,7 @@ import {
   LogOut,
   LayoutDashboard,
   ChevronDown,
+  CreditCard,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -42,6 +43,7 @@ const navigation = [
 
 const systemNavigation = [
   { name: "Moderation", nameEs: "Moderación", href: "/hub/moderation", icon: Shield, badge: true },
+  { name: "Subscriptions", nameEs: "Suscripciones", href: "/hub/subscriptions", icon: CreditCard },
   { name: "Notifications", nameEs: "Notificaciones", href: "/hub/notifications", icon: Bell },
   { name: "Analytics", nameEs: "Analytics", href: "/hub/analytics", icon: BarChart3 },
   { name: "Settings", nameEs: "Configuración", href: "/hub/settings", icon: Settings },

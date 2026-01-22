@@ -17,3 +17,18 @@ verify_jwt = false
 
 [functions.send-early-arrival-request]
 verify_jwt = false
+
+[functions.create-stripe-checkout]
+verify_jwt = true
+
+[functions.stripe-webhook]
+verify_jwt = false
+
+[functions.create-portal-link]
+verify_jwt = true
+
+[functions.broadcast-availability]
+verify_jwt = true
+
+[functions.verify-stripe-session]
+verify_jwt = true
