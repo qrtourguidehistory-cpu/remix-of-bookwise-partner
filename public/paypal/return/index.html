@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta charset="UTF-8">
+  <title>Redirigiendo a MiTurnow...</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      margin: 0;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      text-align: center;
+      padding: 20px;
+    }
+    .container {
+      max-width: 400px;
+    }
+    .spinner {
+      border: 4px solid rgba(255,255,255,0.3);
+      border-top: 4px solid white;
+      border-radius: 50%;
+      width: 40px;
+      height: 40px;
+      animation: spin 1s linear infinite;
+      margin: 0 auto 20px;
+    }
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="spinner"></div>
+    <p>Redirigiendo a MiTurnow...</p>
+  </div>
+  <script>
+    (function() {
+      // Capturar todos los parámetros de PayPal
+      const params = new URLSearchParams(window.location.search);
+      
+      // PayPal puede enviar: token, subscription_id, ba_token, PayerID, order_id, etc.
+      // Preservar todos los parámetros originales
+      const allParams = new URLSearchParams();
+      
+      // Copiar todos los parámetros existentes
+      for (const [key, value] of params.entries()) {
+        allParams.set(key, value);
+      }
+      
+      // Añadir parámetros de identificación si no están
+      if (!allParams.has('status')) {
+        allParams.set('status', 'success');
+      }
+      
+      // Determinar tipo: PayPal puede enviar subscription_id, ba_token, token, etc.
+      // Si hay subscription_id o ba_token, es una suscripción
+      if (!allParams.has('type')) {
+        const hasSubscriptionId = allParams.has('subscription_id');
+        const hasBaToken = allParams.has('ba_token') || allParams.has('BA_TOKEN');
+        const hasToken = allParams.has('token');
+        // Si tiene subscription_id o ba_token, es suscripción; si solo tiene token y order_id, es checkout
+        allParams.set('type', (hasSubscriptionId || hasBaToken) ? 'subscription' : 'checkout');
+      }
+      
+      const finalParams = '?' + allParams.toString();
+      const deepLink = "com.miturnow.partner://paypal/success" + finalParams;
+      
+      console.log('[PayPal Return] Deep link:', deepLink);
+      
+      // 1️⃣ Intentar abrir la app inmediatamente
+      window.location.href = deepLink;
+      
+      // 2️⃣ Fallback: si después de 1.5s no se abrió la app, redirigir a Play Store
+      setTimeout(function() {
+        // Si todavía estamos aquí, la app no se abrió
+        console.log('[PayPal Return] App no detectada, redirigiendo a Play Store');
+        window.location.href = "https://play.google.com/store/apps/details?id=com.miturnow.partner";
+      }, 1500);
+    })();
+  </script>
+</body>
+</html>
+

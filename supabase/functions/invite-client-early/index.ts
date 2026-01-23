@@ -29,7 +29,6 @@ serve(async (req) => {
       throw new Error('Missing required parameters');
     }
 
-    console.log(`[invite-client-early] Processing appointment ${appointmentId}`);
 
     const { data: functionResult, error: functionError } = await supabase.rpc('create_early_arrival_request', {
       p_appointment_id: appointmentId,
@@ -83,7 +82,6 @@ serve(async (req) => {
         ? `Hola ${clientName}! El establecimiento está disponible antes de lo previsto. ¿Puedes asistir ahora?`
         : `El establecimiento está disponible antes de lo previsto. ¿Puedes asistir ahora?`;
 
-      console.log(`[invite-client-early] Sending SMS to ${clientPhone}`);
 
       const smsFunctionUrl = `${supabaseUrl}/functions/v1/send-sms-reminder`;
       await fetch(smsFunctionUrl, {

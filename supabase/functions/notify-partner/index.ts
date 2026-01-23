@@ -69,7 +69,6 @@ serve(async (req: Request) => {
       throw new Error(`Failed to insert notification: ${insertError.message}`);
     }
 
-    console.log(`[Partner Notification] Created notification ${notification.id} for user ${data.user_id}`);
 
     // Obtener push token del partner (owner)
     const { data: profile } = await supabase
@@ -112,7 +111,6 @@ serve(async (req: Request) => {
           });
 
           if (fcmResponse.ok) {
-            console.log(`[Partner Notification] FCM sent successfully to ${data.user_id}`);
           } else {
             console.error(`[Partner Notification] FCM failed:`, await fcmResponse.text());
           }

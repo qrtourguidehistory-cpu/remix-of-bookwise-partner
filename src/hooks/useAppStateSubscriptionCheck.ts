@@ -27,14 +27,12 @@ export function useAppStateSubscriptionCheck() {
   const checkPendingSubscription = async () => {
     // Evitar múltiples verificaciones simultáneas
     if (checkingRef.current) {
-      console.log('[AppStateCheck] ⏸️ Already checking, skipping...');
       return;
     }
 
     // Throttle: máximo una verificación cada 5 segundos
     const now = Date.now();
     if (now - lastCheckRef.current < 5000) {
-      console.log('[AppStateCheck] ⏸️ Throttled, skipping...');
       return;
     }
 
@@ -51,13 +49,11 @@ export function useAppStateSubscriptionCheck() {
 
       // Verificar que el business_id coincida
       if (pending.business_id !== profile?.business_id) {
-        console.log('[AppStateCheck] ⚠️ Pending subscription for different business_id, clearing');
         await clearPendingSubscription();
         checkingRef.current = false;
         return;
       }
 
-      console.log('[AppStateCheck] 🔍 Found pending subscription, verifying in database...');
 
       // Verificar directamente en la base de datos (fuente de verdad)
       const { data: subscriptionData, error } = await supabase
@@ -74,7 +70,6 @@ export function useAppStateSubscriptionCheck() {
 
       // Si la suscripción está activa o en trial, limpiar pendiente y actualizar
       if (subscriptionData && (subscriptionData.status === 'active' || subscriptionData.status === 'trialing')) {
-        console.log('[AppStateCheck] ✅ Subscription is active! Status:', subscriptionData.status);
         
         // Limpiar estado pendiente
         await clearPendingSubscription();
@@ -91,7 +86,6 @@ export function useAppStateSubscriptionCheck() {
           variant: "default",
         });
       } else {
-        console.log('[AppStateCheck] ⏳ Subscription not active yet. Status:', subscriptionData?.status || 'none');
         // No limpiar pendiente aún, seguir verificando
       }
     } catch (error) {
@@ -112,7 +106,6 @@ export function useAppStateSubscriptionCheck() {
     // Escuchar cuando la app vuelve al foreground
     const appStateListener = App.addListener('appStateChange', ({ isActive }) => {
       if (isActive) {
-        console.log('[AppStateCheck] 📱 App returned to foreground, checking subscription...');
         checkPendingSubscription();
       }
     });
@@ -135,7 +128,6 @@ export function useAppStateSubscriptionCheck() {
     }
 
     const handleFocus = () => {
-      console.log('[AppStateCheck] 🌐 Window focused, checking subscription...');
       checkPendingSubscription();
     };
 

@@ -112,7 +112,6 @@ serve(async (req) => {
     // Enviar push notifications (opcional - llamar a la función de push notification)
     // Por ahora solo creamos las notificaciones en la base de datos
 
-    console.log(`Broadcast sent to ${clients.length} clients for business ${business_id}`);
 
     return new Response(
       JSON.stringify({

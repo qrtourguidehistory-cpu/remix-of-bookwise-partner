@@ -26,7 +26,6 @@ export function usePaymentDeepLink() {
   // Función de polling inteligente
   const pollSubscriptionStatus = useCallback(async (maxAttempts: number = 3) => {
     if (pollingAttemptsRef.current >= maxAttempts) {
-      console.log('[PaymentDeepLink] Max polling attempts reached');
       if (toastIdRef.current) {
         toast({
           id: toastIdRef.current,
@@ -41,7 +40,6 @@ export function usePaymentDeepLink() {
     }
 
     pollingAttemptsRef.current++;
-    console.log(`[PaymentDeepLink] Polling attempt ${pollingAttemptsRef.current}/${maxAttempts}`);
 
     try {
       // Invalidar todas las queries relacionadas con suscripción
@@ -63,7 +61,6 @@ export function usePaymentDeepLink() {
 
         // Si el estado es 'active' o 'trialing', detener el polling y limpiar caché
         if (newStatus === 'active' || newStatus === 'trialing') {
-          console.log('[PaymentDeepLink] Subscription is now active!', newStatus);
           
           // Limpiar caché al final: invalidar queries y refetch forzado
           queryClient.invalidateQueries({ queryKey: ['subscription'] });
@@ -126,10 +123,8 @@ export function usePaymentDeepLink() {
       }
       pollingAttemptsRef.current = 0;
 
-      console.log('[PaymentDeepLink] Payment status detected:', status, 'session_id:', sessionId);
 
       // Pago exitoso: verificar activamente primero, luego hacer polling
-      console.log('[PaymentDeepLink] Payment successful, verifying session...');
       
       // Mostrar toast inicial
       const initialToast = toast({
@@ -148,18 +143,15 @@ export function usePaymentDeepLink() {
       // Si tenemos session_id, llamar a verify-stripe-session para verificación activa
       if (sessionId) {
         try {
-          console.log('[PaymentDeepLink] 🚀 Calling verify-stripe-session with session_id:', sessionId);
           const { data: verifyData, error: verifyError } = await supabase.functions.invoke('verify-stripe-session', {
             body: { session_id: sessionId }
           });
 
-          console.log('[PaymentDeepLink] 📦 verify-stripe-session response:', { verifyData, verifyError });
 
           if (verifyError) {
             console.error('[PaymentDeepLink] ❌ Error verifying session:', verifyError);
             // Continuar con polling como fallback
           } else if (verifyData?.success) {
-            console.log('[PaymentDeepLink] ✅ Session verified successfully:', verifyData);
             
             // Esperar un momento para que la BD se actualice
             await new Promise(resolve => setTimeout(resolve, 1000));
@@ -177,10 +169,8 @@ export function usePaymentDeepLink() {
                 .eq('business_id', profile.business_id)
                 .maybeSingle();
 
-              console.log('[PaymentDeepLink] 📊 Subscription data after verification:', { subscriptionData, subError });
 
               if (subscriptionData?.status === 'active' || subscriptionData?.status === 'trialing') {
-                console.log('[PaymentDeepLink] 🎉 Subscription activated via verify-stripe-session! Status:', subscriptionData.status);
                 if (toastIdRef.current) {
                   toast({
                     id: toastIdRef.current,
@@ -193,22 +183,18 @@ export function usePaymentDeepLink() {
                 }
                 return; // Éxito, no hacer polling
               } else {
-                console.log('[PaymentDeepLink] ⚠️ Subscription not active yet. Status:', subscriptionData?.status);
               }
             }
           } else {
-            console.log('[PaymentDeepLink] ⚠️ verify-stripe-session returned success=false:', verifyData);
           }
         } catch (error) {
           console.error('[PaymentDeepLink] ❌ Exception calling verify-stripe-session:', error);
           // Continuar con polling como fallback
         }
       } else {
-        console.log('[PaymentDeepLink] ⚠️ No session_id available, skipping active verification');
       }
 
       // Si no tenemos session_id o la verificación falló, hacer polling como fallback
-      console.log('[PaymentDeepLink] Starting polling as fallback...');
       await pollSubscriptionStatus(3);
     } catch (error) {
       console.error('[PaymentDeepLink] Error handling payment success:', error);
@@ -223,7 +209,6 @@ export function usePaymentDeepLink() {
     if (!isNative) return;
 
     const handleAppUrlOpen = async ({ url }: { url: string }) => {
-      console.log('[PaymentDeepLink] 📱 Native app opened with URL:', url);
 
       try {
         // Limpiar cualquier polling anterior
@@ -234,25 +219,63 @@ export function usePaymentDeepLink() {
         pollingAttemptsRef.current = 0;
 
         // Parsear la URL para extraer parámetros
+        // Soporta: miturnow://subscription?status=success&type=checkout
+        // También: miturnow://admin?status=success&session_id=xxx
         let status: string | null = null;
         let sessionId: string | null = null;
+        let paymentType: string | null = null;
         
         if (url.includes('?')) {
           const queryString = url.split('?')[1];
           const params = new URLSearchParams(queryString);
           status = params.get('status');
           sessionId = params.get('session_id');
+          paymentType = params.get('type');
         }
 
         // Solo procesar si hay un parámetro status
         if (!status) return;
+        
+        // Si es un pago único de PayPal (type=checkout), manejar de forma especial
+        if (paymentType === 'checkout' && status === 'success') {
+          console.log('[PaymentDeepLink] Pago único de PayPal completado');
+          toast({
+            title: language === "es" ? "Pago procesado" : "Payment processed",
+            description: language === "es"
+              ? "Tu pago ha sido procesado correctamente. Actualizando..."
+              : "Your payment has been processed successfully. Updating...",
+            variant: "default",
+          });
+          
+          // Invalidar caché y refrescar suscripción
+          queryClient.invalidateQueries({ queryKey: ['subscription'] });
+          queryClient.invalidateQueries({ queryKey: ['business_subscriptions'] });
+          await refetchSubscription();
+          
+          // Refrescar después de un delay
+          setTimeout(() => {
+            window.location.reload();
+          }, 2000);
+          return;
+        }
+        
+        if (paymentType === 'checkout' && status === 'cancel') {
+          console.log('[PaymentDeepLink] Pago único de PayPal cancelado');
+          toast({
+            title: language === "es" ? "Pago cancelado" : "Payment canceled",
+            description: language === "es"
+              ? "El pago fue cancelado. Puedes intentar nuevamente cuando lo desees."
+              : "The payment was canceled. You can try again whenever you want.",
+            variant: "default",
+          });
+          return;
+        }
 
         // Usar la función helper para manejar el pago exitoso
         if (status === 'success') {
           await handlePaymentSuccess(status, sessionId);
         } else if (status === 'cancel') {
           // Pago cancelado: solo mostrar notificación
-          console.log('[PaymentDeepLink] Payment canceled');
           
           toast({
             title: language === "es" ? "Pago Cancelado" : "Payment Canceled",

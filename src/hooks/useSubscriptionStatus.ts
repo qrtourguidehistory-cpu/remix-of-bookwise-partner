@@ -47,28 +47,10 @@ export function useSubscriptionStatus(): UseSubscriptionStatusResult {
         setStatus('inactive');
         setSubscription(null);
       } else if (!data) {
-        // Si no existe suscripción, crear una automáticamente con estado 'inactive'
-        console.log("No subscription found, creating default subscription...");
-        const { data: newSubscription, error: createError } = await supabase
-          .from("business_subscriptions")
-          .insert({
-            business_id: profile.business_id,
-            owner_id: profile.id,
-            status: 'inactive',
-            subscription_plan: 'monthly',
-            monthly_fee: 9.50,
-          })
-          .select()
-          .single();
-
-        if (createError) {
-          console.error("Error creating default subscription:", createError);
-          setStatus('inactive');
-          setSubscription(null);
-        } else {
-          setSubscription(newSubscription);
-          setStatus(newSubscription.status || 'inactive');
-        }
+        // NO crear suscripción automáticamente - se creará cuando el usuario se suscriba vía PayPal o Stripe
+        // La creación debe hacerse desde Edge Functions con service role (bypass RLS)
+        setStatus('no_subscription');
+        setSubscription(null);
       } else {
         setSubscription(data);
         setStatus(data.status || 'inactive');
@@ -99,7 +81,6 @@ export function useSubscriptionStatus(): UseSubscriptionStatusResult {
           filter: `business_id=eq.${profile.business_id}`,
         },
         (payload) => {
-          console.log('🔄 Subscription status changed via realtime:', payload);
           if (payload.eventType === "DELETE") {
             setSubscription(null);
             setStatus('no_subscription');
@@ -112,7 +93,6 @@ export function useSubscriptionStatus(): UseSubscriptionStatusResult {
         }
       )
       .subscribe((status) => {
-        console.log('📡 Subscription realtime channel status:', status);
       });
 
     return () => {

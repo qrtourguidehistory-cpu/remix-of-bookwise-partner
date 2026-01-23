@@ -23,14 +23,32 @@ export default function Paywall() {
   const [showProfile, setShowProfile] = useState(false);
 
   const handleActivateSubscription = async () => {
+    console.log('[Paywall] 🚀 handleActivateSubscription llamado');
     setProcessing(true);
     try {
+      console.log('[Paywall] 📍 Navegando a /admin/subscription...');
       // Navegar a la página de suscripción que manejará la activación
-      navigate("/admin/subscription");
-    } catch (error) {
-      console.error("Error activating subscription:", error);
+      // Usar replace para evitar que el usuario pueda volver al paywall
+      navigate("/admin/subscription", { replace: true });
+      console.log('[Paywall] ✅ Navegación completada');
+    } catch (error: any) {
+      console.error('[Paywall] ❌ Error activando suscripción:', {
+        error,
+        message: error?.message,
+        stack: error?.stack,
+        name: error?.name,
+      });
+      // Mostrar error al usuario
+      alert(
+        language === "es" 
+          ? "Error al abrir la página de suscripción. Por favor, intenta de nuevo." 
+          : "Error opening subscription page. Please try again."
+      );
     } finally {
-      setProcessing(false);
+      // No resetear processing inmediatamente para dar tiempo a la navegación
+      setTimeout(() => {
+        setProcessing(false);
+      }, 500);
     }
   };
 

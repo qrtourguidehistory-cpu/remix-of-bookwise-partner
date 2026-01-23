@@ -36,7 +36,6 @@ serve(async (req: Request) => {
       throw new Error("Twilio credentials not configured");
     }
 
-    console.log(`Sending SMS to ${to}: ${message.substring(0, 50)}...`);
 
     // Send SMS via Twilio API
     const twilioUrl = `https://api.twilio.com/2010-04-01/Accounts/${TWILIO_ACCOUNT_SID}/Messages.json`;
@@ -62,7 +61,6 @@ serve(async (req: Request) => {
     }
 
     const data = await response.json();
-    console.log("SMS sent successfully:", data.sid);
 
     // Log the SMS in database using central database
     if (appointmentId && businessId) {

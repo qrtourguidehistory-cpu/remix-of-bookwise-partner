@@ -48,7 +48,6 @@ export async function savePendingSubscription(businessId: string, plan: string =
           key: PENDING_TIMESTAMP_KEY,
           value: timestamp.toString(),
         });
-        console.log('[SubscriptionPersistence] 💾 Saved via Preferences plugin');
       } catch (prefError) {
         // Fallback a localStorage si Preferences falla
         console.warn('[SubscriptionPersistence] ⚠️ Preferences plugin failed, using localStorage fallback:', prefError);
@@ -65,7 +64,6 @@ export async function savePendingSubscription(businessId: string, plan: string =
       localStorage.setItem(PENDING_TIMESTAMP_KEY, timestamp.toString());
     }
     
-    console.log('[SubscriptionPersistence] 💾 Saved pending subscription:', { businessId, plan, timestamp });
   } catch (error) {
     // Fallback final: siempre usar localStorage si todo falla
     console.error('[SubscriptionPersistence] ❌ Error saving, using localStorage fallback:', error);
@@ -118,7 +116,6 @@ export async function getPendingSubscription(): Promise<PendingSubscription | nu
       const oneHourAgo = Date.now() - (60 * 60 * 1000);
       
       if (timestampNum < oneHourAgo) {
-        console.log('[SubscriptionPersistence] ⏰ Pending subscription expired, clearing');
         await clearPendingSubscription();
         return null;
       }
@@ -149,7 +146,6 @@ export async function clearPendingSubscription(): Promise<void> {
         await Preferences.remove({ key: PENDING_BUSINESS_ID_KEY });
         await Preferences.remove({ key: PENDING_PLAN_KEY });
         await Preferences.remove({ key: PENDING_TIMESTAMP_KEY });
-        console.log('[SubscriptionPersistence] 🗑️ Cleared via Preferences plugin');
       } catch (prefError) {
         // Fallback a localStorage si Preferences falla
         console.warn('[SubscriptionPersistence] ⚠️ Preferences plugin failed, using localStorage fallback:', prefError);
@@ -165,7 +161,6 @@ export async function clearPendingSubscription(): Promise<void> {
       localStorage.removeItem(PENDING_TIMESTAMP_KEY);
     }
     
-    console.log('[SubscriptionPersistence] 🗑️ Cleared pending subscription');
   } catch (error) {
     // Fallback final: siempre usar localStorage si todo falla
     console.error('[SubscriptionPersistence] ❌ Error clearing, using localStorage fallback:', error);

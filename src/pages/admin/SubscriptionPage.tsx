@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import MobileLayout from "@/components/mobile/MobileLayout";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -14,8 +14,10 @@ import { useSubscriptionStatus } from "@/hooks/useSubscriptionStatus";
 import { savePendingSubscription, clearPendingSubscription } from "@/lib/subscriptionPersistence";
 import { App } from "@capacitor/app";
 import { Capacitor } from "@capacitor/core";
+import { Browser } from "@capacitor/browser";
+import { usePayPalSubscription } from "@/hooks/usePayPalSubscription";
 import { 
-  CreditCard, 
+  CreditCard,
   Calendar, 
   DollarSign, 
   AlertCircle,
@@ -28,10 +30,8 @@ import {
   Shield,
   Settings,
   RefreshCw,
-  FileText,
-  Download,
-  ChevronDown,
-  ChevronUp
+  Info,
+  Check
 } from "lucide-react";
 
 interface BusinessSubscription {
@@ -43,6 +43,7 @@ interface BusinessSubscription {
   monthly_fee: number;
   payment_method: string | null;
   stripe_subscription_id: string | null;
+  paypal_subscription_id: string | null;
   last_payment_date: string | null;
   next_payment_date: string | null;
   payment_due_date: string | null;
@@ -93,6 +94,8 @@ const statusConfig = {
   }
 };
 
+// Componente eliminado - ahora usamos usePayPalSubscription hook
+
 export default function SubscriptionPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -102,18 +105,27 @@ export default function SubscriptionPage() {
   const { subscription: realtimeSubscription } = useSubscriptionStatus(); // Para garantizar realtime
   const [loading, setLoading] = useState(true);
   const [subscription, setSubscription] = useState<BusinessSubscription | null>(null);
-  const [processingPayment, setProcessingPayment] = useState(false);
   const [processingPortal, setProcessingPortal] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [isPaymentInProgress, setIsPaymentInProgress] = useState(false); // Flag para deshabilitar useEffect durante pago
+  const [checkoutLoading, setCheckoutLoading] = useState(false); // Loading para pago único
+  
+  // Hook para manejar suscripciones de PayPal con Capacitor Browser
+  const { createSubscription: createPayPalSubscription, loading: paypalLoading } = usePayPalSubscription();
+
+  // Log cuando el componente se monta
+  useEffect(() => {
+    console.log('[SubscriptionPage] 🚀 Componente montado', {
+      hasProfile: !!profile,
+      business_id: profile?.business_id,
+    });
+  }, []);
   const paymentStatus = searchParams.get('status');
-  const [invoices, setInvoices] = useState<any[]>([]);
-  const [loadingInvoices, setLoadingInvoices] = useState(false);
-  const [showInvoices, setShowInvoices] = useState(false);
 
   // Función fetchSubscription memoizada para evitar dependencias circulares
   const fetchSubscription = useCallback(async () => {
     if (!profile?.business_id) return;
     
-    console.log('[SubscriptionPage] 🔄 Fetching subscription for business_id:', profile.business_id);
     setLoading(true);
     try {
       const { data, error } = await supabase
@@ -122,12 +134,30 @@ export default function SubscriptionPage() {
         .eq("business_id", profile.business_id)
         .maybeSingle();
 
-      if (error && error.code !== 'PGRST116') throw error;
+      if (error && error.code !== 'PGRST116') {
+        console.error("[SubscriptionPage] ❌ Error fetching subscription:", {
+          error,
+          code: error.code,
+          message: error.message,
+        });
+        throw error;
+      }
 
-      console.log('[SubscriptionPage] 📦 Subscription data received:', data);
+      console.log('[SubscriptionPage] ✅ Subscription data:', {
+        hasData: !!data,
+        status: data?.status,
+        id: data?.id,
+      });
       setSubscription(data);
+      setError(null); // Limpiar error si la carga fue exitosa
     } catch (error: any) {
-      console.error("[SubscriptionPage] ❌ Error fetching subscription:", error);
+      console.error("[SubscriptionPage] ❌ Exception en fetchSubscription:", {
+        error,
+        message: error?.message,
+        stack: error?.stack,
+      });
+      setError(error?.message || 'Error al cargar suscripción');
+      setSubscription(null);
       toast({
         title: language === "es" ? "Error" : "Error",
         description: language === "es" 
@@ -146,77 +176,60 @@ export default function SubscriptionPage() {
     }
   }, [profile?.business_id, fetchSubscription]);
 
-  // Cargar recibos cuando hay suscripción
-  const fetchInvoices = useCallback(async () => {
-    if (!subscription?.id || !profile?.business_id) return;
-
-    setLoadingInvoices(true);
-    try {
-      const { data, error } = await supabase
-        .from('subscription_invoices')
-        .select('*')
-        .eq('subscription_id', subscription.id)
-        .order('created_at', { ascending: false })
-        .limit(20);
-
-      if (error) {
-        console.error('[SubscriptionPage] Error fetching invoices:', error);
-      } else {
-        setInvoices(data || []);
-      }
-    } catch (error) {
-      console.error('[SubscriptionPage] Error in fetchInvoices:', error);
-    } finally {
-      setLoadingInvoices(false);
-    }
-  }, [subscription?.id, profile?.business_id]);
-
-  useEffect(() => {
-    if (subscription?.id && showInvoices) {
-      fetchInvoices();
-    }
-  }, [subscription?.id, showInvoices, fetchInvoices]);
-
   // Escuchar cambios de estado de suscripción y refrescar automáticamente
+  // DESHABILITADO durante el proceso de pago para evitar re-renderizado
   useEffect(() => {
-    if (!profile?.business_id) return;
+    if (!profile?.business_id || isPaymentInProgress) return; // NO ejecutar si hay pago en progreso
 
-    const channel = supabase
-      .channel(`subscription-page-${profile.business_id}`)
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'business_subscriptions',
-          filter: `business_id=eq.${profile.business_id}`,
-        },
-        async (payload) => {
-          console.log('[SubscriptionPage] 🔄 Subscription changed via realtime, refreshing...');
-          // Refrescar inmediatamente cuando cambia el estado
-          await fetchSubscription();
-          
-          // Si la suscripción se activó, limpiar estado pendiente
-          if (payload.new && (payload.new as any).status === 'active' || (payload.new as any).status === 'trialing') {
-            await clearPendingSubscription();
+    console.log('[SubscriptionPage] 📡 Configurando realtime subscription');
+
+    try {
+      const channel = supabase
+        .channel(`subscription-page-${profile.business_id}-${Date.now()}`)
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'business_subscriptions',
+            filter: `business_id=eq.${profile.business_id}`,
+          },
+          async (payload) => {
+            // NO procesar si hay pago en progreso
+            if (isPaymentInProgress) {
+              console.log('[SubscriptionPage] ⏸️ Realtime update ignorado - pago en progreso');
+              return;
+            }
+            console.log('[SubscriptionPage] 🔔 Realtime update:', payload.eventType);
+            try {
+              await fetchSubscription();
+              // Si la suscripción se activó, limpiar estado pendiente
+              if (payload.new && ((payload.new as any).status === 'active' || (payload.new as any).status === 'trialing')) {
+                await clearPendingSubscription();
+              }
+            } catch (err) {
+              console.error('[SubscriptionPage] ❌ Error en realtime callback:', err);
+            }
           }
-        }
-      )
-      .subscribe();
+        )
+        .subscribe();
 
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [profile?.business_id, fetchSubscription]);
+      return () => {
+        supabase.removeChannel(channel);
+      };
+    } catch (err: any) {
+      console.error('[SubscriptionPage] ❌ Error configurando realtime:', err);
+    }
+  }, [profile?.business_id, fetchSubscription, isPaymentInProgress]);
 
   // Escuchar cuando la app vuelve al foreground (solo mobile)
+  // DESHABILITADO durante el proceso de pago
   useEffect(() => {
-    if (!Capacitor.isNativePlatform() || !profile?.business_id) return;
+    if (!Capacitor.isNativePlatform() || !profile?.business_id || isPaymentInProgress) return;
 
     const appStateListener = App.addListener('appStateChange', ({ isActive }) => {
-      if (isActive) {
-        console.log('[SubscriptionPage] 📱 App returned to foreground, refreshing subscription...');
-        // Refrescar cuando la app vuelve al foreground
+      if (isActive && !isPaymentInProgress) {
+        // Refrescar cuando la app vuelve al foreground (solo si no hay pago en progreso)
         fetchSubscription();
       }
     });
@@ -224,40 +237,36 @@ export default function SubscriptionPage() {
     return () => {
       appStateListener.then(listener => listener.remove());
     };
-  }, [profile?.business_id, fetchSubscription]);
+  }, [profile?.business_id, fetchSubscription, isPaymentInProgress]);
 
   // También refrescar cuando la ventana vuelve a tener foco (web)
+  // DESHABILITADO durante el proceso de pago
   useEffect(() => {
-    if (Capacitor.isNativePlatform() || !profile?.business_id) return;
+    if (Capacitor.isNativePlatform() || !profile?.business_id || isPaymentInProgress) return;
 
     const handleFocus = () => {
-      console.log('[SubscriptionPage] 🌐 Window focused, refreshing subscription...');
-      fetchSubscription();
+      if (!isPaymentInProgress) {
+        fetchSubscription();
+      }
     };
 
     window.addEventListener('focus', handleFocus);
     return () => {
       window.removeEventListener('focus', handleFocus);
     };
-  }, [profile?.business_id, fetchSubscription]);
+  }, [profile?.business_id, fetchSubscription, isPaymentInProgress]);
 
-  // Manejar el callback de Stripe Checkout después del pago
+  // Manejar el callback de PayPal después del pago
   useEffect(() => {
-    // Validar que window existe (protección SSR)
     if (typeof window === 'undefined') return;
     
     try {
       const urlParams = new URLSearchParams(window.location.search);
-      const status = urlParams.get('status'); // Deep link usa 'status', no 'success'
-      const success = urlParams.get('success'); // Web redirect usa 'success'
+      const status = urlParams.get('status');
       const canceled = urlParams.get('canceled');
-      const sessionId = urlParams.get('session_id');
-      
-      console.log('[SubscriptionPage] 🔍 Checking URL params:', { status, success, canceled, sessionId });
       
       // Manejar cancelación
       if (canceled === 'true' || status === 'cancel') {
-        console.log('[SubscriptionPage] ❌ Payment canceled');
         toast({
           title: language === "es" ? "Cancelado" : "Canceled",
           description: language === "es" 
@@ -265,108 +274,12 @@ export default function SubscriptionPage() {
             : "Payment process was canceled",
           variant: "default",
         });
-        // Limpiar los parámetros de la URL
         window.history.replaceState({}, '', window.location.pathname);
         return;
       }
       
-      // Manejar éxito (tanto desde deep link como desde web)
-      const isSuccess = status === 'success' || success === 'true';
-      
-      if (isSuccess && sessionId) {
-        console.log('[SubscriptionPage] 🎯 Payment success detected with session_id:', sessionId);
-        
-        // Mostrar toast inicial
-        const initialToast = toast({
-          title: language === "es" ? "Actualizando tu cuenta..." : "Updating your account...",
-          description: language === "es" 
-            ? "Verificando tu suscripción Premium..."
-            : "Verifying your Premium subscription...",
-          variant: "default",
-        });
-        
-        // Limpiar los parámetros de la URL
-        window.history.replaceState({}, '', window.location.pathname);
-        
-        // Llamar a verify-stripe-session activamente
-        const verifyPayment = async () => {
-          try {
-            console.log('[SubscriptionPage] 🚀 Calling verify-stripe-session with session_id:', sessionId);
-            const { data: verifyData, error: verifyError } = await supabase.functions.invoke('verify-stripe-session', {
-              body: { session_id: sessionId }
-            });
-
-            console.log('[SubscriptionPage] 📦 verify-stripe-session response:', { verifyData, verifyError });
-
-            if (verifyError) {
-              console.error('[SubscriptionPage] ❌ Error verifying session:', verifyError);
-              toast({
-                title: language === "es" ? "Error" : "Error",
-                description: language === "es"
-                  ? "Error al verificar el pago. Por favor intenta de nuevo."
-                  : "Error verifying payment. Please try again.",
-                variant: "destructive",
-              });
-              // Hacer polling como fallback
-              setTimeout(() => {
-                fetchSubscription();
-              }, 2000);
-              return;
-            }
-
-            if (verifyData?.success && verifyData?.verified) {
-              console.log('[SubscriptionPage] ✅ Session verified successfully');
-              
-              // Esperar un momento para que la BD se actualice
-              await new Promise(resolve => setTimeout(resolve, 1000));
-              
-              // Refrescar suscripción
-              await fetchSubscription();
-              
-              // Verificar estado final
-              const { data: subscriptionData } = await supabase
-                .from('business_subscriptions')
-                .select('status, stripe_subscription_id, stripe_customer_id')
-                .eq('business_id', profile?.business_id)
-                .maybeSingle();
-
-              console.log('[SubscriptionPage] 📊 Final subscription status:', subscriptionData?.status);
-
-              if (subscriptionData?.status === 'active' || subscriptionData?.status === 'trialing') {
-                toast({
-                  title: language === "es" ? "¡Pago Confirmado!" : "Payment Confirmed!",
-                  description: language === "es"
-                    ? "Tu suscripción Premium ya está activa."
-                    : "Your Premium subscription is now active.",
-                  variant: "default",
-                });
-              } else {
-                // Si aún no está activa, hacer polling
-                console.log('[SubscriptionPage] ⚠️ Subscription not active yet, starting polling...');
-                setTimeout(() => {
-                  fetchSubscription();
-                }, 2000);
-              }
-            } else {
-              console.log('[SubscriptionPage] ⚠️ Verification returned success=false');
-              // Hacer polling como fallback
-              setTimeout(() => {
-                fetchSubscription();
-              }, 2000);
-            }
-          } catch (error) {
-            console.error('[SubscriptionPage] ❌ Exception verifying session:', error);
-            // Hacer polling como fallback
-            setTimeout(() => {
-              fetchSubscription();
-            }, 2000);
-          }
-        };
-
-        verifyPayment();
-      } else if (isSuccess) {
-        // Éxito pero sin session_id - solo hacer polling
-        console.log('[SubscriptionPage] ⚠️ Success detected but no session_id, doing polling only');
+      // Manejar éxito
+      if (status === 'success') {
         toast({
           title: language === "es" ? "¡Pago procesado!" : "Payment processed!",
           description: language === "es" 
@@ -386,107 +299,65 @@ export default function SubscriptionPage() {
     }
   }, [profile?.business_id, language, toast, fetchSubscription]);
 
-  const handleStripeCheckout = async () => {
-    console.log('[SubscriptionPage] 🚀 Iniciando proceso de suscripción...');
-    
-    if (!profile?.business_id) {
-      console.error('[SubscriptionPage] ❌ No business_id available');
+  // Handlers antiguos eliminados - ahora usamos usePayPalSubscription hook
+
+  // Handler para pago único con PayPal Checkout
+  const handleOneTimePayment = async () => {
+    if (!profile?.id) {
       toast({
         title: language === "es" ? "Error" : "Error",
-        description: language === "es" 
-          ? "No se encontró el ID del negocio. Por favor, inicia sesión nuevamente." 
-          : "Business ID not found. Please log in again.",
+        description: language === "es"
+          ? "Información de usuario no disponible"
+          : "User information not available",
         variant: "destructive",
       });
       return;
     }
 
-    console.log('[SubscriptionPage] ✅ business_id validado:', profile.business_id);
-    setProcessingPayment(true);
-    
+    setCheckoutLoading(true);
     try {
-      // Si no hay suscripción, crear una primero
-      let subscriptionId = subscription?.id;
-      if (!subscriptionId) {
-        const { data: newSubscription, error: createError } = await supabase
-          .from("business_subscriptions")
-          .insert({
-            business_id: profile.business_id,
-            owner_id: profile.id,
-            status: 'inactive',
-            subscription_plan: 'monthly',
-            monthly_fee: 9.50,
-          })
-          .select()
-          .single();
+      console.log('[SubscriptionPage] Creando pago único con PayPal...');
 
-        if (createError) throw createError;
-        if (!newSubscription) throw new Error("No se pudo crear la suscripción");
-        
-        subscriptionId = newSubscription.id;
-        setSubscription(newSubscription);
-      }
-
-      const requestBody = {
-        business_id: profile.business_id,
-        subscription_id: subscriptionId,
-      };
-
-      console.log('[SubscriptionPage] 📤 Calling create-stripe-checkout with:', requestBody);
-      
-      const { data, error } = await supabase.functions.invoke('create-stripe-checkout', {
-        body: requestBody
+      // Llamar a la Edge Function para crear el checkout
+      const { data, error } = await supabase.functions.invoke('create-paypal-checkout', {
+        body: {
+          user_id: profile.id,
+          amount: 9.50, // Monto fijo de prueba
+        }
       });
 
-      console.log('[SubscriptionPage] 📥 Response from create-stripe-checkout:', { data, error });
-
       if (error) {
-        console.error('[SubscriptionPage] ❌ Error from function:', error);
-        throw new Error(error.message || 'Error al invocar la función');
+        throw new Error(error.message || 'Error al crear checkout en PayPal');
       }
 
-      if (data && data.success === false) {
-        console.error('[SubscriptionPage] ❌ Function returned success=false:', data);
-        throw new Error(data.error || 'Error desconocido al crear la sesión de pago');
+      if (!data?.approval_url) {
+        throw new Error('No se recibió la URL de aprobación de PayPal');
       }
 
-      if (!data || !data.checkout_url) {
-        console.error('[SubscriptionPage] ❌ No checkout_url in response:', data);
-        throw new Error('No se recibió respuesta del servidor');
-      }
+      console.log('[SubscriptionPage] Abriendo PayPal Checkout...');
 
-      console.log('[SubscriptionPage] ✅ Redirecting to checkout URL:', data.checkout_url);
-      
-      // IMPORTANTE: Guardar estado pendiente ANTES de abrir Stripe
-      // El deep link es solo UX, la activación depende del webhook
-      await savePendingSubscription(profile.business_id, subscription?.subscription_plan || 'monthly');
-      console.log('[SubscriptionPage] 💾 Saved pending subscription state');
-      
-      window.location.href = data.checkout_url;
+      // Abrir PayPal en el navegador
+      if (Capacitor.isNativePlatform()) {
+        await Browser.open({
+          url: data.approval_url,
+          presentationStyle: 'fullscreen',
+          windowName: '_self',
+        });
+      } else {
+        // Web: redirigir directamente
+        window.location.href = data.approval_url;
+      }
     } catch (error: any) {
-      console.error("Error al crear sesión Stripe Checkout:", error);
-      
-      let errorMessage = language === "es" 
-        ? "No se pudo procesar el pago. Por favor, intenta de nuevo." 
-        : "Could not process payment. Please try again.";
-
-      if (error?.message) {
-        if (error.message.includes('Stripe secret key not configured')) {
-          errorMessage = language === "es" 
-            ? "Las credenciales de Stripe no están configuradas. Por favor, contacta al soporte." 
-            : "Stripe credentials are not configured. Please contact support.";
-        } else {
-          errorMessage = error.message;
-        }
-      }
-
+      console.error('[SubscriptionPage] Error en pago único:', error);
       toast({
         title: language === "es" ? "Error" : "Error",
-        description: errorMessage,
+        description: error?.message || (language === "es"
+          ? "Error al procesar el pago"
+          : "Error processing payment"),
         variant: "destructive",
       });
     } finally {
-      setProcessingPayment(false);
+      setCheckoutLoading(false);
     }
   };
 
@@ -518,7 +389,7 @@ export default function SubscriptionPage() {
 
       window.location.href = data.portal_url;
     } catch (error: any) {
-      console.error("Error al crear portal de Stripe:", error);
+      console.error("Error al crear portal de gestión:", error);
       
       toast({
         title: language === "es" ? "Error" : "Error",
@@ -548,7 +419,22 @@ export default function SubscriptionPage() {
      subscription.status === 'suspended' || 
      (subscription.status === 'trialing' && subscription.payment_due_date && new Date(subscription.payment_due_date) < new Date()));
 
-  const needsSetup = !subscription || !subscription.stripe_subscription_id;
+  // Mostrar botones si no hay suscripción activa
+  // El botón debe aparecer para todos los usuarios que no tengan suscripción activa
+  const needsSetup = !subscription || subscription.status !== 'active';
+  
+  // Determinar si debemos mostrar el formulario de pago
+  // Mostrar formulario si: no hay suscripción activa, hay pago pendiente, o está cancelada
+  const shouldShowPaymentForm = needsSetup || hasPendingPayment || subscription?.status === 'cancelled';
+  
+  console.log('[SubscriptionPage] 🔍 Estado de renderizado:', {
+    hasSubscription: !!subscription,
+    status: subscription?.status,
+    hasPaypalId: !!subscription?.paypal_subscription_id,
+    hasPendingPayment,
+    needsSetup,
+    shouldShowPaymentForm
+  });
 
   // Pantalla de éxito si status=success
   if (paymentStatus === 'success') {
@@ -569,6 +455,27 @@ export default function SubscriptionPage() {
               ? "Tu suscripción Premium ya está activa. Por favor, cierra esta pestaña del navegador y vuelve a la aplicación Mi Turnow para continuar."
               : "Your Premium subscription is now active. Please close this browser tab and return to the Mi Turnow app to continue."}
           </p>
+        </div>
+      </MobileLayout>
+    );
+  }
+
+  // Mostrar error si hay uno crítico
+  if (error && !loading) {
+    return (
+      <MobileLayout>
+        <div className="flex flex-col items-center justify-center min-h-[calc(100vh-var(--bottom-nav-height))] p-6 text-center">
+          <AlertCircle className="h-12 w-12 text-destructive mb-4" />
+          <h2 className="text-xl font-semibold mb-2">
+            {language === "es" ? "Error" : "Error"}
+          </h2>
+          <p className="text-muted-foreground mb-4">{error}</p>
+          <Button onClick={() => {
+            setError(null);
+            fetchSubscription();
+          }}>
+            {language === "es" ? "Reintentar" : "Retry"}
+          </Button>
         </div>
       </MobileLayout>
     );
@@ -684,14 +591,14 @@ export default function SubscriptionPage() {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            {subscription?.stripe_subscription_id ? (
+            {subscription?.status === 'active' && subscription?.paypal_subscription_id && !hasPendingPayment ? (
               <div className="space-y-3">
                 <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
                   <div className="p-2 bg-white rounded-lg shadow-sm">
-                    <CreditCard className="h-5 w-5 text-primary" />
+                    <CreditCard className="h-5 w-5 text-blue-600" />
                   </div>
                   <div className="flex-1">
-                    <p className="font-medium">Stripe</p>
+                    <p className="font-medium">PayPal</p>
                     <p className="text-xs text-muted-foreground">
                       {language === "es" ? "Método de pago configurado" : "Payment method configured"}
                     </p>
@@ -702,61 +609,118 @@ export default function SubscriptionPage() {
                 </div>
               </div>
             ) : (
-              <p className="text-sm text-muted-foreground">
-                {language === "es" 
-                  ? "Configura tu método de pago para activar tu suscripción."
-                  : "Set up your payment method to activate your subscription."}
-              </p>
+              <div className="space-y-4">
+                <p className="text-sm text-muted-foreground">
+                  {subscription?.status === 'cancelled'
+                    ? (language === "es" 
+                        ? "Tu suscripción está cancelada. Haz clic en el botón para reactivarla con PayPal."
+                        : "Your subscription is cancelled. Click the button to reactivate it with PayPal.")
+                    : hasPendingPayment 
+                    ? (language === "es" 
+                        ? "Actualiza tu método de pago para reactivar tu suscripción."
+                        : "Update your payment method to reactivate your subscription.")
+                    : (language === "es" 
+                        ? "Haz clic en el botón para activar tu suscripción con PayPal."
+                        : "Click the button to activate your subscription with PayPal.")}
+                </p>
+                {/* Botón de PayPal usando Capacitor Browser */}
+                <Button
+                  onClick={async () => {
+                    if (!profile?.business_id || !profile?.id) {
+                      toast({
+                        title: language === "es" ? "Error" : "Error",
+                        description: language === "es"
+                          ? "Información de usuario no disponible"
+                          : "User information not available",
+                        variant: "destructive",
+                      });
+                      return;
+                    }
+
+                    setIsPaymentInProgress(true);
+                    const result = await createPayPalSubscription(
+                      profile.business_id,
+                      profile.id,
+                      subscription?.id
+                    );
+
+                    if (!result.success) {
+                      setIsPaymentInProgress(false);
+                    }
+                    // Si es exitoso, el hook manejará el deep link y cerrará el browser
+                  }}
+                  disabled={paypalLoading || isPaymentInProgress}
+                  className="w-full h-12 rounded-xl shadow-sm font-semibold text-base"
+                  size="lg"
+                >
+                  {paypalLoading || isPaymentInProgress ? (
+                    <>
+                      <Loader2 className="h-5 w-5 mr-2 animate-spin" />
+                      {language === "es" ? "Procesando..." : "Processing..."}
+                    </>
+                  ) : (
+                    <>
+                      <CreditCard className="h-5 w-5 mr-2" />
+                      {language === "es" ? "Suscribirse con PayPal" : "Subscribe with PayPal"}
+                    </>
+                  )}
+                </Button>
+                {/* Botón de Pago Único */}
+                <div className="mt-3">
+                  <Button
+                    onClick={handleOneTimePayment}
+                    disabled={checkoutLoading || isPaymentInProgress}
+                    variant="outline"
+                    className="w-full h-12 rounded-xl shadow-sm font-semibold text-base bg-white hover:bg-gray-50 active:bg-gray-100 border border-gray-200 transition-colors duration-200"
+                    size="lg"
+                  >
+                    {checkoutLoading ? (
+                      <>
+                        <Loader2 className="h-5 w-5 mr-2 animate-spin" />
+                        {language === "es" ? "Procesando..." : "Processing..."}
+                      </>
+                    ) : (
+                      <>
+                        <CreditCard className="h-5 w-5 mr-2" />
+                        {language === "es" ? "Pagar con Tarjeta Crédito o Débito" : "Pay with Credit or Debit Card"}
+                      </>
+                    )}
+                  </Button>
+                  <p className="text-xs text-gray-500 text-center mt-2">
+                    {language === "es" ? "Powered by PayPal" : "Powered by PayPal"}
+                  </p>
+                  {/* Información sobre cómo pagar */}
+                  <div className="mt-4 p-4 bg-gray-50 rounded-lg border border-gray-100">
+                    <div className="flex items-start gap-2 mb-3">
+                      <Info className="h-4 w-4 text-gray-600 mt-0.5 flex-shrink-0" />
+                      <h4 className="text-sm font-semibold text-gray-800">
+                        {language === "es" ? "¿Cómo pagar directo con tu tarjeta?" : "How to pay directly with your card?"}
+                      </h4>
+                    </div>
+                    <ul className="space-y-2 text-xs text-gray-600">
+                      <li className="flex items-start gap-2">
+                        <Check className="h-3.5 w-3.5 text-green-600 mt-0.5 flex-shrink-0" />
+                        <span>{language === "es" ? "Haz clic en el botón 'Pagar con Tarjeta Crédito o Débito' de arriba." : "Click the 'Pay with Credit or Debit Card' button above."}</span>
+                      </li>
+                      <li className="flex items-start gap-2">
+                        <Check className="h-3.5 w-3.5 text-green-600 mt-0.5 flex-shrink-0" />
+                        <span>{language === "es" ? "Selecciona 'Abrir cuenta' o 'Pagar como invitado'." : "Select 'Open account' or 'Pay as guest'."}</span>
+                      </li>
+                      <li className="flex items-start gap-2">
+                        <Check className="h-3.5 w-3.5 text-green-600 mt-0.5 flex-shrink-0" />
+                        <span>{language === "es" ? "Ingresa los datos de tu tarjeta y sigue los pasos (no es obligatorio mantener la cuenta de PayPal al finalizar)." : "Enter your card details and follow the steps (you don't need to keep the PayPal account after completing)."}</span>
+                      </li>
+                    </ul>
+                  </div>
+                </div>
+              </div>
             )}
           </CardContent>
         </Card>
 
         {/* Botones de acción */}
         <div className="space-y-3">
-          {(needsSetup || !subscription) && (
-            <Button 
-              onClick={handleStripeCheckout}
-              disabled={processingPayment}
-              className="w-full h-12 rounded-xl shadow-md font-semibold text-base"
-              size="lg"
-            >
-              {processingPayment ? (
-                <>
-                  <Loader2 className="h-5 w-5 mr-2 animate-spin" />
-                  {language === "es" ? "Procesando..." : "Processing..."}
-                </>
-              ) : (
-                <>
-                  <CreditCard className="h-5 w-5 mr-2" />
-                  {language === "es" ? "Activar Suscripción" : "Activate Subscription"}
-                </>
-              )}
-            </Button>
-          )}
-
-          {hasPendingPayment && !needsSetup && (
-            <Button 
-              onClick={handleStripeCheckout}
-              disabled={processingPayment}
-              variant="destructive"
-              className="w-full h-12 rounded-xl shadow-md font-semibold text-base"
-              size="lg"
-            >
-              {processingPayment ? (
-                <>
-                  <Loader2 className="h-5 w-5 mr-2 animate-spin" />
-                  {language === "es" ? "Procesando..." : "Processing..."}
-                </>
-              ) : (
-                <>
-                  <RefreshCw className="h-5 w-5 mr-2" />
-                  {language === "es" ? "Reintentar Pago" : "Retry Payment"}
-                </>
-              )}
-            </Button>
-          )}
-
-          {subscription?.status === 'active' && subscription.stripe_subscription_id && (
+          {subscription?.status === 'active' && subscription.paypal_subscription_id && (
             <Button 
               onClick={handleManageSubscription}
               disabled={processingPortal}
@@ -778,108 +742,6 @@ export default function SubscriptionPage() {
             </Button>
           )}
         </div>
-
-        {/* Historial de Recibos */}
-        {subscription?.id && (
-          <Card className="shadow-md border-0">
-            <CardHeader>
-              <Button
-                variant="ghost"
-                onClick={() => setShowInvoices(!showInvoices)}
-                className="w-full justify-between p-0 h-auto"
-              >
-                <CardTitle className="text-lg font-semibold flex items-center gap-2">
-                  <FileText className="h-5 w-5" />
-                  {language === "es" ? "Recibos" : "Invoices"}
-                </CardTitle>
-                {showInvoices ? (
-                  <ChevronUp className="h-5 w-5" />
-                ) : (
-                  <ChevronDown className="h-5 w-5" />
-                )}
-              </Button>
-              <CardDescription className="text-sm">
-                {language === "es" 
-                  ? "Historial de pagos de tu suscripción"
-                  : "Payment history for your subscription"}
-              </CardDescription>
-            </CardHeader>
-            {showInvoices && (
-              <CardContent>
-                {loadingInvoices ? (
-                  <div className="flex items-center justify-center py-8">
-                    <Loader2 className="h-6 w-6 animate-spin text-primary" />
-                  </div>
-                ) : invoices.length === 0 ? (
-                  <div className="text-center py-8 text-muted-foreground">
-                    <FileText className="h-12 w-12 mx-auto mb-3 opacity-50" />
-                    <p className="text-sm">
-                      {language === "es" 
-                        ? "No hay recibos disponibles aún"
-                        : "No invoices available yet"}
-                    </p>
-                  </div>
-                ) : (
-                  <div className="space-y-3">
-                    {invoices.map((invoice) => (
-                      <div
-                        key={invoice.id}
-                        className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-gray-200"
-                      >
-                        <div className="flex-1">
-                          <div className="flex items-center gap-2 mb-1">
-                            <span className="font-semibold text-sm">
-                              {invoice.amount.toFixed(2)} {invoice.currency?.toUpperCase() || 'USD'}
-                            </span>
-                            <Badge
-                              variant={
-                                invoice.status === 'paid'
-                                  ? 'default'
-                                  : invoice.status === 'pending'
-                                  ? 'secondary'
-                                  : 'destructive'
-                              }
-                              className="text-xs"
-                            >
-                              {invoice.status === 'paid'
-                                ? language === "es" ? "Pagado" : "Paid"
-                                : invoice.status === 'pending'
-                                ? language === "es" ? "Pendiente" : "Pending"
-                                : language === "es" ? "Fallido" : "Failed"}
-                            </Badge>
-                          </div>
-                          <div className="text-xs text-muted-foreground">
-                            {invoice.period_start && invoice.period_end && (
-                              <span>
-                                {format(new Date(invoice.period_start), "dd/MM/yyyy")} -{" "}
-                                {format(new Date(invoice.period_end), "dd/MM/yyyy")}
-                              </span>
-                            )}
-                            {!invoice.period_start && invoice.created_at && (
-                              <span>
-                                {format(new Date(invoice.created_at), "dd/MM/yyyy")}
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                        {invoice.invoice_pdf_url && (
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => window.open(invoice.invoice_pdf_url, '_blank')}
-                            className="ml-2"
-                          >
-                            <Download className="h-4 w-4" />
-                          </Button>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </CardContent>
-            )}
-          </Card>
-        )}
 
         {/* Información adicional para período de prueba */}
         {subscription?.status === 'trialing' && (

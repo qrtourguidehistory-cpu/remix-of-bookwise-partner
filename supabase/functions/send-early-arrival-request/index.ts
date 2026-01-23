@@ -29,7 +29,6 @@ serve(async (req) => {
       throw new Error('Missing required parameters');
     }
 
-    console.log(`[send-early-arrival-request] Processing request ${requestId}`);
 
     const { data: request, error: requestError } = await supabase
       .from('appointment_requests')
@@ -84,7 +83,6 @@ serve(async (req) => {
         ? `Hola ${clientName}! El establecimiento indica que puedes asistir antes de tu hora programada. ¿Puedes asistir ahora?`
         : `El establecimiento indica que puedes asistir antes de tu hora programada. ¿Puedes asistir ahora?`;
 
-      console.log(`[send-early-arrival-request] Sending SMS to ${clientPhone}`);
 
       const smsFunctionUrl = `${supabaseUrl}/functions/v1/send-sms-reminder`;
       await fetch(smsFunctionUrl, {
@@ -126,7 +124,6 @@ serve(async (req) => {
           },
         });
 
-      console.log(`[send-early-arrival-request] Notification created for user ${clientUserId}`);
     }
 
     return new Response(

@@ -31,7 +31,6 @@ serve(async (req) => {
       throw new Error('Missing required parameters');
     }
 
-    console.log(`[notify-next-client] Processing appointment ${appointmentId}`);
 
     const { data: nextAppointment, error: queryError } = await supabase
       .from('appointments')
@@ -86,7 +85,6 @@ serve(async (req) => {
       ? `Hola ${clientName}! Tu cita es la siguiente. Por favor acércate al establecimiento.`
       : `Tu cita es la siguiente. Por favor acércate al establecimiento.`;
 
-    console.log(`[notify-next-client] Sending SMS to ${clientPhone}`);
 
     const smsFunctionUrl = `${supabaseUrl}/functions/v1/send-sms-reminder`;
     const smsResponse = await fetch(smsFunctionUrl, {
@@ -110,7 +108,6 @@ serve(async (req) => {
     }
 
     const smsResult = await smsResponse.json();
-    console.log(`[notify-next-client] SMS sent: ${smsResult.messageSid}`);
 
     await supabase
       .from('appointment_notifications')

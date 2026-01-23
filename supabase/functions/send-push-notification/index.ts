@@ -123,19 +123,11 @@ serve(async (req: Request) => {
     // Extract payload: handle both direct calls and webhook/trigger calls
     const record = requestBody.record || requestBody;
     
-    // 🔍 DEBUG: Log completo del cuerpo recibido para auditoría
-    console.log("📥 Cuerpo recibido:", JSON.stringify(requestBody, null, 2));
-    console.log("📥 Record extraído:", JSON.stringify(record, null, 2));
-    
     // Detectar rol de forma ultra-robusta
     const detectedRole = detectRole(requestBody, record);
     const roleKey = detectedRole === "partner" ? "partner" : "client";
     const secretName = SECRETS[roleKey];
     const appName = APP_NAMES[roleKey];
-    
-    console.log(`🔔 Rol detectado: "${detectedRole}" -> RoleKey: "${roleKey}"`);
-    console.log(`🔐 Secreto seleccionado: ${secretName}`);
-    console.log(`📱 App Firebase seleccionada: ${appName}`);
     
     const targetUserId = record.user_id || record.userId || record.clientId;
     const finalTitle = record.title || "Actualización de Cita";
@@ -189,7 +181,6 @@ serve(async (req: Request) => {
 
       if (devicesRes.ok) {
         devices = await devicesRes.json();
-        console.log(`📱 Dispositivos encontrados: ${devices.length}`);
       } else {
         console.error(`❌ Error consultando dispositivos: ${devicesRes.status} ${devicesRes.statusText}`);
       }
@@ -245,7 +236,6 @@ serve(async (req: Request) => {
     let serviceAccount: admin.ServiceAccount;
     try {
       serviceAccount = JSON.parse(serviceAccountJson);
-      console.log(`✅ Secreto ${secretName} cargado exitosamente`);
     } catch (error: any) {
       console.error(`❌ Error parseando secreto ${secretName}: ${error.message}`);
       return new Response(
@@ -265,7 +255,6 @@ serve(async (req: Request) => {
     let currentApp: admin.app.App;
     try {
       currentApp = getFirebaseApp(roleKey, serviceAccount);
-      console.log(`✅ App Firebase ${appName} inicializada/recuperada exitosamente`);
     } catch (error: any) {
       console.error(`❌ Error inicializando Firebase ${appName}: ${error.message}`);
       return new Response(
@@ -284,7 +273,6 @@ serve(async (req: Request) => {
     const messaging = admin.messaging(currentApp);
 
     // Procesar cada dispositivo
-    console.log(`🚀 Enviando notificaciones a ${devices.length} dispositivo(s)...`);
     const results = await Promise.allSettled(
       devices.map(async (device: Device) => {
         const deviceId = device.id;
@@ -319,7 +307,6 @@ serve(async (req: Request) => {
             },
           });
 
-          console.log(`✅ Notificación enviada exitosamente a dispositivo ${deviceId}`);
           return {
             status: "fulfilled" as const,
             deviceId,
@@ -339,8 +326,6 @@ serve(async (req: Request) => {
     // Contar resultados
     const successful = results.filter((r) => r.status === "fulfilled").length;
     const failed = results.filter((r) => r.status === "rejected").length;
-
-    console.log(`📊 Resultados: ${successful} exitoso(s), ${failed} fallido(s) de ${devices.length} total`);
 
     // Si todos los envíos fallaron, devolver 'Notification failed' pero mantener 200
     if (successful === 0 && failed > 0) {

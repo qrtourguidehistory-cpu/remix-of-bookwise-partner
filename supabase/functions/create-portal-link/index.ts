@@ -91,10 +91,6 @@ serve(async (req) => {
       return_url: `${siteUrl}/admin/subscription`,
     });
 
-    console.log('Stripe Customer Portal session created:', {
-      sessionId: portalSession.id,
-      url: portalSession.url,
-    });
 
     return new Response(
       JSON.stringify({

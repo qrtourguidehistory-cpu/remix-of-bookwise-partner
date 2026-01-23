@@ -61,34 +61,17 @@ serve(async (req) => {
       );
     }
 
-    console.log('🔔 Stripe webhook event received:', event.type, event.id);
-    console.log('📦 Full event data:', JSON.stringify(event, null, 2));
 
     // Procesar diferentes tipos de eventos
     switch (event.type) {
       case 'checkout.session.completed': {
         const session = event.data.object as Stripe.Checkout.Session;
         
-        console.log('💳 Checkout session details:', {
-          id: session.id,
-          mode: session.mode,
-          subscription: session.subscription,
-          metadata: session.metadata,
-          customer: session.customer,
-        });
         
         if (session.mode === 'subscription' && session.subscription) {
           const subscriptionId = session.subscription as string;
           const metadata = session.metadata || {};
 
-          console.log('✅ Checkout session completed - Metadata:', JSON.stringify(metadata, null, 2));
-          console.log('📋 Subscription ID from Stripe:', subscriptionId);
-          console.log('🔍 Checking metadata:', {
-            has_business_id: !!metadata?.business_id,
-            has_subscription_id: !!metadata?.subscription_id,
-            business_id: metadata?.business_id,
-            subscription_id: metadata?.subscription_id,
-          });
 
           // Intentar obtener metadata de session o subscription
           let finalMetadata = metadata;
@@ -97,20 +80,17 @@ serve(async (req) => {
 
           // Si no hay metadata en session, intentar obtenerlo de la subscription
           if (!businessId || !subscriptionIdFromMeta) {
-            console.log('⚠️ Metadata no encontrado en session, buscando en subscription...');
             const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY')!, {
               apiVersion: '2024-06-20',
             });
             
             try {
               const subscription = await stripe.subscriptions.retrieve(subscriptionId);
-              console.log('📦 Subscription metadata from Stripe:', JSON.stringify(subscription.metadata, null, 2));
               
               if (subscription.metadata?.business_id && subscription.metadata?.subscription_id) {
                 finalMetadata = subscription.metadata;
                 businessId = subscription.metadata.business_id;
                 subscriptionIdFromMeta = subscription.metadata.subscription_id;
-                console.log('✅ Metadata encontrado en subscription object');
               }
             } catch (err) {
               console.error('❌ Error retrieving subscription:', err);
@@ -124,9 +104,6 @@ serve(async (req) => {
             });
 
             const subscription = await stripe.subscriptions.retrieve(subscriptionId);
-
-            console.log('📊 Stripe subscription status:', subscription.status);
-            console.log('🔄 Updating subscription in database:', subscriptionIdFromMeta);
 
             // Mapear el estado de Stripe al estado de nuestra base de datos
             let dbStatus = 'inactive';
@@ -159,11 +136,6 @@ serve(async (req) => {
             }
 
             // Actualizar usando subscription_id del metadata (que es el ID de nuestra tabla)
-            console.log('💾 Ejecutando UPDATE en business_subscriptions:', {
-              id: subscriptionIdFromMeta,
-              business_id: businessId,
-              updateData: JSON.stringify(updateData, null, 2)
-            });
 
             const { data: updatedSubscription, error: updateError } = await supabase
               .from('business_subscriptions')
@@ -192,12 +164,6 @@ serve(async (req) => {
               );
             }
 
-            console.log('✅ Subscription activated successfully:', {
-              subscription_id: subscriptionIdFromMeta,
-              business_id: businessId,
-              status: dbStatus,
-              updated_data: JSON.stringify(updatedSubscription, null, 2)
-            });
 
             // Crear notificación de billing para el partner
             if (dbStatus === 'active' || dbStatus === 'trialing') {
@@ -224,7 +190,6 @@ serve(async (req) => {
                         status: dbStatus,
                       },
                     });
-                  console.log('📬 Billing notification created for owner:', subData.owner_id);
                 }
               } catch (notifError) {
                 console.error('⚠️ Error creating billing notification (non-critical):', notifError);
@@ -289,7 +254,6 @@ serve(async (req) => {
           if (updateError) {
             console.error('Error updating subscription:', updateError);
           } else {
-            console.log('Subscription updated:', subscriptionId, 'Status:', status);
             
             // Crear notificación si la suscripción se activó
             if ((status === 'active' || status === 'trialing') && updatedSub?.owner_id) {
@@ -308,7 +272,6 @@ serve(async (req) => {
                       status: status,
                     },
                   });
-                console.log('📬 Billing notification created for subscription update');
               } catch (notifError) {
                 console.error('⚠️ Error creating billing notification (non-critical):', notifError);
               }
@@ -335,7 +298,6 @@ serve(async (req) => {
           if (updateError) {
             console.error('Error canceling subscription:', updateError);
           } else {
-            console.log('Subscription cancelled:', subscriptionId);
           }
         }
         break;
@@ -346,12 +308,6 @@ serve(async (req) => {
         const subscriptionId = invoice.subscription as string;
         
         if (subscriptionId && invoice.customer) {
-          console.log('💰 Invoice paid:', {
-            invoice_id: invoice.id,
-            subscription_id: subscriptionId,
-            amount: invoice.amount_paid,
-            currency: invoice.currency,
-          });
 
           // Buscar la suscripción en nuestra base de datos
           const { data: subData } = await supabase
@@ -405,7 +361,6 @@ serve(async (req) => {
                     currency: invoice.currency,
                   },
                 });
-              console.log('📬 Billing notification created for invoice.paid');
             } catch (notifError) {
               console.error('⚠️ Error creating billing notification (non-critical):', notifError);
             }
@@ -419,12 +374,6 @@ serve(async (req) => {
         const subscriptionId = invoice.subscription as string;
         
         if (subscriptionId && invoice.customer) {
-          console.log('📄 Invoice created:', {
-            invoice_id: invoice.id,
-            subscription_id: subscriptionId,
-            amount: invoice.amount_due,
-            currency: invoice.currency,
-          });
 
           // Buscar la suscripción en nuestra base de datos
           const { data: subData } = await supabase
@@ -465,7 +414,6 @@ serve(async (req) => {
       }
 
       default:
-        console.log('Unhandled event type:', event.type);
     }
 
     return new Response(

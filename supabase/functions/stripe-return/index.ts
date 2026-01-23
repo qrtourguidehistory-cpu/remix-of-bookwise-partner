@@ -23,17 +23,9 @@ serve(async (req) => {
       const urlMatch = req.url.match(/session_id=([^&]+)/);
       if (urlMatch) {
         sessionId = urlMatch[1];
-        console.log('[stripe-return] 🔍 Extracted session_id from URL pattern:', sessionId);
       }
     }
 
-    // Log para debugging
-    console.log('[stripe-return] 📥 Received request:', {
-      fullUrl: req.url,
-      status,
-      sessionId,
-      allParams: Object.fromEntries(url.searchParams.entries())
-    });
 
     // Determinar el deep link según el status
     let deepLink: string;
@@ -42,10 +34,8 @@ serve(async (req) => {
       // Incluir session_id si está disponible
       if (sessionId) {
         deepLink = `miturnow://admin?status=success&session_id=${encodeURIComponent(sessionId)}`;
-        console.log('[stripe-return] ✅ Including session_id in deep link:', sessionId);
       } else {
         deepLink = 'miturnow://admin?status=success';
-        console.log('[stripe-return] ⚠️ No session_id provided, deep link without session_id');
       }
     } else if (status === 'cancel') {
       deepLink = 'miturnow://admin?status=cancel';
@@ -54,7 +44,6 @@ serve(async (req) => {
       deepLink = 'miturnow://admin';
     }
 
-    console.log('[stripe-return] 🔗 Redirecting to deep link:', deepLink);
 
     // Retornar HTTP 302 redirect puro sin body
     return new Response(null, {

@@ -52,7 +52,6 @@ serve(async (req) => {
       );
     }
 
-    console.log('Verifying Stripe session:', session_id);
 
     // Verificar la sesión con Stripe
     let session;
@@ -72,7 +71,6 @@ serve(async (req) => {
 
     // Verificar que la sesión es válida y está completada
     if (session.payment_status !== 'paid' && session.payment_status !== 'complete') {
-      console.log('Session payment status:', session.payment_status);
       return new Response(
         JSON.stringify({ 
           success: false, 
@@ -135,7 +133,6 @@ serve(async (req) => {
 
     // Si la suscripción ya está activa, no hacer nada más
     if (subscriptionData.status === 'active' || subscriptionData.status === 'trialing') {
-      console.log('Subscription already active:', subscriptionData.status);
       return new Response(
         JSON.stringify({ 
           success: true, 
@@ -213,11 +210,6 @@ serve(async (req) => {
         .eq('id', businessId);
     }
 
-    console.log('Payment verified and subscription updated successfully:', {
-      subscriptionId,
-      businessId,
-      status: updateData.status
-    });
 
     return new Response(
       JSON.stringify({ 

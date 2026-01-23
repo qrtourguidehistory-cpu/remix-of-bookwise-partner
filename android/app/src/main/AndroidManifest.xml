@@ -39,6 +39,22 @@
                 <data android:scheme="com.miturnow.partner" android:host="auth" android:pathPrefix="/callback" />
             </intent-filter>
 
+            <!-- Deep link handler for PayPal success -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="com.miturnow.partner" android:host="paypal" android:pathPrefix="/success" />
+            </intent-filter>
+
+            <!-- Deep link handler for PayPal cancel -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="com.miturnow.partner" android:host="paypal" android:pathPrefix="/cancel" />
+            </intent-filter>
+
             <!-- Universal link handler for www.miturnow.com -->
             <intent-filter android:autoVerify="true">
                 <action android:name="android.intent.action.VIEW" />
@@ -49,13 +65,6 @@
                     android:host="www.miturnow.com" />
             </intent-filter>
 
-            <!-- Custom URL scheme for miturnow:// -->
-            <intent-filter>
-                <action android:name="android.intent.action.VIEW" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <category android:name="android.intent.category.BROWSABLE" />
-                <data android:scheme="miturnow" />
-            </intent-filter>
 
         </activity>
 

@@ -46,10 +46,6 @@ serve(async (req) => {
     const body: CreateStripeCheckoutRequest = await req.json();
     const { business_id, subscription_id } = body;
 
-    console.log('Request received:', {
-      business_id,
-      subscription_id,
-    });
 
     if (!business_id || !subscription_id) {
       console.error('Missing required parameters:', { business_id: !!business_id, subscription_id: !!subscription_id });
@@ -122,7 +118,6 @@ serve(async (req) => {
     const redirectBaseUrl = `${supabaseUrl}/functions/v1/stripe-return`;
     
     const successUrl = `${redirectBaseUrl}?status=success&session_id={CHECKOUT_SESSION_ID}`;
-    console.log('Creating checkout with success_url:', successUrl);
     
     // Crear sesión de Checkout de Stripe
     // Plan mensual de $9.50 USD
@@ -159,10 +154,6 @@ serve(async (req) => {
       },
     });
 
-    console.log('Stripe Checkout session created successfully:', {
-      sessionId: checkoutSession.id,
-      url: checkoutSession.url,
-    });
 
     // Actualizar la suscripción con el session_id (opcional, para referencia)
     const { error: updateError } = await supabase

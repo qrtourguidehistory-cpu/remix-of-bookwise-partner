@@ -121,12 +121,6 @@ serve(async (req) => {
           }
         );
 
-        console.log('Sending notification:', {
-          type: notification.meta?.type,
-          clientEmail,
-          clientPhone,
-          message,
-        });
 
         await supabase
           .from('appointment_notifications')
