@@ -1,51 +1,94 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { Capacitor } from '@capacitor/core';
 import { App } from '@capacitor/app';
 import { Browser } from '@capacitor/browser';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { useQueryClient } from '@tanstack/react-query';
 
 /**
  * Hook para manejar suscripciones de PayPal usando Capacitor Browser
  * NO usa PayPal JS SDK - usa REST API con deep links
+ * 
+ * BUG FIX: El problema del "procesando infinito" ocurría porque:
+ * 1. El listener de deep links no detenía el estado de loading
+ * 2. El componente SubscriptionPage mantenía isPaymentInProgress=true indefinidamente
+ * 3. No había comunicación entre el listener y el estado del componente
+ * 
+ * SOLUCIÓN:
+ * - El listener ahora detiene el loading inmediatamente al detectar el deep link
+ * - Se usa un flag para evitar procesamiento múltiple del mismo deep link
+ * - Se emite un evento personalizado para notificar al componente
  */
 export function usePayPalSubscription() {
   const [loading, setLoading] = useState(false);
   const { toast } = useToast();
   const { language } = useLanguage();
+  const queryClient = useQueryClient();
   const isNative = Capacitor.isNativePlatform();
+  
+  // Flag para evitar procesar el mismo deep link múltiples veces
+  const processedUrlsRef = useRef<Set<string>>(new Set());
+  
+  // Ref para rastrear si hay un pago en progreso (para appStateChange)
+  const paymentInProgressRef = useRef(false);
 
   // Listener para deep links de PayPal (solo en mobile)
   useEffect(() => {
     if (!isNative) return;
 
     const handleAppUrlOpen = async ({ url }: { url: string }) => {
-      console.log('[PayPalSubscription] Deep link recibido:', url);
+      console.log('[PayPalSubscription] 🔗 Deep link recibido:', url);
+
+      // CRÍTICO: Detener loading inmediatamente al detectar cualquier deep link de PayPal
+      // Esto resuelve el bug del "procesando infinito"
+      setLoading(false);
+      paymentInProgressRef.current = false; // Marcar que el pago ya no está en progreso
+      
+      // Emitir evento para notificar al componente que el deep link fue recibido
+      // Esto permite que SubscriptionPage resetee isPaymentInProgress
+      // IMPORTANTE: Emitir ANTES de procesar para que el componente resetee el estado inmediatamente
+      window.dispatchEvent(new CustomEvent('paypal-deep-link-received', { detail: { url } }));
+
+      // Evitar procesar el mismo URL múltiples veces (puede ocurrir si el listener se dispara varias veces)
+      if (processedUrlsRef.current.has(url)) {
+        console.log('[PayPalSubscription] ⚠️ URL ya procesada, ignorando:', url);
+        return;
+      }
+      processedUrlsRef.current.add(url);
+      
+      // Limpiar URLs antiguas después de 5 minutos para evitar memory leak
+      setTimeout(() => {
+        processedUrlsRef.current.delete(url);
+      }, 5 * 60 * 1000);
 
       try {
-        // Parsear la URL del deep link
-        // Formato: com.miturnow.partner://paypal/success?subscription_id=xxx&token=xxx
-        // O: com.miturnow.partner://paypal/success?type=checkout&user_id=xxx
+        // Parsear la URL - ahora usa HTTPS App Links
+        // Formato: https://www.miturnow.com/paypal/success?subscription_id=xxx&token=xxx
+        // O: https://www.miturnow.com/paypal/success?type=checkout&user_id=xxx
+        // También soporta legacy custom schemes por compatibilidad
         let urlObj: URL;
         try {
-          // Intentar parsear como URL normal
+          // Intentar parsear como URL normal (HTTPS App Link)
           urlObj = new URL(url);
         } catch {
-          // Si falla, es un deep link - convertir a formato URL válido
-          // Usa exclusivamente: com.miturnow.partner://
+          // Si falla, puede ser un custom scheme legacy - convertir a formato URL válido
+          // Mantener compatibilidad con: com.miturnow.partner://
           const normalizedUrl = url.replace('com.miturnow.partner://', 'https://');
           urlObj = new URL(normalizedUrl);
         }
         
         const path = urlObj.pathname;
+        const host = urlObj.hostname;
         const params = new URLSearchParams(urlObj.search);
         const subscriptionId = params.get('subscription_id');
         const token = params.get('token'); // PayPal approval token (si viene en la URL)
         // PayPal también puede enviar el token como 'ba_token'
         const baToken = params.get('ba_token') || params.get('BA_TOKEN');
 
-        console.log('[PayPalSubscription] Deep link parseado:', { 
+        console.log('[PayPalSubscription] 📋 Deep link parseado:', { 
+          host,
           path, 
           subscriptionId, 
           hasToken: !!token, 
@@ -53,11 +96,20 @@ export function usePayPalSubscription() {
           allParams: Object.fromEntries(params.entries())
         });
 
+        // Verificar que sea una URL de PayPal (www.miturnow.com o custom scheme)
+        const isPayPalUrl = host === 'www.miturnow.com' || url.startsWith('com.miturnow.partner://paypal');
+        if (!isPayPalUrl) {
+          console.log('[PayPalSubscription] ⚠️ URL no es de PayPal, ignorando');
+          return;
+        }
+
         // Cerrar el browser si está abierto
         try {
           await Browser.close();
+          console.log('[PayPalSubscription] ✅ Browser cerrado');
         } catch (e) {
-          // Browser ya estaba cerrado
+          // Browser ya estaba cerrado o no estaba abierto
+          console.log('[PayPalSubscription] ℹ️ Browser ya estaba cerrado');
         }
 
         const paymentType = params.get('type'); // 'checkout' para pago único, 'subscription' para suscripción
@@ -109,10 +161,8 @@ export function usePayPalSubscription() {
                 });
               }
               
-              // Refrescar después de un delay
-              setTimeout(() => {
-                window.location.reload();
-              }, 2000);
+              // CRÍTICO: NO usar window.location.reload() - el componente manejará el refresh
+              // El componente escuchará el cambio de estado y actualizará la UI
               return;
             } else {
               // Procesar suscripción
@@ -162,13 +212,14 @@ export function usePayPalSubscription() {
                 variant: "default",
               });
 
-              // Refrescar después de un delay
-              setTimeout(() => {
-                window.location.reload();
-              }, 2000);
+              // Emitir evento de éxito para que el componente actualice su estado
+              // CRÍTICO: NO usar window.location.reload() - el componente manejará el refresh
+              window.dispatchEvent(new CustomEvent('paypal-subscription-success', { 
+                detail: { subscriptionId, paymentType } 
+              }));
             }
           } catch (error: any) {
-            console.error('[PayPalSubscription] Error en procesamiento:', error);
+            console.error('[PayPalSubscription] ❌ Error en procesamiento:', error);
             toast({
               title: language === "es" ? "Error" : "Error",
               description: language === "es"
@@ -176,10 +227,18 @@ export function usePayPalSubscription() {
                 : "Error processing. Webhook will confirm the status.",
               variant: "destructive",
             });
+            
+            // Emitir evento de error
+            window.dispatchEvent(new CustomEvent('paypal-subscription-error', { 
+              detail: { error: error.message } 
+            }));
           }
         } else if (path.includes('/paypal/cancel')) {
           const paymentType = params.get('type');
           console.log('[PayPalSubscription] ❌ Pago cancelado', { paymentType });
+          
+          // CRÍTICO: Detener loading también en cancelación
+          setLoading(false);
           
           toast({
             title: language === "es" ? "Pago cancelado" : "Payment canceled",
@@ -192,9 +251,19 @@ export function usePayPalSubscription() {
                 : "Payment process was canceled",
             variant: "default",
           });
+          
+          // Emitir evento de cancelación
+          window.dispatchEvent(new CustomEvent('paypal-subscription-cancel', { 
+            detail: { paymentType } 
+          }));
+        } else {
+          console.log('[PayPalSubscription] ⚠️ URL de PayPal pero path no reconocido:', path);
         }
       } catch (error) {
-        console.error('[PayPalSubscription] Error procesando deep link:', error);
+        console.error('[PayPalSubscription] ❌ Error procesando deep link:', error);
+        // Asegurar que el loading se detenga incluso si hay error
+        setLoading(false);
+        
         toast({
           title: language === "es" ? "Error" : "Error",
           description: language === "es"
@@ -202,6 +271,11 @@ export function usePayPalSubscription() {
             : "Error processing payment result",
           variant: "destructive",
         });
+        
+        // Emitir evento de error
+        window.dispatchEvent(new CustomEvent('paypal-subscription-error', { 
+          detail: { error: 'Error parsing deep link' } 
+        }));
       }
     };
 
@@ -223,6 +297,44 @@ export function usePayPalSubscription() {
     if (loading) return;
 
     setLoading(true);
+    
+    // CRÍTICO: Timeout de seguridad para detener loading si no se recibe deep link
+    // Esto evita que el botón quede en "procesando" indefinidamente
+    const loadingTimeout = setTimeout(() => {
+      console.log('[PayPalSubscription] ⏰ Timeout: No se recibió deep link, deteniendo loading');
+      setLoading(false);
+      window.dispatchEvent(new CustomEvent('paypal-timeout', { 
+        detail: { message: 'Timeout esperando respuesta de PayPal' } 
+      }));
+    }, 5 * 60 * 1000); // 5 minutos máximo
+
+    // CRÍTICO: Marcar que hay un pago en progreso
+    paymentInProgressRef.current = true;
+    
+    // Listener para detectar cuando la app vuelve al foreground
+    // Si el usuario cierra PayPal manualmente, esto detectará el regreso
+    let appStateListener: any = null;
+    if (isNative) {
+      appStateListener = await App.addListener('appStateChange', ({ isActive }) => {
+        if (isActive && paymentInProgressRef.current) {
+          // La app volvió al foreground y hay un pago en progreso
+          // Esperar un momento para ver si llega el deep link
+          console.log('[PayPalSubscription] 🔄 App volvió al foreground, esperando deep link...');
+          setTimeout(() => {
+            // Si después de 3 segundos aún está en progreso, asumir que no llegó el deep link
+            if (paymentInProgressRef.current) {
+              console.log('[PayPalSubscription] ⚠️ No se detectó deep link después de 3 segundos, deteniendo loading');
+              clearTimeout(loadingTimeout);
+              setLoading(false);
+              paymentInProgressRef.current = false;
+              window.dispatchEvent(new CustomEvent('paypal-app-returned', { 
+                detail: { message: 'App regresó sin deep link' } 
+              }));
+            }
+          }, 3000);
+        }
+      });
+    }
 
     try {
       console.log('[PayPalSubscription] Creando suscripción...');
@@ -238,14 +350,20 @@ export function usePayPalSubscription() {
       });
 
       if (error) {
+        clearTimeout(loadingTimeout);
+        paymentInProgressRef.current = false;
+        if (appStateListener) appStateListener.remove();
         throw new Error(error.message || 'Error al crear suscripción en PayPal');
       }
 
       if (!data?.approval_url) {
+        clearTimeout(loadingTimeout);
+        paymentInProgressRef.current = false;
+        if (appStateListener) appStateListener.remove();
         throw new Error('No se recibió la URL de aprobación de PayPal');
       }
 
-      console.log('[PayPalSubscription] Abriendo PayPal en navegador...');
+      console.log('[PayPalSubscription] 🌐 Abriendo PayPal en navegador...');
 
       // Abrir PayPal en el navegador del sistema
       if (isNative) {
@@ -254,9 +372,44 @@ export function usePayPalSubscription() {
           presentationStyle: 'fullscreen', // Pantalla completa en iOS
           windowName: '_self',
         });
+        // NOTA: NO detenemos el loading aquí porque el usuario aún no ha completado el pago
+        // El loading se detendrá cuando:
+        // 1. Se reciba el deep link (en handleAppUrlOpen)
+        // 2. Se alcance el timeout (5 minutos)
+        // 3. La app vuelva al foreground sin deep link (appStateChange)
+        console.log('[PayPalSubscription] ✅ Browser abierto, esperando deep link...');
+        
+        // Limpiar listener cuando se reciba el deep link o se detenga el loading
+        const cleanup = () => {
+          clearTimeout(loadingTimeout);
+          paymentInProgressRef.current = false;
+          if (appStateListener) {
+            appStateListener.remove();
+            appStateListener = null;
+          }
+        };
+        
+        // Escuchar cuando se reciba el deep link para limpiar
+        const deepLinkHandler = () => {
+          cleanup();
+          window.removeEventListener('paypal-deep-link-received', deepLinkHandler);
+        };
+        window.addEventListener('paypal-deep-link-received', deepLinkHandler);
+        
+        // También limpiar si se detiene el loading por cualquier razón
+        const loadingCheckInterval = setInterval(() => {
+          if (!loading) {
+            cleanup();
+            clearInterval(loadingCheckInterval);
+          }
+        }, 1000);
       } else {
         // Web: redirigir directamente
+        clearTimeout(loadingTimeout);
+        if (appStateListener) appStateListener.remove();
         window.location.href = data.approval_url;
+        // En web, el loading se detiene porque la página se recarga
+        setLoading(false);
       }
 
       return {
@@ -265,7 +418,13 @@ export function usePayPalSubscription() {
         subscription_id: data.subscription_id,
       };
     } catch (error: any) {
-      console.error('[PayPalSubscription] Error:', error);
+      console.error('[PayPalSubscription] ❌ Error:', error);
+      // CRÍTICO: Detener loading en caso de error
+      clearTimeout(loadingTimeout);
+      paymentInProgressRef.current = false;
+      if (appStateListener) appStateListener.remove();
+      setLoading(false);
+      
       toast({
         title: language === "es" ? "Error" : "Error",
         description: error?.message || (language === "es"
@@ -274,8 +433,6 @@ export function usePayPalSubscription() {
         variant: "destructive",
       });
       return { success: false, error: error?.message };
-    } finally {
-      setLoading(false);
     }
   }, [loading, isNative, language, toast]);
 

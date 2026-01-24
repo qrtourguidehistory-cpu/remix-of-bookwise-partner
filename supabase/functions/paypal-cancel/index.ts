@@ -10,9 +10,9 @@ serve((req) => {
     
     // Construir URL HTTPS para Android App Links
     // Preservar todos los query params de PayPal
-    const redirectUrl = `https://www.miturnow.com/paypal/success${params ? '?' + params : ''}`;
+    const redirectUrl = `https://www.miturnow.com/paypal/cancel${params ? '?' + params : ''}`;
     
-    console.log('[paypal-return] Redirecting to:', redirectUrl);
+    console.log('[paypal-cancel] Redirecting to:', redirectUrl);
     
     // HTTP 302 redirect - Android App Links funcionan con redirects nativos
     return new Response(null, {
@@ -23,7 +23,7 @@ serve((req) => {
       },
     });
   } catch (error) {
-    console.error('Error in paypal-return:', error);
+    console.error('Error in paypal-cancel:', error);
     return new Response('Error processing request', { status: 500 });
   }
 });

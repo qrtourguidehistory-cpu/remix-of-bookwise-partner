@@ -303,9 +303,10 @@ serve(async (req) => {
       );
     }
 
-    // URLs de retorno - usar puente web en miturnow.com
-    const returnUrl = 'https://miturnow.com/paypal/return';
-    const cancelUrl = 'https://miturnow.com/paypal/cancel';
+    // URLs de retorno - usar HTTPS App Links directamente
+    // PayPal redirige a www.miturnow.com, que luego abre la app via Android App Links
+    const returnUrl = 'https://www.miturnow.com/paypal/success';
+    const cancelUrl = 'https://www.miturnow.com/paypal/cancel';
     console.log('[create-paypal-checkout] 🔗 URLs de retorno configuradas');
     console.log('[create-paypal-checkout] Return URL:', returnUrl);
     console.log('[create-paypal-checkout] Cancel URL:', cancelUrl);

@@ -31,7 +31,7 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
 
-            <!-- Deep link handler for OAuth callback -->
+            <!-- OAuth callback - mantener custom scheme si es necesario para OAuth -->
             <intent-filter android:autoVerify="true">
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
@@ -39,30 +39,26 @@
                 <data android:scheme="com.miturnow.partner" android:host="auth" android:pathPrefix="/callback" />
             </intent-filter>
 
-            <!-- Deep link handler for PayPal success -->
-            <intent-filter android:autoVerify="true">
-                <action android:name="android.intent.action.VIEW" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <category android:name="android.intent.category.BROWSABLE" />
-                <data android:scheme="com.miturnow.partner" android:host="paypal" android:pathPrefix="/success" />
-            </intent-filter>
-
-            <!-- Deep link handler for PayPal cancel -->
-            <intent-filter android:autoVerify="true">
-                <action android:name="android.intent.action.VIEW" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <category android:name="android.intent.category.BROWSABLE" />
-                <data android:scheme="com.miturnow.partner" android:host="paypal" android:pathPrefix="/cancel" />
-            </intent-filter>
-
-            <!-- Universal link handler for www.miturnow.com -->
+            <!-- Android App Links: PayPal success - HTTPS ONLY -->
             <intent-filter android:autoVerify="true">
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data
                     android:scheme="https"
-                    android:host="www.miturnow.com" />
+                    android:host="www.miturnow.com"
+                    android:pathPrefix="/paypal/success" />
+            </intent-filter>
+
+            <!-- Android App Links: PayPal cancel - HTTPS ONLY -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data
+                    android:scheme="https"
+                    android:host="www.miturnow.com"
+                    android:pathPrefix="/paypal/cancel" />
             </intent-filter>
 
 

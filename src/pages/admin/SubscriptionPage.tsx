@@ -31,7 +31,8 @@ import {
   Settings,
   RefreshCw,
   Info,
-  Check
+  Check,
+  X
 } from "lucide-react";
 
 interface BusinessSubscription {
@@ -109,6 +110,8 @@ export default function SubscriptionPage() {
   const [error, setError] = useState<string | null>(null);
   const [isPaymentInProgress, setIsPaymentInProgress] = useState(false); // Flag para deshabilitar useEffect durante pago
   const [checkoutLoading, setCheckoutLoading] = useState(false); // Loading para pago único
+  const [showSuccessBanner, setShowSuccessBanner] = useState(false); // Banner de éxito cuando se activa suscripción
+  const [previousSubscriptionStatus, setPreviousSubscriptionStatus] = useState<string | null>(null); // Para detectar cambio de estado
   
   // Hook para manejar suscripciones de PayPal con Capacitor Browser
   const { createSubscription: createPayPalSubscription, loading: paypalLoading } = usePayPalSubscription();
@@ -119,17 +122,40 @@ export default function SubscriptionPage() {
       hasProfile: !!profile,
       business_id: profile?.business_id,
     });
+    
+    // Manejo de errores global para evitar pantalla en blanco
+    const handleError = (event: ErrorEvent) => {
+      console.error('[SubscriptionPage] ❌ Error global capturado:', event.error);
+      setError(event.error?.message || 'Error inesperado');
+      setLoading(false);
+    };
+    
+    const handleUnhandledRejection = (event: PromiseRejectionEvent) => {
+      console.error('[SubscriptionPage] ❌ Promise rechazada:', event.reason);
+      setError(event.reason?.message || 'Error inesperado');
+      setLoading(false);
+    };
+    
+    window.addEventListener('error', handleError);
+    window.addEventListener('unhandledrejection', handleUnhandledRejection);
+    
+    return () => {
+      window.removeEventListener('error', handleError);
+      window.removeEventListener('unhandledrejection', handleUnhandledRejection);
+    };
   }, []);
-  const paymentStatus = searchParams.get('status');
 
   // Función fetchSubscription memoizada para evitar dependencias circulares
   const fetchSubscription = useCallback(async () => {
-    if (!profile?.business_id) return;
+    if (!profile?.business_id) {
+      setLoading(false);
+      return;
+    }
     
     setLoading(true);
     try {
       const { data, error } = await supabase
-        .from("business_subscriptions")
+        .from("business_subscriptions" as any)
         .select("*")
         .eq("business_id", profile.business_id)
         .maybeSingle();
@@ -145,10 +171,40 @@ export default function SubscriptionPage() {
 
       console.log('[SubscriptionPage] ✅ Subscription data:', {
         hasData: !!data,
-        status: data?.status,
-        id: data?.id,
+        status: (data as any)?.status,
+        id: (data as any)?.id,
       });
-      setSubscription(data);
+      
+      // CRÍTICO: Detectar cambio de estado a 'active' para mostrar banner
+      const newStatus = (data as any)?.status;
+      const wasInactive = !previousSubscriptionStatus || 
+                         (previousSubscriptionStatus !== 'active' && previousSubscriptionStatus !== 'trialing');
+      const isNowActive = newStatus === 'active' || newStatus === 'trialing';
+      
+      // Si la suscripción se activó recientemente, mostrar banner
+      if (wasInactive && isNowActive && data) {
+        console.log('[SubscriptionPage] 🎉 Suscripción activada, mostrando banner de éxito');
+        setShowSuccessBanner(true);
+        // Ocultar banner después de 10 segundos
+        setTimeout(() => {
+          setShowSuccessBanner(false);
+        }, 10000);
+        
+        // Mostrar toast de éxito
+        toast({
+          title: language === "es" ? "¡Suscripción Activada!" : "Subscription Activated!",
+          description: language === "es"
+            ? "Tu suscripción Premium está ahora activa. Disfruta de todas las características."
+            : "Your Premium subscription is now active. Enjoy all features.",
+          variant: "default",
+        });
+      }
+      
+      // Actualizar estado previo
+      setPreviousSubscriptionStatus(newStatus || null);
+      
+      // Cast seguro: primero a unknown, luego al tipo esperado
+      setSubscription((data as unknown) as BusinessSubscription | null);
       setError(null); // Limpiar error si la carga fue exitosa
     } catch (error: any) {
       console.error("[SubscriptionPage] ❌ Exception en fetchSubscription:", {
@@ -157,18 +213,166 @@ export default function SubscriptionPage() {
         stack: error?.stack,
       });
       setError(error?.message || 'Error al cargar suscripción');
-      setSubscription(null);
       toast({
         title: language === "es" ? "Error" : "Error",
-        description: language === "es" 
-          ? "No se pudo cargar la información de suscripción" 
-          : "Could not load subscription information",
+        description: error?.message || (language === "es"
+          ? "Error al cargar información de suscripción"
+          : "Error loading subscription information"),
         variant: "destructive",
       });
     } finally {
       setLoading(false);
     }
-  }, [profile?.business_id, toast, language]);
+  }, [profile?.business_id, language, toast]);
+
+  // CRÍTICO: Ref para rastrear isPaymentInProgress sin depender de closures
+  // Debe estar fuera del useEffect para persistir entre renders
+  const paymentInProgressRef = useRef(false);
+  
+  useEffect(() => {
+    paymentInProgressRef.current = isPaymentInProgress;
+  }, [isPaymentInProgress]);
+
+  // CRÍTICO: Timeout de seguridad adicional en el componente
+  // Si isPaymentInProgress está activo por más de 6 minutos, resetearlo
+  useEffect(() => {
+    if (!isPaymentInProgress) return;
+
+    const timeout = setTimeout(() => {
+      console.log('[SubscriptionPage] ⏰ Timeout de seguridad: isPaymentInProgress activo por más de 6 minutos, reseteando');
+      setIsPaymentInProgress(false);
+      paymentInProgressRef.current = false;
+      fetchSubscription();
+    }, 6 * 60 * 1000); // 6 minutos
+
+    return () => clearTimeout(timeout);
+  }, [isPaymentInProgress, fetchSubscription]);
+
+  // CRÍTICO: Manejo centralizado de isPaymentInProgress
+  // Combina: listener de deep link, appStateChange, timeout y polling
+  // Esto resuelve el bug del "procesando infinito" de forma robusta
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform()) return;
+
+    // Handlers para eventos de deep links
+    const handleDeepLinkReceived = () => {
+      console.log('[SubscriptionPage] 🔗 Deep link recibido, reseteando estado de pago');
+      setIsPaymentInProgress(false);
+      paymentInProgressRef.current = false;
+    };
+
+    const handleSubscriptionSuccess = () => {
+      console.log('[SubscriptionPage] ✅ Suscripción exitosa, reseteando estado');
+      setIsPaymentInProgress(false);
+      paymentInProgressRef.current = false;
+      // CRÍTICO: NO usar window.location.reload() - solo refrescar datos
+      // Refrescar la suscripción inmediatamente y después de un delay para asegurar sincronización
+      fetchSubscription();
+      setTimeout(() => {
+        fetchSubscription();
+      }, 1500);
+      setTimeout(() => {
+        fetchSubscription(); // Tercera verificación para asegurar que los datos estén sincronizados
+      }, 3000);
+    };
+
+    const handleSubscriptionCancel = () => {
+      console.log('[SubscriptionPage] ❌ Suscripción cancelada, reseteando estado');
+      setIsPaymentInProgress(false);
+      paymentInProgressRef.current = false;
+    };
+
+    const handleSubscriptionError = () => {
+      console.log('[SubscriptionPage] ❌ Error en suscripción, reseteando estado');
+      setIsPaymentInProgress(false);
+      paymentInProgressRef.current = false;
+    };
+
+    // CRÍTICO: Manejar timeout y app regresando sin deep link
+    const handleTimeout = () => {
+      console.log('[SubscriptionPage] ⏰ Timeout: PayPal no respondió, reseteando estado');
+      setIsPaymentInProgress(false);
+      paymentInProgressRef.current = false;
+      // Verificar si la suscripción se activó de todas formas (polling)
+      // CRÍTICO: NO usar window.location.reload() - solo refrescar datos
+      fetchSubscription();
+      setTimeout(() => {
+        fetchSubscription();
+      }, 2000);
+      setTimeout(() => {
+        fetchSubscription(); // Tercera verificación
+      }, 4000);
+    };
+
+    const handleAppReturned = () => {
+      console.log('[SubscriptionPage] 🔄 App regresó sin deep link, reseteando estado');
+      setIsPaymentInProgress(false);
+      paymentInProgressRef.current = false;
+      // Verificar si la suscripción se activó de todas formas (polling)
+      // CRÍTICO: NO usar window.location.reload() - solo refrescar datos
+      fetchSubscription();
+      setTimeout(() => {
+        fetchSubscription();
+      }, 2000);
+      setTimeout(() => {
+        fetchSubscription(); // Tercera verificación
+      }, 4000);
+    };
+
+    // Listener para detectar cuando la app vuelve al foreground
+    // Si el usuario cierra PayPal manualmente, esto lo detectará
+    let appStateListener: any = null;
+    App.addListener('appStateChange', ({ isActive }) => {
+      if (isActive && paymentInProgressRef.current) {
+        // La app volvió al foreground y hay un pago en progreso
+        // Esperar un momento para ver si llega el deep link
+        console.log('[SubscriptionPage] 🔄 App activa, esperando deep link...');
+        setTimeout(() => {
+          // Si después de 3 segundos aún está en progreso, resetear
+          if (paymentInProgressRef.current) {
+            console.log('[SubscriptionPage] ⚠️ No se detectó deep link después de 3 segundos, reseteando');
+            setIsPaymentInProgress(false);
+            paymentInProgressRef.current = false;
+            // Verificar estado de suscripción inmediatamente
+            fetchSubscription();
+            // Refrescar después de un delay para actualizar UI
+            // CRÍTICO: NO usar window.location.reload() - solo refrescar datos
+            setTimeout(() => {
+              fetchSubscription();
+            }, 2000);
+            setTimeout(() => {
+              fetchSubscription(); // Tercera verificación
+            }, 4000);
+          }
+        }, 3000);
+      }
+    }).then(listener => {
+      appStateListener = listener;
+    });
+
+    // Registrar listeners para eventos personalizados del hook
+    window.addEventListener('paypal-deep-link-received', handleDeepLinkReceived);
+    window.addEventListener('paypal-subscription-success', handleSubscriptionSuccess);
+    window.addEventListener('paypal-subscription-cancel', handleSubscriptionCancel);
+    window.addEventListener('paypal-subscription-error', handleSubscriptionError);
+    window.addEventListener('paypal-timeout', handleTimeout);
+    window.addEventListener('paypal-app-returned', handleAppReturned);
+
+    return () => {
+      // Limpiar listeners al desmontar
+      window.removeEventListener('paypal-deep-link-received', handleDeepLinkReceived);
+      window.removeEventListener('paypal-subscription-success', handleSubscriptionSuccess);
+      window.removeEventListener('paypal-subscription-cancel', handleSubscriptionCancel);
+      window.removeEventListener('paypal-subscription-error', handleSubscriptionError);
+      window.removeEventListener('paypal-timeout', handleTimeout);
+      window.removeEventListener('paypal-app-returned', handleAppReturned);
+      if (appStateListener) {
+        appStateListener.remove();
+      }
+    };
+  }, [fetchSubscription]);
+
+  const paymentStatus = searchParams.get('status');
 
   useEffect(() => {
     if (profile?.business_id) {
@@ -366,28 +570,63 @@ export default function SubscriptionPage() {
 
     setProcessingPortal(true);
     try {
-      const requestBody = {
-        business_id: profile.business_id,
-        subscription_id: subscription.id,
-      };
+      // CRÍTICO: Detectar el proveedor de pago (PayPal o Stripe)
+      const isPayPal = !!subscription.paypal_subscription_id;
+      const isStripe = !!subscription.stripe_subscription_id || !!(subscription as any).stripe_customer_id;
 
-      const { data, error } = await supabase.functions.invoke('create-portal-link', {
-        body: requestBody
-      });
+      if (isPayPal) {
+        // Para PayPal, abrir el portal de gestión de PayPal
+        // PayPal no tiene un portal de gestión directo como Stripe,
+        // pero podemos redirigir a la página de gestión de PayPal
+        const paypalManageUrl = `https://www.paypal.com/myaccount/autopay/connect/${subscription.paypal_subscription_id}`;
+        
+        // Intentar abrir en el navegador
+        if (Capacitor.isNativePlatform()) {
+          const { Browser } = await import('@capacitor/browser');
+          await Browser.open({
+            url: paypalManageUrl,
+            presentationStyle: 'fullscreen',
+          });
+        } else {
+          window.open(paypalManageUrl, '_blank');
+        }
+        
+        toast({
+          title: language === "es" ? "Redirigiendo a PayPal" : "Redirecting to PayPal",
+          description: language === "es"
+            ? "Serás redirigido a PayPal para gestionar tu suscripción."
+            : "You will be redirected to PayPal to manage your subscription.",
+          variant: "default",
+        });
+      } else if (isStripe) {
+        // Para Stripe, usar el portal de gestión existente
+        const requestBody = {
+          business_id: profile.business_id,
+          subscription_id: subscription.id,
+        };
 
-      if (error) {
-        throw new Error(error.message || 'Error al invocar la función');
+        const { data, error } = await supabase.functions.invoke('create-portal-link', {
+          body: requestBody
+        });
+
+        if (error) {
+          throw new Error(error.message || 'Error al invocar la función');
+        }
+
+        if (data && data.success === false) {
+          throw new Error(data.error || 'Error desconocido al crear el portal');
+        }
+
+        if (!data || !data.portal_url) {
+          throw new Error('No se recibió respuesta del servidor');
+        }
+
+        window.location.href = data.portal_url;
+      } else {
+        throw new Error(language === "es"
+          ? "No se pudo identificar el proveedor de pago de tu suscripción."
+          : "Could not identify your subscription payment provider.");
       }
-
-      if (data && data.success === false) {
-        throw new Error(data.error || 'Error desconocido al crear el portal');
-      }
-
-      if (!data || !data.portal_url) {
-        throw new Error('No se recibió respuesta del servidor');
-      }
-
-      window.location.href = data.portal_url;
     } catch (error: any) {
       console.error("Error al crear portal de gestión:", error);
       
@@ -481,16 +720,42 @@ export default function SubscriptionPage() {
     );
   }
 
+  // CRÍTICO: Render seguro - siempre mostrar algo, nunca pantalla blanca
   if (loading) {
     return (
       <MobileLayout>
-        <div className="flex items-center justify-center h-64">
-          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        <div className="flex flex-col items-center justify-center min-h-[calc(100vh-var(--bottom-nav-height))] p-6">
+          <Loader2 className="h-8 w-8 animate-spin text-primary mb-4" />
+          <p className="text-sm text-muted-foreground">
+            {language === "es" ? "Cargando información de suscripción..." : "Loading subscription information..."}
+          </p>
         </div>
       </MobileLayout>
     );
   }
 
+  // CRÍTICO: Render seguro - si hay error pero no loading, mostrar error con opción de reintentar
+  if (error && !loading) {
+    return (
+      <MobileLayout>
+        <div className="flex flex-col items-center justify-center min-h-[calc(100vh-var(--bottom-nav-height))] p-6 text-center">
+          <AlertCircle className="h-12 w-12 text-destructive mb-4" />
+          <h2 className="text-xl font-semibold mb-2">
+            {language === "es" ? "Error" : "Error"}
+          </h2>
+          <p className="text-muted-foreground mb-4 max-w-md">{error}</p>
+          <Button onClick={() => {
+            setError(null);
+            fetchSubscription();
+          }}>
+            {language === "es" ? "Reintentar" : "Retry"}
+          </Button>
+        </div>
+      </MobileLayout>
+    );
+  }
+
+  // CRÍTICO: Render principal - siempre renderizar algo, incluso si subscription es null
   return (
     <MobileLayout>
       <div className="p-4 pb-24 max-w-2xl mx-auto space-y-6">
@@ -503,6 +768,29 @@ export default function SubscriptionPage() {
             {language === "es" ? "Suscripción" : "Subscription"}
           </h1>
         </div>
+
+        {/* CRÍTICO: Banner de éxito cuando la suscripción se activa */}
+        {showSuccessBanner && subscription && (subscription.status === 'active' || subscription.status === 'trialing') && (
+          <Alert className="border-green-500 bg-gradient-to-r from-green-50 to-emerald-50 shadow-lg relative">
+            <CheckCircle2 className="h-5 w-5 text-green-600" />
+            <AlertTitle className="text-green-800 font-bold">
+              {language === "es" ? "¡Suscripción Activada!" : "Subscription Activated!"}
+            </AlertTitle>
+            <AlertDescription className="text-green-700">
+              {language === "es"
+                ? "Tu suscripción Premium está ahora activa. Disfruta de todas las características premium."
+                : "Your Premium subscription is now active. Enjoy all premium features."}
+            </AlertDescription>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setShowSuccessBanner(false)}
+              className="absolute top-2 right-2 h-6 w-6 p-0"
+            >
+              <X className="h-4 w-4" />
+            </Button>
+          </Alert>
+        )}
 
         {/* Alert para pagos pendientes */}
         {hasPendingPayment && (
@@ -519,7 +807,7 @@ export default function SubscriptionPage() {
           </Alert>
         )}
 
-        {/* Card principal de estado */}
+        {/* Card principal de estado - RENDER SEGURO */}
         <Card className="shadow-md border-0 bg-gradient-to-br from-white to-gray-50/50">
           <CardHeader className="pb-4">
             <div className="flex items-center justify-between mb-2">
@@ -528,7 +816,8 @@ export default function SubscriptionPage() {
               </CardTitle>
               {getStatusBadge(subscription?.status || 'inactive')}
             </div>
-            {subscription?.status === 'active' && (
+            {/* CRÍTICO: Solo mostrar "Protección activa" si subscription existe y está activa */}
+            {subscription && subscription.status === 'active' && (
               <div className="flex items-center gap-2 text-sm text-green-700 mt-2">
                 <Shield className="h-4 w-4" />
                 <span className="font-medium">
@@ -538,6 +827,7 @@ export default function SubscriptionPage() {
             )}
           </CardHeader>
           <CardContent className="space-y-4">
+            {/* CRÍTICO: Render seguro - usar valores por defecto si subscription es null */}
             <div className="flex justify-between items-center py-2 border-b border-gray-100">
               <span className="text-sm text-muted-foreground">
                 {language === "es" ? "Plan" : "Plan"}
@@ -552,10 +842,11 @@ export default function SubscriptionPage() {
                 {language === "es" ? "Tarifa Mensual" : "Monthly Fee"}
               </span>
               <span className="font-bold text-lg text-primary">
-                ${(subscription?.monthly_fee || 9.50).toFixed(2)} USD
+                ${(subscription?.monthly_fee ?? 9.50).toFixed(2)} USD
               </span>
             </div>
-            {subscription?.next_payment_date && (
+            {/* CRÍTICO: Solo mostrar próxima renovación si subscription existe y tiene fecha */}
+            {subscription?.next_payment_date ? (
               <div className="flex justify-between items-center py-2">
                 <span className="text-sm text-muted-foreground flex items-center gap-2">
                   <Calendar className="h-4 w-4" />
@@ -565,7 +856,8 @@ export default function SubscriptionPage() {
                   {format(new Date(subscription.next_payment_date), "dd/MM/yyyy")}
                 </span>
               </div>
-            )}
+            ) : null}
+            {/* CRÍTICO: Mensaje cuando no hay suscripción */}
             {!subscription && (
               <div className="text-center py-4 border-t border-gray-100 mt-2">
                 <p className="text-sm text-muted-foreground">
@@ -648,8 +940,9 @@ export default function SubscriptionPage() {
                       setIsPaymentInProgress(false);
                     }
                     // Si es exitoso, el hook manejará el deep link y cerrará el browser
+                    // El estado isPaymentInProgress se reseteará cuando se reciba el deep link
                   }}
-                  disabled={paypalLoading || isPaymentInProgress}
+                  disabled={paypalLoading || isPaymentInProgress || checkoutLoading}
                   className="w-full h-12 rounded-xl shadow-sm font-semibold text-base"
                   size="lg"
                 >
@@ -718,9 +1011,12 @@ export default function SubscriptionPage() {
           </CardContent>
         </Card>
 
-        {/* Botones de acción */}
+        {/* Botones de acción - RENDER SEGURO */}
         <div className="space-y-3">
-          {subscription?.status === 'active' && subscription.paypal_subscription_id && (
+          {/* CRÍTICO: Mostrar botón de gestión solo si subscription existe, está activa y tiene proveedor */}
+          {subscription && 
+           subscription.status === 'active' && 
+           (subscription.paypal_subscription_id || subscription.stripe_subscription_id || !!(subscription as any).stripe_customer_id) && (
             <Button 
               onClick={handleManageSubscription}
               disabled={processingPortal}
