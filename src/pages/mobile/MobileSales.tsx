@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useEffect, useState, useMemo, useCallback } from "react";
+import { useNavigate, useLocation } from "react-router-dom";
 import MobileLayout from "@/components/mobile/MobileLayout";
 import { Card } from "@/components/ui/card";
 import { DollarSign, TrendingUp, Plus, FileDown, FileText, ArrowRight, BarChart3 } from "lucide-react";
@@ -11,6 +11,8 @@ import { exportSalesToPDF, exportSalesToExcel, exportSalesToCSV, SalesReportData
 import { format } from "date-fns";
 import { toast } from "sonner";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { useOptimizedSalesRealtime } from "@/hooks/useOptimizedRealtime";
+import { useAutoPurge } from "@/hooks/useAutoPurge";
 
 export default function MobileSales() {
   const navigate = useNavigate();
@@ -24,17 +26,47 @@ export default function MobileSales() {
     if (profile?.business_id) {
       fetchSales();
     }
-  }, [profile?.business_id]);
+  }, [profile?.business_id, fetchSales]);
 
-  const fetchSales = async () => {
+  // OPTIMIZACIÓN: Cálculos memoizados para evitar recálculos innecesarios
+  const salesTotals = useMemo(() => {
+    const today = new Date().toISOString().split("T")[0];
+    const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
+    
+    const todaySum = sales
+      .filter((sale) => sale.sale_date === today)
+      .reduce((sum, sale) => sum + (Number(sale.price_usd) || 0) + (Number(sale.tip_amount) || 0), 0);
+    
+    const weekSum = sales
+      .filter((sale) => sale.sale_date >= weekAgo)
+      .reduce((sum, sale) => sum + (Number(sale.price_usd) || 0) + (Number(sale.tip_amount) || 0), 0);
+    
+    return { todaySum, weekSum };
+  }, [sales]);
+
+  // Sincronizar con estado cuando cambian los cálculos memoizados
+  useEffect(() => {
+    setTodayTotal(salesTotals.todaySum);
+    setWeekTotal(salesTotals.weekSum);
+  }, [salesTotals]);
+
+  // OPTIMIZACIÓN: Auto-purga de estado al salir de la página
+  useAutoPurge(() => {
+    setSales([]);
+    setTodayTotal(0);
+    setWeekTotal(0);
+  }, []);
+
+  const fetchSales = useCallback(async () => {
     if (!profile?.business_id) return;
     
     const today = new Date().toISOString().split("T")[0];
     const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
 
+    // OPTIMIZACIÓN: Solo seleccionar columnas necesarias
     const { data, error } = await supabase
       .from("sales")
-      .select("*")
+      .select("id, sale_date, sale_time, client_name, service_name, price_usd, tip_amount, price_mxn, payment_method, created_at")
       .eq("business_id", profile.business_id)
       .order("created_at", { ascending: false })
       .limit(20);
@@ -42,19 +74,25 @@ export default function MobileSales() {
     if (data && !error) {
       setSales(data);
       
-      // Calculate today's total
+      // OPTIMIZACIÓN: Cálculos memoizados (ver abajo)
       const todaySum = data
         .filter((sale) => sale.sale_date === today)
         .reduce((sum, sale) => sum + (Number(sale.price_usd) || 0) + (Number(sale.tip_amount) || 0), 0);
       setTodayTotal(todaySum);
 
-      // Calculate week's total
       const weekSum = data
         .filter((sale) => sale.sale_date >= weekAgo)
         .reduce((sum, sale) => sum + (Number(sale.price_usd) || 0) + (Number(sale.tip_amount) || 0), 0);
       setWeekTotal(weekSum);
     }
-  };
+  }, [profile?.business_id]);
+
+  // OPTIMIZACIÓN: Realtime optimizado solo para ventas
+  useOptimizedSalesRealtime(
+    profile?.business_id,
+    fetchSales,
+    true // Solo activo cuando está en esta página
+  );
 
   const handleExportPDF = async () => {
     try {

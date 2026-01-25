@@ -176,13 +176,19 @@ export default function SubscriptionPage() {
       });
       
       // CRÍTICO: Detectar cambio de estado a 'active' para mostrar banner
+      // SOLO mostrar banner si realmente cambió de estado inactivo a activo
+      // NO mostrar si el usuario canceló el proceso de PayPal
       const newStatus = (data as any)?.status;
-      const wasInactive = !previousSubscriptionStatus || 
+      const wasInactive = previousSubscriptionStatus && 
                          (previousSubscriptionStatus !== 'active' && previousSubscriptionStatus !== 'trialing');
       const isNowActive = newStatus === 'active' || newStatus === 'trialing';
       
-      // Si la suscripción se activó recientemente, mostrar banner
-      if (wasInactive && isNowActive && data) {
+      // CRÍTICO: Solo mostrar banner si:
+      // 1. Había un estado previo (no es la primera carga)
+      // 2. El estado previo era inactivo
+      // 3. El nuevo estado es activo
+      // 4. NO hay un pago en progreso (para evitar mostrar banner si el usuario canceló)
+      if (wasInactive && isNowActive && data && !isPaymentInProgress) {
         console.log('[SubscriptionPage] 🎉 Suscripción activada, mostrando banner de éxito');
         setShowSuccessBanner(true);
         // Ocultar banner después de 10 segundos
@@ -526,7 +532,7 @@ export default function SubscriptionPage() {
       const { data, error } = await supabase.functions.invoke('create-paypal-checkout', {
         body: {
           user_id: profile.id,
-          amount: 9.50, // Monto fijo de prueba
+          amount: 9.51, // Monto fijo - sincronizado con PayPal
         }
       });
 
@@ -588,6 +594,9 @@ export default function SubscriptionPage() {
         
         // URL correcta para gestionar suscripciones en PayPal
         // PayPal redirige automáticamente según el entorno (sandbox/live) basado en la sesión del usuario
+        // CRÍTICO: Usar la URL correcta que lleva directo a la página de gestión de la suscripción
+        // Esta URL requiere que el usuario esté autenticado en PayPal, pero PayPal redirigirá al login si no lo está
+        // Luego redirigirá automáticamente a la página de gestión de la suscripción específica
         const paypalManageUrl = `https://www.paypal.com/myaccount/autopay/connect/${subscription.paypal_subscription_id}`;
         
         try {
@@ -861,7 +870,7 @@ export default function SubscriptionPage() {
                 {language === "es" ? "Tarifa Mensual" : "Monthly Fee"}
               </span>
               <span className="font-bold text-lg text-primary">
-                ${(subscription?.monthly_fee ?? 9.50).toFixed(2)} USD
+                ${(subscription?.monthly_fee ?? 9.51).toFixed(2)} USD
               </span>
             </div>
             {/* CRÍTICO: Solo mostrar próxima renovación si subscription existe y tiene fecha */}

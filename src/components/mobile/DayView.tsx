@@ -11,7 +11,8 @@ import { DndContext, DragEndEvent, PointerSensor, useSensor, useSensors, DragOve
 import { toast } from "sonner";
 import { FilterState } from "./CalendarHeader";
 import { formatTime, convertTo24Hour } from "@/lib/timeFormat";
-import { useRealtimeAppointments } from "@/hooks/useRealtimeAppointments";
+import { useOptimizedAppointmentsRealtime } from "@/hooks/useOptimizedRealtime";
+import { useAppointmentCache } from "@/hooks/useAppointmentCache";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { notifyNextClientWhenAppointmentStarted } from "@/lib/queueNotifications";
 import { useAppointmentColor } from "@/hooks/useAppointmentColor";
@@ -137,28 +138,44 @@ export function DayView({ date, filters, appointmentToOpen, onAppointmentOpened 
     })
   );
 
+  // OPTIMIZACIÓN: Usar caché de consultas
+  const { generateCacheKey, getCached, setCached, invalidateCache } = useAppointmentCache();
+
   const fetchAppointments = useCallback(async () => {
     if (!profile?.business_id) {
+      return;
+    }
+    
+    // OPTIMIZACIÓN: Verificar caché primero
+    const cacheKey = generateCacheKey('day', date, filters);
+    const cachedData = getCached(cacheKey);
+    if (cachedData) {
+      setAppointments(cachedData);
       return;
     }
     
     const dateStr = format(date, "yyyy-MM-dd");
     const nextDateStr = format(addDays(date, 1), "yyyy-MM-dd");
     
-    // Use appointment_date for day filtering
+    // OPTIMIZACIÓN: Solo seleccionar columnas necesarias
     let query = supabase
       .from("appointments")
       .select(`
-        *,
+        id,
+        appointment_date,
+        start_time,
+        end_time,
+        status,
+        service_id,
+        staff_id,
+        client_id,
         payment_method,
         payment_amount,
-        clients!appointments_client_id_fkey(id, user_id, full_name, email, phone),
-        services!appointments_service_id_fkey(name, duration_minutes, price, price_usd, price_mxn),
-        staff!appointments_staff_id_fkey(full_name, email, phone),
-        businesses!appointments_business_id_fkey(business_name, address)
+        clients!appointments_client_id_fkey(id, full_name, email, phone),
+        services!appointments_service_id_fkey(name, duration_minutes, price, price_usd),
+        staff!appointments_staff_id_fkey(full_name)
       `)
       .eq("business_id", profile.business_id)
-      // Use a range instead of eq to support both DATE and TIMESTAMP columns
       .gte("appointment_date", dateStr)
       .lt("appointment_date", nextDateStr)
       .order("start_time");
@@ -198,13 +215,23 @@ export function DayView({ date, filters, appointmentToOpen, onAppointmentOpened 
         });
       }
       setAppointments(filteredData);
+      // OPTIMIZACIÓN: Guardar en caché
+      setCached(cacheKey, filteredData, filters);
     } else {
       setAppointments([]);
     }
-  }, [date, filters, profile?.business_id]);
+  }, [date, filters, profile?.business_id, generateCacheKey, getCached, setCached]);
 
-  // Realtime hook to auto-refresh when new appointments arrive
-  useRealtimeAppointments(fetchAppointments);
+  // OPTIMIZACIÓN: Usar realtime optimizado con auto-limpieza
+  useOptimizedAppointmentsRealtime(
+    profile?.business_id,
+    () => {
+      // Invalidar caché cuando hay actualizaciones en tiempo real
+      invalidateCache('day');
+      fetchAppointments();
+    },
+    true // Solo activo cuando el componente está montado
+  );
 
   useEffect(() => {
     loadTimeFormat();

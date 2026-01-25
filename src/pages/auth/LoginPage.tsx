@@ -93,10 +93,10 @@ export default function LoginPage() {
         >
           {/* Title */}
           <div className="space-y-2">
-            <h1 className="text-3xl font-bold text-foreground">
+            <h1 className="text-3xl font-bold text-foreground dark:text-foreground">
               {language === "es" ? "Inicia sesión o regístrate" : "Log in or sign up"}
             </h1>
-            <p className="text-muted-foreground">
+            <p className="text-muted-foreground dark:text-muted-foreground">
               {language === "es" 
                 ? "Crea una cuenta o inicia sesión para gestionar tus citas" 
                 : "Create an account or log in to manage your appointments"}
@@ -207,12 +207,12 @@ export default function LoginPage() {
 
           {/* Professional Sign In */}
           <div className="pt-4 space-y-1">
-            <p className="text-foreground font-medium">
+            <p className="text-foreground dark:text-foreground font-medium">
               {language === "es" ? "¿Tienes un negocio?" : "Have a business account?"}
             </p>
             <Link
               to="/auth/signup"
-              className="text-primary hover:underline font-medium"
+              className="text-primary dark:text-primary hover:underline font-medium"
             >
               {language === "es" ? "Regístrate como profesional" : "Sign in as a professional"}
             </Link>
@@ -225,12 +225,12 @@ export default function LoginPage() {
         <div className="flex items-center gap-4 text-sm">
           <button
             onClick={() => setLanguage(language === "en" ? "es" : "en")}
-            className="flex items-center gap-1.5 text-primary hover:underline"
+            className="flex items-center gap-1.5 text-primary dark:text-primary hover:underline"
           >
             <Globe className="w-4 h-4" />
             {language === "en" ? "Español" : "English"}
           </button>
-          <a href="#" className="flex items-center gap-1.5 text-primary hover:underline">
+          <a href="#" className="flex items-center gap-1.5 text-primary dark:text-primary hover:underline">
             <HelpCircle className="w-4 h-4" />
             {language === "es" ? "Soporte" : "Support"}
           </a>

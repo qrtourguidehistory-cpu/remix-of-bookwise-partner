@@ -350,7 +350,7 @@ serve(async (req) => {
             owner_id: owner_id,
             status: 'inactive',
             subscription_plan: 'monthly',
-            monthly_fee: 9.50,
+            monthly_fee: 9.51,
           })
           .select()
           .single();

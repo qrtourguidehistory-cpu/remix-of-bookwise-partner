@@ -444,6 +444,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setProfile(null);
     lastUserIdRef.current = null;
     isInitializedRef.current = false;
+    
+    // CRÍTICO: Resetear tema a 'light' al cerrar sesión
+    localStorage.setItem("theme", "light");
+    const root = window.document.documentElement;
+    root.classList.remove("light", "dark");
+    root.classList.add("light");
+    
     toast.success("Sesión cerrada");
     window.location.href = "/welcome";
   };

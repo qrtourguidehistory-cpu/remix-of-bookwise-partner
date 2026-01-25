@@ -10,13 +10,14 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/lib/supabaseClient";
 import { subDays, startOfDay, endOfDay } from "date-fns";
 import { exportAnalyticsToPDF, exportAnalyticsToExcel, exportAnalyticsToCSV, AnalyticsReportData } from "@/lib/exportUtils";
 import { toast } from "sonner";
 import { useLanguage } from "@/contexts/LanguageContext";
+import { useAutoPurge } from "@/hooks/useAutoPurge";
 
 interface RevenueData {
   total: number;
@@ -66,12 +67,55 @@ export default function ReportsAnalytics() {
     avgServiceDuration: 0,
     peakBookingTime: "N/A",
   });
+  const [rawSalesData, setRawSalesData] = useState<any[]>([]);
+  const [rawAppointmentsData, setRawAppointmentsData] = useState<any[]>([]);
+
+  // OPTIMIZACIÓN: Auto-purga de estado al salir de la página
+  useAutoPurge(() => {
+    setRevenue({ total: 0, cash: 0, card: 0, online: 0, credit: 0 });
+    setServiceRevenue([]);
+    setStaffPerformance([]);
+    setPopularServices([]);
+    setOperationalMetrics({ staffUtilization: 0, noShowRate: 0, avgServiceDuration: 0, peakBookingTime: "N/A" });
+    setRawSalesData([]);
+    setRawAppointmentsData([]);
+  }, []);
 
   useEffect(() => {
     if (profile?.business_id) {
       fetchData();
     }
   }, [profile?.business_id, period]);
+
+  // OPTIMIZACIÓN: Cálculo memoizado de ingresos
+  const calculatedRevenue = useMemo(() => {
+    const revenueData: RevenueData = {
+      total: 0,
+      cash: 0,
+      card: 0,
+      online: 0,
+      credit: 0,
+    };
+
+    rawSalesData.forEach((sale) => {
+      const amount = sale.price_usd || 0;
+      revenueData.total += amount;
+      if (sale.payment_method === "cash") {
+        revenueData.cash += amount;
+      } else if (sale.payment_method === "card") {
+        revenueData.card += amount;
+      } else if (sale.payment_method === "online") {
+        revenueData.online += amount;
+      }
+    });
+
+    return revenueData;
+  }, [rawSalesData]);
+
+  // Sincronizar revenue calculado con estado
+  useEffect(() => {
+    setRevenue(calculatedRevenue);
+  }, [calculatedRevenue]);
 
   const getDateRange = () => {
     const now = new Date();
@@ -104,18 +148,20 @@ export default function ReportsAnalytics() {
     const { start, end } = getDateRange();
 
     try {
-      // Fetch sales data (incluyendo ventas de productos)
+      // OPTIMIZACIÓN: Solo seleccionar columnas necesarias
       const { data: sales, error: salesError } = await supabase
         .from("sales")
-        .select("price_usd, payment_method, inventory_used, service_name")
+        .select("price_usd, payment_method, service_name")
         .eq("business_id", profile.business_id)
         .gte("created_at", start)
         .lte("created_at", end);
 
       if (salesError) throw salesError;
 
+      // Guardar datos raw para cálculos memoizados
+      setRawSalesData(sales || []);
+
       // Fetch credits data
-      // First, get appointment IDs for the date range
       const { data: appointmentsInRange, error: appointmentsInRangeError } = await supabase
         .from("appointments")
         .select("id")
@@ -142,62 +188,39 @@ export default function ReportsAnalytics() {
         }
       }
 
-      // Calculate revenue
-      const revenueData: RevenueData = {
-        total: 0,
-        cash: 0,
-        card: 0,
-        online: 0,
+      // Actualizar revenue con créditos (el resto se calcula en useMemo)
+      setRevenue(prev => ({
+        ...prev,
         credit: creditTotal,
-      };
+        total: prev.total + creditTotal,
+      }));
 
+      // OPTIMIZACIÓN: Calcular service revenue desde datos raw (ya cargados)
+      const serviceMap = new Map<string, number>();
+      let totalServiceRevenue = 0;
       (sales || []).forEach((sale) => {
-        const amount = sale.price_usd || 0;
-        revenueData.total += amount;
-        if (sale.payment_method === "cash") {
-          revenueData.cash += amount;
-        } else if (sale.payment_method === "card") {
-          revenueData.card += amount;
-        } else if (sale.payment_method === "online") {
-          revenueData.online += amount;
+        if (sale.service_name) {
+          const service = sale.service_name;
+          const amount = sale.price_usd || 0;
+          serviceMap.set(service, (serviceMap.get(service) || 0) + amount);
+          totalServiceRevenue += amount;
         }
       });
 
-      // Include credit in total
-      revenueData.total += creditTotal;
+      // Calcular total incluyendo créditos
+      const totalRevenue = totalServiceRevenue + creditTotal;
+      const serviceRevenueData: ServiceRevenue[] = Array.from(serviceMap.entries())
+        .map(([service, revenue]) => ({
+          service,
+          revenue: Math.round(revenue * 100) / 100,
+          percentage: totalRevenue > 0 ? Math.round((revenue / totalRevenue) * 100) : 0,
+        }))
+        .sort((a, b) => b.revenue - a.revenue)
+        .slice(0, 5);
 
-      setRevenue(revenueData);
+      setServiceRevenue(serviceRevenueData);
 
-      // Fetch service revenue
-      const { data: serviceSales, error: serviceError } = await supabase
-        .from("sales")
-        .select("price_usd, service_name")
-        .eq("business_id", profile.business_id)
-        .gte("created_at", start)
-        .lte("created_at", end)
-        .not("service_name", "is", null);
-
-      if (!serviceError && serviceSales) {
-        const serviceMap = new Map<string, number>();
-        serviceSales.forEach((sale) => {
-          const service = sale.service_name || "Unknown";
-          const amount = sale.price_usd || 0;
-          serviceMap.set(service, (serviceMap.get(service) || 0) + amount);
-        });
-
-        const serviceRevenueData: ServiceRevenue[] = Array.from(serviceMap.entries())
-          .map(([service, revenue]) => ({
-            service,
-            revenue: Math.round(revenue * 100) / 100,
-            percentage: revenueData.total > 0 ? Math.round((revenue / revenueData.total) * 100) : 0,
-          }))
-          .sort((a, b) => b.revenue - a.revenue)
-          .slice(0, 5);
-
-        setServiceRevenue(serviceRevenueData);
-      }
-
-      // Fetch appointments for operational metrics
+      // OPTIMIZACIÓN: Fetch appointments for operational metrics (solo columnas necesarias)
       const { data: appointments, error: appointmentsError } = await supabase
         .from("appointments")
         .select("status, start_time, end_time, service_id, staff_id")
@@ -205,24 +228,28 @@ export default function ReportsAnalytics() {
         .gte("appointment_date", start.split("T")[0])
         .lte("appointment_date", end.split("T")[0]);
 
+      // Guardar datos raw para cálculos memoizados
+      setRawAppointmentsData(appointments || []);
+
       if (!appointmentsError && appointments) {
+        // OPTIMIZACIÓN: Cálculos memoizados (ver abajo)
         const totalAppointments = appointments.length;
         const noShows = appointments.filter((apt) => apt.status === "cancelled").length;
         const noShowRate = totalAppointments > 0 ? (noShows / totalAppointments) * 100 : 0;
 
-        // Calculate average service duration (simplified)
+        // Calculate average service duration
         const durations = appointments
           .filter((apt) => apt.start_time && apt.end_time)
           .map((apt) => {
             const start = new Date(`2000-01-01T${apt.start_time}`);
             const end = new Date(`2000-01-01T${apt.end_time}`);
-            return (end.getTime() - start.getTime()) / (1000 * 60); // minutes
+            return (end.getTime() - start.getTime()) / (1000 * 60);
           });
         const avgDuration = durations.length > 0
           ? Math.round(durations.reduce((a, b) => a + b, 0) / durations.length)
           : 0;
 
-        // Calculate peak booking time (simplified - using hour)
+        // Calculate peak booking time
         const hourCounts = new Map<number, number>();
         appointments.forEach((apt) => {
           if (apt.start_time) {
@@ -230,7 +257,7 @@ export default function ReportsAnalytics() {
             hourCounts.set(hour, (hourCounts.get(hour) || 0) + 1);
           }
         });
-        let peakHour = 14; // Default 2 PM
+        let peakHour = 14;
         let maxCount = 0;
         hourCounts.forEach((count, hour) => {
           if (count > maxCount) {
@@ -240,7 +267,7 @@ export default function ReportsAnalytics() {
         });
         const peakTime = `${peakHour}:00 - ${peakHour + 2}:00`;
 
-        // Calculate staff utilization (simplified)
+        // Calculate staff utilization
         const { data: staffData } = await supabase
           .from("staff")
           .select("id")

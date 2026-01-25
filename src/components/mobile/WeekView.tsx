@@ -11,7 +11,8 @@ import { formatTime } from "@/lib/timeFormat";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Plus } from "lucide-react";
-import { useRealtimeAppointments } from "@/hooks/useRealtimeAppointments";
+import { useOptimizedAppointmentsRealtime } from "@/hooks/useOptimizedRealtime";
+import { useAppointmentCache } from "@/hooks/useAppointmentCache";
 
 interface WeekViewProps {
   date: Date;
@@ -46,8 +47,20 @@ export function WeekView({ date, filters }: WeekViewProps) {
   const weekStart = startOfWeek(date, { weekStartsOn: 1 });
   const weekDays = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
 
+  // OPTIMIZACIÓN: Usar caché de consultas
+  const { generateCacheKey, getCached, setCached, invalidateCache } = useAppointmentCache();
+
   const fetchAppointments = useCallback(async () => {
     if (!profile?.business_id) return;
+    
+    // OPTIMIZACIÓN: Verificar caché primero
+    const cacheKey = generateCacheKey('week', date, filters);
+    const cachedData = getCached(cacheKey);
+    if (cachedData) {
+      setAppointments(cachedData);
+      setLoading(false);
+      return;
+    }
     
     setLoading(true);
     const currentWeekStart = startOfWeek(date, { weekStartsOn: 1 });
@@ -55,19 +68,23 @@ export function WeekView({ date, filters }: WeekViewProps) {
     const startDateStr = format(currentWeekStart, "yyyy-MM-dd");
     const endExclusiveStr = format(addDays(weekEnd, 1), "yyyy-MM-dd");
 
+    // OPTIMIZACIÓN: Solo seleccionar columnas necesarias
     let query = supabase
       .from("appointments")
       .select(`
-        *,
-        client_name,
-        client_email,
-        client_phone,
-        clients!appointments_client_id_fkey(id, user_id, full_name, email, phone, is_blocked, blocked_reason, blocked_at, allergy_notes),
+        id,
+        appointment_date,
+        start_time,
+        end_time,
+        status,
+        service_id,
+        staff_id,
+        client_id,
+        clients!appointments_client_id_fkey(id, full_name, email, phone),
         services!appointments_service_id_fkey(name, duration_minutes, price),
         staff!appointments_staff_id_fkey(full_name)
       `)
       .eq("business_id", profile.business_id)
-      // Prefer appointment_date (supports DATE or TIMESTAMP)
       .gte("appointment_date", startDateStr)
       .lt("appointment_date", endExclusiveStr)
       .order("appointment_date")
@@ -91,12 +108,21 @@ export function WeekView({ date, filters }: WeekViewProps) {
       setAppointments([]);
     } else {
       setAppointments(data || []);
+      // OPTIMIZACIÓN: Guardar en caché
+      setCached(cacheKey, data || [], filters);
     }
     setLoading(false);
-  }, [date, filters, profile?.business_id]);
+  }, [date, filters, profile?.business_id, generateCacheKey, getCached, setCached]);
 
-  // Realtime hook to auto-refresh when appointments change
-  useRealtimeAppointments(fetchAppointments);
+  // OPTIMIZACIÓN: Usar realtime optimizado con auto-limpieza
+  useOptimizedAppointmentsRealtime(
+    profile?.business_id,
+    () => {
+      invalidateCache('week');
+      fetchAppointments();
+    },
+    true
+  );
 
   useEffect(() => {
     if (profile?.business_id) {
