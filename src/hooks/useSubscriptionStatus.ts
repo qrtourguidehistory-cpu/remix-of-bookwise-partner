@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 
-export type SubscriptionStatus = 'trialing' | 'active' | 'past_due' | 'suspended' | 'cancelled' | 'inactive' | 'loading' | 'no_subscription';
+export type SubscriptionStatus = 'trialing' | 'active' | 'past_due' | 'suspended' | 'cancelled' | 'inactive' | 'loading' | 'no_subscription' | 'grace_period';
 
 interface UseSubscriptionStatusResult {
   status: SubscriptionStatus;
@@ -27,11 +27,52 @@ export function useSubscriptionStatus(): UseSubscriptionStatusResult {
 
     setIsLoading(true);
     try {
+      // Verificar si el usuario es nuevo (menos de 10 días desde creación)
+      const { data: profileData } = await supabase
+        .from("profiles")
+        .select("created_at")
+        .eq("id", profile.id)
+        .maybeSingle();
+
+      const { data: businessData } = await supabase
+        .from("businesses")
+        .select("created_at")
+        .eq("id", profile.business_id)
+        .maybeSingle();
+
+      // Usar la fecha más antigua entre profile y business para determinar si es usuario nuevo
+      const createdDates = [
+        profileData?.created_at,
+        businessData?.created_at,
+      ].filter(Boolean) as string[];
+
+      if (createdDates.length > 0) {
+        const oldestDate = new Date(Math.min(...createdDates.map(d => new Date(d).getTime())));
+        const daysSinceCreation = (new Date().getTime() - oldestDate.getTime()) / (1000 * 60 * 60 * 24);
+        
+        // Si el usuario tiene menos de 10 días, dar período de gracia
+        if (daysSinceCreation < 10) {
+          const remainingDays = Math.ceil(10 - daysSinceCreation);
+          console.log(`[useSubscriptionStatus] Usuario nuevo detectado. Días restantes de gracia: ${remainingDays}`);
+          
+          // Crear un objeto de suscripción "virtual" para el período de gracia
+          setSubscription({
+            id: 'grace_period',
+            status: 'grace_period',
+            grace_period_days_remaining: remainingDays,
+            created_at: oldestDate.toISOString(),
+          });
+          setStatus('grace_period');
+          setIsLoading(false);
+          return;
+        }
+      }
+
       // Si skipCache es true, agregar timestamp para forzar refetch
-      let query = supabase
-        .from("business_subscriptions")
+      let query = (supabase
+        .from("business_subscriptions" as any)
         .select("*")
-        .eq("business_id", profile.business_id);
+        .eq("business_id", profile.business_id) as any);
       
       if (skipCache) {
         // Agregar parámetro único para saltar caché
@@ -77,7 +118,7 @@ export function useSubscriptionStatus(): UseSubscriptionStatusResult {
         {
           event: "*",
           schema: "public",
-          table: "business_subscriptions",
+          table: "business_subscriptions" as any,
           filter: `business_id=eq.${profile.business_id}`,
         },
         (payload) => {
@@ -87,7 +128,7 @@ export function useSubscriptionStatus(): UseSubscriptionStatusResult {
           } else if (payload.new) {
             const newData = payload.new as any;
             setSubscription(newData);
-            setStatus(newData.status || 'inactive');
+            setStatus((newData.status || 'inactive') as SubscriptionStatus);
             setIsLoading(false);
           }
         }

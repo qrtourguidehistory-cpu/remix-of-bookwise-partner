@@ -10,7 +10,7 @@ interface Translations {
 }
 
 const translations: Translations = {
-  appName: { en: "Mí Turnow", es: "Mí Turnow" },
+  appName: { en: "Mí Turnow Partner", es: "Mí Turnow Partner" },
   calendar: { en: "Calendar", es: "Agenda" },
   sales: { en: "Sales", es: "Ventas" },
   add: { en: "Add", es: "Agregar" },

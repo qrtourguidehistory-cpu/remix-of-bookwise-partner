@@ -6,10 +6,37 @@ import { Calendar, DollarSign, Users, UserPlus, Bell, Plus, Eye, AlertTriangle }
 import { Link } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { useLanguage } from "@/contexts/LanguageContext";
+import { supabase } from "@/lib/supabaseClient";
+import { useEffect } from "react";
 
 export default function AdminDashboard() {
   const { profile } = useAuth();
   const { t } = useLanguage();
+
+  // CRÍTICO: Sincronizar visibilidad al cargar el dashboard
+  useEffect(() => {
+    const syncVisibility = async () => {
+      try {
+        // Llamar a la Edge Function para sincronizar visibilidad
+        const { error } = await supabase.functions.invoke('sync-business-visibility', {
+          body: {},
+        });
+
+        if (error) {
+          console.error('[AdminDashboard] Error sincronizando visibilidad:', error);
+        } else {
+          console.log('[AdminDashboard] ✅ Visibilidad sincronizada');
+        }
+      } catch (error) {
+        console.error('[AdminDashboard] Error llamando sync-business-visibility:', error);
+      }
+    };
+
+    // Sincronizar solo si hay un usuario autenticado con business_id
+    if (profile?.business_id) {
+      syncVisibility();
+    }
+  }, [profile?.business_id]);
   
   const business = profile?.businesses;
   const isPublic = business?.is_public === true;

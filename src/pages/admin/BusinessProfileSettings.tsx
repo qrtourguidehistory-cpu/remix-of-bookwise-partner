@@ -585,6 +585,19 @@ export default function BusinessProfileSettings() {
         [type === 'logo' ? 'logo_url' : 'cover_image_url']: url 
       } : null);
       
+      // If logo is uploaded, also sync with profile avatar_url
+      if (type === 'logo' && profile?.id) {
+        try {
+          await supabase
+            .from('profiles')
+            .update({ avatar_url: url })
+            .eq('id', profile.id);
+        } catch (error) {
+          console.warn("Could not sync logo with profile avatar:", error);
+          // Don't fail the whole operation
+        }
+      }
+      
       // Si estaba aprobado, marcar como draft por cambios
       if (business?.approval_status === 'approved' && originalBusinessData) {
         await supabase
@@ -954,6 +967,19 @@ export default function BusinessProfileSettings() {
           return;
         }
         throw error;
+      }
+
+      // Sync logo_url with profile avatar_url
+      if (business.logo_url && profile?.id) {
+        try {
+          await supabase
+            .from('profiles')
+            .update({ avatar_url: business.logo_url })
+            .eq('id', profile.id);
+        } catch (error) {
+          console.warn("Could not sync logo with profile avatar:", error);
+          // Don't fail the whole operation
+        }
       }
 
       toast({
@@ -1477,7 +1503,7 @@ export default function BusinessProfileSettings() {
                             });
                           }
                         }}
-                        disabled={!nameChangeLimit?.canChange || business.approval_status === 'pending' || approvalRequest?.status === 'pending'}
+                        disabled={!nameChangeLimit?.canChange || (business.approval_status as any) === 'pending' || (approvalRequest?.status as any) === 'pending'}
                       >
                         <Pencil className="h-4 w-4 mr-2" />
                         {language === "es" ? "Editar" : "Edit"}
@@ -1561,7 +1587,7 @@ export default function BusinessProfileSettings() {
                             });
                           }
                         }}
-                        disabled={!categoryChangeLimit?.canChange || business.approval_status === 'pending' || approvalRequest?.status === 'pending'}
+                        disabled={!categoryChangeLimit?.canChange || (business.approval_status as any) === 'pending' || (approvalRequest?.status as any) === 'pending'}
                       >
                         <Pencil className="h-4 w-4 mr-2" />
                         {language === "es" ? "Editar" : "Edit"}
@@ -1734,7 +1760,7 @@ export default function BusinessProfileSettings() {
               <CardContent className="space-y-4">
                 {/* Logo Upload */}
                 <div className="space-y-2">
-                  <Label>{language === "es" ? "Logo" : "Logo"}</Label>
+                  <Label>{language === "es" ? "Logo o imagen de perfil" : "Logo or profile image"}</Label>
                   <input
                     ref={logoInputRef}
                     type="file"
@@ -2090,7 +2116,12 @@ export default function BusinessProfileSettings() {
 
       {/* Mobile Preview Toggle Button - SOLO si NO está bloqueado */}
       {!isLocked && business && (
-      <div className="fixed bottom-20 right-4 sm:hidden">
+      <div 
+        className="fixed right-4 sm:hidden z-50"
+        style={{ 
+          bottom: "calc(var(--bottom-nav-height, 76px) + max(24px, var(--app-safe-bottom, 0px)))" 
+        }}
+      >
         <Button 
           size="lg"
           className="rounded-full shadow-lg"

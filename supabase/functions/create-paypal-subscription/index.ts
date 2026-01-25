@@ -19,7 +19,8 @@ interface CreatePayPalSubscriptionRequest {
 // PayPal API configuration
 const PAYPAL_CLIENT_ID = Deno.env.get('PAYPAL_CLIENT_ID') || 'AVQv1quFb4J_F3k4jcCIDd_ZtCvvOm0ofl8eSVRu3gWRIp0Yod2VDnuhKVGGmzVF5BSN0Est6H_y5n_A';
 const PAYPAL_CLIENT_SECRET = Deno.env.get('PAYPAL_CLIENT_SECRET');
-const PAYPAL_PLAN_ID = 'P-94219841L9833302MNFZQWUI'; // Nuevo plan sin URLs hardcodeadas
+// CRÍTICO: PLAN_ID ahora viene de variables de entorno para facilitar cambio entre sandbox/live y planes
+const PAYPAL_PLAN_ID = Deno.env.get('PAYPAL_PLAN_ID');
 const PAYPAL_BASE_URL = Deno.env.get('PAYPAL_MODE') === 'live' 
   ? 'https://api-m.paypal.com' 
   : 'https://api-m.sandbox.paypal.com';
@@ -211,12 +212,13 @@ serve(async (req) => {
       );
     }
 
+    // CRÍTICO: Validar que PAYPAL_PLAN_ID esté configurado en variables de entorno
     if (!PAYPAL_PLAN_ID || PAYPAL_PLAN_ID.length < 10) {
-      console.error('[create-paypal-subscription] ❌ PayPal plan ID inválido:', PAYPAL_PLAN_ID);
+      console.error('[create-paypal-subscription] ❌ PayPal plan ID no configurado o inválido:', PAYPAL_PLAN_ID);
       return new Response(
         JSON.stringify({ 
           success: false, 
-          error: `PayPal plan ID inválido: ${PAYPAL_PLAN_ID}. Verifica que el plan existe en PayPal Sandbox.` 
+          error: `PayPal plan ID no configurado. Por favor, configura PAYPAL_PLAN_ID en las variables de entorno de Supabase.` 
         }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );

@@ -46,6 +46,12 @@
   padding-bottom: calc(var(--bottom-nav-height, 76px) + max(16px, env(safe-area-inset-bottom, 0px), var(--app-safe-bottom, 0px)));
 }
 
+/* Safe area for content above bottom nav - ensures content is not hidden */
+.content-above-nav {
+  padding-bottom: calc(var(--bottom-nav-height, 76px) + max(16px, env(safe-area-inset-bottom, 0px), var(--app-safe-bottom, 0px)));
+  margin-bottom: calc(var(--bottom-nav-height, 76px) + max(16px, env(safe-area-inset-bottom, 0px), var(--app-safe-bottom, 0px)));
+}
+
 /* Main content padding that accounts for bottom nav */
 .pb-content-with-nav {
   padding-bottom: calc(var(--bottom-nav-height, 76px) + 32px); /* fallback */
@@ -141,55 +147,66 @@ All colors MUST be HSL.
   }
 
   .dark {
-    --background: 222 47% 5%;
-    --foreground: 210 40% 98%;
+    /* Background - NEGRO PURO */
+    --background: 0 0% 0%;
+    --foreground: 0 0% 100%;
 
-    --card: 222 47% 8%;
-    --card-foreground: 210 40% 98%;
+    /* Cards - Negro ligeramente más claro para diferenciación */
+    --card: 0 0% 8%;
+    --card-foreground: 0 0% 100%;
 
-    --popover: 222 47% 8%;
-    --popover-foreground: 210 40% 98%;
+    /* Popovers - Igual que cards */
+    --popover: 0 0% 8%;
+    --popover-foreground: 0 0% 100%;
 
-    --primary: 210 40% 98%;
-    --primary-foreground: 222 47% 11%;
+    /* Primary - BLANCO para máximo contraste */
+    --primary: 0 0% 100%;
+    --primary-foreground: 0 0% 0%;
 
-    --secondary: 217 33% 17%;
-    --secondary-foreground: 210 40% 98%;
+    /* Secondary - Gris oscuro pero visible */
+    --secondary: 0 0% 15%;
+    --secondary-foreground: 0 0% 100%;
 
-    --muted: 217 33% 17%;
-    --muted-foreground: 215 20% 65%;
+    /* Muted - Gris oscuro */
+    --muted: 0 0% 15%;
+    --muted-foreground: 0 0% 85%;
 
-    --accent: 217 33% 17%;
-    --accent-foreground: 210 40% 98%;
+    /* Accent - Gris oscuro */
+    --accent: 0 0% 15%;
+    --accent-foreground: 0 0% 100%;
 
-    --destructive: 0 62% 50%;
+    /* Destructive - Rojo visible */
+    --destructive: 0 84% 60%;
     --destructive-foreground: 0 0% 100%;
 
-    /* Accent colors */
-    --success: 142 71% 45%;
+    /* Accent colors - Colores brillantes para visibilidad */
+    --success: 142 71% 55%;
     --success-foreground: 0 0% 100%;
-    --warning: 38 92% 50%;
+    --warning: 38 92% 60%;
     --warning-foreground: 0 0% 0%;
-    --info: 217 91% 60%;
+    --info: 217 91% 70%;
     --info-foreground: 0 0% 100%;
 
-    --border: 217 33% 20%;
-    --input: 217 33% 20%;
-    --ring: 210 40% 98%;
+    /* Borders - Gris claro para visibilidad */
+    --border: 0 0% 25%;
+    --input: 0 0% 20%;
+    --ring: 0 0% 100%;
     
-    --gradient-primary: linear-gradient(135deg, hsl(210 40% 98%), hsl(210 40% 80%));
-    --gradient-secondary: linear-gradient(135deg, hsl(217 33% 17%), hsl(222 47% 20%));
-    --gradient-hero: linear-gradient(180deg, hsl(222 47% 5%), hsl(222 47% 8%));
-    --gradient-success: linear-gradient(135deg, hsl(142 71% 45%), hsl(142 71% 55%));
+    /* Gradients - Gradientes con blanco */
+    --gradient-primary: linear-gradient(135deg, hsl(0 0% 100%), hsl(0 0% 85%));
+    --gradient-secondary: linear-gradient(135deg, hsl(0 0% 15%), hsl(0 0% 20%));
+    --gradient-hero: linear-gradient(180deg, hsl(0 0% 0%), hsl(0 0% 8%));
+    --gradient-success: linear-gradient(135deg, hsl(142 71% 55%), hsl(142 71% 65%));
     
-    --sidebar-background: 222 47% 5%;
-    --sidebar-foreground: 210 40% 98%;
-    --sidebar-primary: 210 40% 98%;
-    --sidebar-primary-foreground: 222 47% 11%;
-    --sidebar-accent: 217 33% 17%;
-    --sidebar-accent-foreground: 210 40% 98%;
-    --sidebar-border: 217 33% 20%;
-    --sidebar-ring: 210 40% 98%;
+    /* Sidebar - Negro */
+    --sidebar-background: 0 0% 0%;
+    --sidebar-foreground: 0 0% 100%;
+    --sidebar-primary: 0 0% 100%;
+    --sidebar-primary-foreground: 0 0% 0%;
+    --sidebar-accent: 0 0% 15%;
+    --sidebar-accent-foreground: 0 0% 100%;
+    --sidebar-border: 0 0% 25%;
+    --sidebar-ring: 0 0% 100%;
   }
 }
 
@@ -208,5 +225,56 @@ All colors MUST be HSL.
 
   body {
     @apply bg-background text-foreground;
+  }
+
+  /* Forzar iconos y textos blancos en modo oscuro */
+  .dark svg:not([class*="text-"]) {
+    color: hsl(var(--foreground)) !important;
+  }
+
+  .dark [class*="lucide"]:not([class*="text-"]) {
+    color: hsl(var(--foreground)) !important;
+  }
+
+  /* Asegurar que todos los textos usen foreground en modo oscuro */
+  .dark {
+    color: hsl(var(--foreground));
+  }
+
+  /* Forzar iconos en botones y elementos interactivos */
+  .dark button svg,
+  .dark [role="button"] svg,
+  .dark a svg,
+  .dark button [class*="lucide"],
+  .dark [role="button"] [class*="lucide"],
+  .dark a [class*="lucide"] {
+    color: hsl(var(--foreground)) !important;
+  }
+
+  /* Asegurar que los textos muted también sean visibles */
+  .dark .text-muted-foreground {
+    color: hsl(var(--muted-foreground)) !important;
+  }
+
+  /* Forzar que todos los textos sean blancos en modo oscuro */
+  .dark p,
+  .dark span,
+  .dark div,
+  .dark h1,
+  .dark h2,
+  .dark h3,
+  .dark h4,
+  .dark h5,
+  .dark h6,
+  .dark label {
+    color: hsl(var(--foreground));
+  }
+
+  /* Asegurar que los inputs y textareas también tengan texto blanco */
+  .dark input,
+  .dark textarea,
+  .dark select {
+    color: hsl(var(--foreground));
+    background-color: hsl(var(--background));
   }
 }

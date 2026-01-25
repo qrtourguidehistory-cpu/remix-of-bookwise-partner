@@ -27,9 +27,21 @@ export default function ProfilePage() {
     if (profile) {
       setFullName(profile.full_name || "");
       setPhone(profile.phone || "");
-      setAvatarUrl(profile.avatar_url || "");
+      // Prioritize business logo_url if available, otherwise use avatar_url
+      // This ensures sync between profile and business logo
+      const avatarToUse = profile.businesses?.logo_url || profile.avatar_url || "";
+      setAvatarUrl(avatarToUse);
+      
+      // If business has logo_url but profile doesn't have it in avatar_url, sync it
+      if (profile.businesses?.logo_url && profile.avatar_url !== profile.businesses.logo_url && user?.id) {
+        supabase
+          .from('profiles')
+          .update({ avatar_url: profile.businesses.logo_url })
+          .eq('id', user.id)
+          .then(() => refreshProfile());
+      }
     }
-  }, [profile]);
+  }, [profile, user?.id, refreshProfile]);
 
   const handleAvatarUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     try {
@@ -39,36 +51,68 @@ export default function ProfilePage() {
         return;
       }
 
-      const file = event.target.files[0];
-      const fileExt = file.name.split('.').pop();
-      // Use user id as folder for RLS policy compliance
-      const fileName = `${user?.id}/${Date.now()}.${fileExt}`;
+      if (!user?.id || !profile?.business_id) {
+        toast.error("No se pudo identificar el usuario o negocio");
+        return;
+      }
 
-      // Upload to Supabase Storage
+      const file = event.target.files[0];
+      
+      // Validate file type
+      if (!file.type.startsWith('image/')) {
+        toast.error("Solo se permiten imágenes");
+        return;
+      }
+
+      // Max 5MB
+      if (file.size > 5 * 1024 * 1024) {
+        toast.error("La imagen debe ser menor a 5MB");
+        return;
+      }
+
+      const fileExt = file.name.split('.').pop();
+      const timestamp = Date.now();
+      // Use business_id for folder structure to match business-images bucket
+      const fileName = `logo-${timestamp}.${fileExt}`;
+      const filePath = `${profile.business_id}/${fileName}`;
+
+      // Upload to business-images bucket (same as logo)
       const { error: uploadError } = await supabase.storage
-        .from('avatars')
-        .upload(fileName, file, { upsert: true });
+        .from('business-images')
+        .upload(filePath, file, { upsert: true });
 
       if (uploadError) throw uploadError;
 
       // Get public URL
       const { data } = supabase.storage
-        .from('avatars')
-        .getPublicUrl(fileName);
+        .from('business-images')
+        .getPublicUrl(filePath);
 
-      // Update profile
-      const { error: updateError } = await supabase
+      // Update profile avatar_url
+      const { error: updateProfileError } = await supabase
         .from('profiles')
         .update({ avatar_url: data.publicUrl })
-        .eq('id', user?.id);
+        .eq('id', user.id);
 
-      if (updateError) throw updateError;
+      if (updateProfileError) throw updateProfileError;
+
+      // Also update business logo_url to sync them
+      const { error: updateBusinessError } = await supabase
+        .from('businesses')
+        .update({ logo_url: data.publicUrl })
+        .eq('id', profile.business_id);
+
+      if (updateBusinessError) {
+        console.warn("Could not update business logo:", updateBusinessError);
+        // Don't fail the whole operation if business update fails
+      }
 
       setAvatarUrl(data.publicUrl);
       await refreshProfile();
-      toast.success("Avatar actualizado");
+      toast.success("Foto de perfil actualizada");
     } catch (error: any) {
-      toast.error(error.message || "Error al subir avatar");
+      console.error("Error uploading avatar:", error);
+      toast.error(error.message || "Error al subir foto de perfil");
     } finally {
       setUploading(false);
     }

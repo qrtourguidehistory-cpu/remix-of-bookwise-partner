@@ -141,7 +141,7 @@ export default function MobileSales() {
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
-            <Button onClick={() => navigate("/admin/sales/new")} size="sm" className="rounded-xl font-semibold bg-black text-white hover:bg-black/90">
+            <Button onClick={() => navigate("/admin/sales/new")} size="sm" className="rounded-xl font-semibold bg-primary text-primary-foreground hover:bg-primary/90">
               <Plus className="h-4 w-4 mr-1" />
               {language === "es" ? "Nueva Venta" : "New Sale"}
             </Button>
@@ -149,14 +149,14 @@ export default function MobileSales() {
         </div>
 
         {/* Daily Sales Summary Button */}
-        <Card className="mb-4 cursor-pointer shadow-md border-0 rounded-xl bg-gradient-to-br from-white to-gray-50/50 hover:shadow-lg transition-shadow" onClick={() => navigate("/admin/reports")}>
+        <Card className="mb-4 cursor-pointer shadow-md border border-border rounded-xl bg-card hover:bg-accent hover:shadow-lg transition-shadow" onClick={() => navigate("/admin/reports")}>
           <div className="p-4 flex items-center justify-between">
             <div className="flex items-center gap-3">
               <div className="p-2 rounded-lg bg-primary/10 shadow-sm">
                 <FileText className="h-5 w-5 text-primary" />
               </div>
               <div>
-                <div className="font-semibold text-base">
+                <div className="font-semibold text-base text-foreground">
                   {language === "es" ? "Resúmenes de Ventas Diarias" : "Daily Sales Summaries"}
                 </div>
                 <div className="text-sm text-muted-foreground">
@@ -167,20 +167,20 @@ export default function MobileSales() {
               </div>
             </div>
             <Button variant="ghost" size="icon" className="rounded-lg">
-              <ArrowRight className="h-4 w-4" />
+              <ArrowRight className="h-4 w-4 text-foreground" />
             </Button>
           </div>
         </Card>
 
         <div className="grid grid-cols-2 gap-4">
-          <Card className="p-4 shadow-md border-0 rounded-xl bg-gradient-to-br from-white to-gray-50/50">
+          <Card className="p-4 shadow-md border border-border rounded-xl bg-card">
             <div className="flex items-center gap-2 text-muted-foreground mb-2">
               <DollarSign className="h-4 w-4" />
               <span className="text-sm">{language === "es" ? "Hoy" : "Today"}</span>
             </div>
             <div className="text-2xl font-bold text-primary">${todayTotal.toFixed(2)}</div>
           </Card>
-          <Card className="p-4 shadow-md border-0 rounded-xl bg-gradient-to-br from-white to-gray-50/50">
+          <Card className="p-4 shadow-md border border-border rounded-xl bg-card">
             <div className="flex items-center gap-2 text-muted-foreground mb-2">
               <TrendingUp className="h-4 w-4" />
               <span className="text-sm">{language === "es" ? "Esta Semana" : "This Week"}</span>
@@ -193,21 +193,21 @@ export default function MobileSales() {
           <h2 className="text-lg font-semibold mb-4">{language === "es" ? "Ventas Recientes" : "Recent Sales"}</h2>
           <div className="space-y-4">
             {sales.length === 0 ? (
-              <Card className="p-8 shadow-md border-0 rounded-xl text-center bg-gradient-to-br from-white to-gray-50/50">
+              <Card className="p-8 shadow-md border border-border rounded-xl text-center bg-card">
                 <p className="text-muted-foreground">
                   {language === "es" ? "No hay ventas registradas" : "No sales recorded yet"}
                 </p>
               </Card>
             ) : (
               sales.map((sale) => (
-                <Card key={sale.id} className="p-4 shadow-md border-0 rounded-xl bg-gradient-to-br from-white to-gray-50/50">
+                <Card key={sale.id} className="p-4 shadow-md border border-border rounded-xl bg-card">
                   <div className="flex justify-between items-start mb-3">
                     <div className="flex-1 min-w-0">
-                      <div className="font-semibold text-base truncate">{sale.client_name}</div>
+                      <div className="font-semibold text-base truncate text-foreground">{sale.client_name}</div>
                       <div className="text-sm text-muted-foreground mt-1">{sale.service_name}</div>
                     </div>
                     <div className="text-right ml-4">
-                      <div className={`text-lg font-bold ${sale.payment_method === 'credit' ? 'text-orange-600' : 'text-green-600'}`}>
+                      <div className={`text-lg font-bold ${sale.payment_method === 'credit' ? 'text-warning' : 'text-success'}`}>
                         ${(parseFloat(sale.price_usd) + parseFloat(sale.tip_amount || 0)).toFixed(2)}
                       </div>
                       {sale.price_mxn > 0 && (
@@ -217,11 +217,11 @@ export default function MobileSales() {
                       )}
                     </div>
                   </div>
-                  <div className="flex justify-between items-center text-xs text-muted-foreground pt-2 border-t border-gray-100">
+                  <div className="flex justify-between items-center text-xs text-muted-foreground pt-2 border-t border-border">
                     <span>
                       {new Date(sale.sale_date).toLocaleDateString()} {sale.sale_time}
                     </span>
-                    <span className={`capitalize ${sale.payment_method === 'credit' ? 'font-semibold text-orange-600' : ''}`}>{sale.payment_method}</span>
+                    <span className={`capitalize ${sale.payment_method === 'credit' ? 'font-semibold text-warning' : ''}`}>{sale.payment_method}</span>
                   </div>
                 </Card>
               ))

@@ -25,8 +25,8 @@ export default function SubscriptionGuard({ children }: SubscriptionGuardProps) 
   }
 
   // Si la suscripción no está activa, mostrar el paywall
-  // Permitir también 'trialing' para usuarios en periodo de prueba
-  if (status !== 'active' && status !== 'trialing') {
+  // Permitir también 'trialing' y 'grace_period' para usuarios en periodo de prueba o gracia
+  if (status !== 'active' && status !== 'trialing' && status !== 'grace_period') {
     return <Paywall />;
   }
 

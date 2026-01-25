@@ -39,7 +39,7 @@ interface BusinessSubscription {
   id: string;
   business_id: string;
   owner_id: string;
-  status: 'trialing' | 'active' | 'past_due' | 'suspended' | 'cancelled' | 'inactive';
+  status: 'trialing' | 'active' | 'past_due' | 'suspended' | 'cancelled' | 'inactive' | 'grace_period';
   subscription_plan: string;
   monthly_fee: number;
   payment_method: string | null;
@@ -570,62 +570,64 @@ export default function SubscriptionPage() {
 
     setProcessingPortal(true);
     try {
-      // CRÍTICO: Detectar el proveedor de pago (PayPal o Stripe)
+      // CRÍTICO: Detectar el proveedor de pago (solo PayPal actualmente)
       const isPayPal = !!subscription.paypal_subscription_id;
-      const isStripe = !!subscription.stripe_subscription_id || !!(subscription as any).stripe_customer_id;
 
       if (isPayPal) {
-        // Para PayPal, abrir el portal de gestión de PayPal
-        // PayPal no tiene un portal de gestión directo como Stripe,
-        // pero podemos redirigir a la página de gestión de PayPal
+        // CRÍTICO: Validar que existe paypal_subscription_id
+        if (!subscription.paypal_subscription_id) {
+          toast({
+            title: language === "es" ? "Error" : "Error",
+            description: language === "es"
+              ? "No se encontró el ID de suscripción de PayPal. Por favor, contacta con soporte."
+              : "PayPal subscription ID not found. Please contact support.",
+            variant: "destructive",
+          });
+          return;
+        }
+        
+        // URL correcta para gestionar suscripciones en PayPal
+        // PayPal redirige automáticamente según el entorno (sandbox/live) basado en la sesión del usuario
         const paypalManageUrl = `https://www.paypal.com/myaccount/autopay/connect/${subscription.paypal_subscription_id}`;
         
-        // Intentar abrir en el navegador
-        if (Capacitor.isNativePlatform()) {
-          const { Browser } = await import('@capacitor/browser');
-          await Browser.open({
-            url: paypalManageUrl,
-            presentationStyle: 'fullscreen',
+        try {
+          // Intentar abrir en el navegador
+          if (Capacitor.isNativePlatform()) {
+            const { Browser } = await import('@capacitor/browser');
+            await Browser.open({
+              url: paypalManageUrl,
+              presentationStyle: 'fullscreen',
+            });
+          } else {
+            window.open(paypalManageUrl, '_blank');
+          }
+          
+          toast({
+            title: language === "es" ? "Redirigiendo a PayPal" : "Redirecting to PayPal",
+            description: language === "es"
+              ? "Serás redirigido a PayPal para gestionar tu suscripción, cancelar o descargar recibos."
+              : "You will be redirected to PayPal to manage your subscription, cancel, or download receipts.",
+            variant: "default",
           });
-        } else {
-          window.open(paypalManageUrl, '_blank');
+        } catch (error: any) {
+          console.error('[SubscriptionPage] Error opening PayPal management:', error);
+          toast({
+            title: language === "es" ? "Error" : "Error",
+            description: language === "es"
+              ? `No se pudo abrir PayPal. Por favor, visita ${paypalManageUrl} e inicia sesión para gestionar tu suscripción.`
+              : `Could not open PayPal. Please visit ${paypalManageUrl} and sign in to manage your subscription.`,
+            variant: "destructive",
+          });
         }
-        
-        toast({
-          title: language === "es" ? "Redirigiendo a PayPal" : "Redirecting to PayPal",
-          description: language === "es"
-            ? "Serás redirigido a PayPal para gestionar tu suscripción."
-            : "You will be redirected to PayPal to manage your subscription.",
-          variant: "default",
-        });
-      } else if (isStripe) {
-        // Para Stripe, usar el portal de gestión existente
-        const requestBody = {
-          business_id: profile.business_id,
-          subscription_id: subscription.id,
-        };
-
-        const { data, error } = await supabase.functions.invoke('create-portal-link', {
-          body: requestBody
-        });
-
-        if (error) {
-          throw new Error(error.message || 'Error al invocar la función');
-        }
-
-        if (data && data.success === false) {
-          throw new Error(data.error || 'Error desconocido al crear el portal');
-        }
-
-        if (!data || !data.portal_url) {
-          throw new Error('No se recibió respuesta del servidor');
-        }
-
-        window.location.href = data.portal_url;
       } else {
-        throw new Error(language === "es"
-          ? "No se pudo identificar el proveedor de pago de tu suscripción."
-          : "Could not identify your subscription payment provider.");
+        // Solo PayPal está soportado actualmente
+        toast({
+          title: language === "es" ? "Error" : "Error",
+          description: language === "es"
+            ? "No se encontró una suscripción de PayPal activa. Por favor, contacta con soporte."
+            : "No active PayPal subscription found. Please contact support.",
+          variant: "destructive",
+        });
       }
     } catch (error: any) {
       console.error("Error al crear portal de gestión:", error);
@@ -756,9 +758,26 @@ export default function SubscriptionPage() {
   }
 
   // CRÍTICO: Render principal - siempre renderizar algo, incluso si subscription es null
+  const isGracePeriod = (subscription?.status as any) === 'grace_period';
+  const gracePeriodDays = (subscription as any)?.grace_period_days_remaining || 0;
+
   return (
     <MobileLayout>
       <div className="p-4 pb-24 max-w-2xl mx-auto space-y-6">
+        {/* Banner de modo prueba para usuarios nuevos */}
+        {isGracePeriod && (
+          <Alert className="border-blue-500 bg-gradient-to-r from-blue-50 to-cyan-50 dark:from-blue-950/20 dark:to-cyan-950/20">
+            <Clock className="h-5 w-5 text-blue-600" />
+            <AlertTitle className="text-blue-800 dark:text-blue-300">
+              {language === "es" ? "Estás en modo prueba" : "You're in trial mode"}
+            </AlertTitle>
+            <AlertDescription className="text-blue-700 dark:text-blue-400">
+              {language === "es" 
+                ? `Tienes ${gracePeriodDays} ${gracePeriodDays === 1 ? 'día' : 'días'} restantes de prueba gratuita. Activa tu suscripción para continuar disfrutando de todas las características después del período de prueba.`
+                : `You have ${gracePeriodDays} ${gracePeriodDays === 1 ? 'day' : 'days'} remaining in your free trial. Activate your subscription to continue enjoying all features after the trial period.`}
+            </AlertDescription>
+          </Alert>
+        )}
         {/* Header */}
         <div className="flex items-center gap-3 mb-2">
           <Button variant="ghost" size="icon" onClick={() => navigate(-1)} className="rounded-full">
@@ -828,7 +847,7 @@ export default function SubscriptionPage() {
           </CardHeader>
           <CardContent className="space-y-4">
             {/* CRÍTICO: Render seguro - usar valores por defecto si subscription es null */}
-            <div className="flex justify-between items-center py-2 border-b border-gray-100">
+            <div className="flex justify-between items-center py-2 border-b border-border">
               <span className="text-sm text-muted-foreground">
                 {language === "es" ? "Plan" : "Plan"}
               </span>
@@ -836,7 +855,7 @@ export default function SubscriptionPage() {
                 {subscription?.subscription_plan || 'monthly'}
               </span>
             </div>
-            <div className="flex justify-between items-center py-2 border-b border-gray-100">
+            <div className="flex justify-between items-center py-2 border-b border-border">
               <span className="text-sm text-muted-foreground flex items-center gap-2">
                 <DollarSign className="h-4 w-4" />
                 {language === "es" ? "Tarifa Mensual" : "Monthly Fee"}
@@ -859,7 +878,7 @@ export default function SubscriptionPage() {
             ) : null}
             {/* CRÍTICO: Mensaje cuando no hay suscripción */}
             {!subscription && (
-              <div className="text-center py-4 border-t border-gray-100 mt-2">
+              <div className="text-center py-4 border-t border-border mt-2">
                 <p className="text-sm text-muted-foreground">
                   {language === "es" 
                     ? "No hay suscripción activa. Activa tu suscripción para comenzar." 
@@ -885,9 +904,9 @@ export default function SubscriptionPage() {
           <CardContent className="space-y-4">
             {subscription?.status === 'active' && subscription?.paypal_subscription_id && !hasPendingPayment ? (
               <div className="space-y-3">
-                <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
-                  <div className="p-2 bg-white rounded-lg shadow-sm">
-                    <CreditCard className="h-5 w-5 text-blue-600" />
+                <div className="flex items-center gap-3 p-3 bg-muted rounded-lg">
+                  <div className="p-2 bg-card rounded-lg shadow-sm">
+                    <CreditCard className="h-5 w-5 text-primary" />
                   </div>
                   <div className="flex-1">
                     <p className="font-medium">PayPal</p>
@@ -964,7 +983,7 @@ export default function SubscriptionPage() {
                     onClick={handleOneTimePayment}
                     disabled={checkoutLoading || isPaymentInProgress}
                     variant="outline"
-                    className="w-full h-12 rounded-xl shadow-sm font-semibold text-base bg-white hover:bg-gray-50 active:bg-gray-100 border border-gray-200 transition-colors duration-200"
+                    className="w-full h-12 rounded-xl shadow-sm font-semibold text-base bg-card hover:bg-accent active:bg-accent/80 border border-border transition-colors duration-200"
                     size="lg"
                   >
                     {checkoutLoading ? (
@@ -979,18 +998,18 @@ export default function SubscriptionPage() {
                       </>
                     )}
                   </Button>
-                  <p className="text-xs text-gray-500 text-center mt-2">
+                  <p className="text-xs text-muted-foreground text-center mt-2">
                     {language === "es" ? "Powered by PayPal" : "Powered by PayPal"}
                   </p>
                   {/* Información sobre cómo pagar */}
-                  <div className="mt-4 p-4 bg-gray-50 rounded-lg border border-gray-100">
+                  <div className="mt-4 p-4 bg-muted rounded-lg border border-border">
                     <div className="flex items-start gap-2 mb-3">
-                      <Info className="h-4 w-4 text-gray-600 mt-0.5 flex-shrink-0" />
-                      <h4 className="text-sm font-semibold text-gray-800">
+                      <Info className="h-4 w-4 text-muted-foreground mt-0.5 flex-shrink-0" />
+                      <h4 className="text-sm font-semibold text-foreground">
                         {language === "es" ? "¿Cómo pagar directo con tu tarjeta?" : "How to pay directly with your card?"}
                       </h4>
                     </div>
-                    <ul className="space-y-2 text-xs text-gray-600">
+                    <ul className="space-y-2 text-xs text-muted-foreground">
                       <li className="flex items-start gap-2">
                         <Check className="h-3.5 w-3.5 text-green-600 mt-0.5 flex-shrink-0" />
                         <span>{language === "es" ? "Haz clic en el botón 'Pagar con Tarjeta Crédito o Débito' de arriba." : "Click the 'Pay with Credit or Debit Card' button above."}</span>
@@ -1013,10 +1032,10 @@ export default function SubscriptionPage() {
 
         {/* Botones de acción - RENDER SEGURO */}
         <div className="space-y-3">
-          {/* CRÍTICO: Mostrar botón de gestión solo si subscription existe, está activa y tiene proveedor */}
+          {/* CRÍTICO: Mostrar botón de gestión solo si subscription existe, está activa y tiene PayPal */}
           {subscription && 
            subscription.status === 'active' && 
-           (subscription.paypal_subscription_id || subscription.stripe_subscription_id || !!(subscription as any).stripe_customer_id) && (
+           subscription.paypal_subscription_id && (
             <Button 
               onClick={handleManageSubscription}
               disabled={processingPortal}

@@ -125,42 +125,36 @@ export default function SettingsPage() {
           label: language === "es" ? "Perfil Público" : "Public Profile",
           description: language === "es" ? "Hacer visible tu negocio para clientes" : "Make your business visible to clients",
           path: "/admin/business-profile",
-          color: "text-black dark:text-white"
         },
         {
           icon: Clock,
           label: language === "es" ? "Horarios del Negocio" : "Business Hours",
           description: language === "es" ? "Configurar horarios de apertura y cierre" : "Configure opening and closing hours",
           path: "/admin/business-hours",
-          color: "text-black dark:text-white"
         },
         {
           icon: Clock,
           label: language === "es" ? "Cerrar Temporalmente" : "Temporary Close",
           description: language === "es" ? "Cerrar establecimiento por 30min, 1h o hasta mañana" : "Close business for 30min, 1h or until tomorrow",
           path: "/admin/temporary-close",
-          color: "text-black dark:text-white"
         },
         {
           icon: Users,
           label: language === "es" ? "Gestión de Personal" : "Staff Management",
           description: language === "es" ? "Horarios, breaks y vacaciones del equipo" : "Team schedules, breaks and vacations",
           path: "/admin/schedules",
-          color: "text-black dark:text-white"
         },
         {
           icon: Calendar,
           label: language === "es" ? "Configuración de Citas" : "Appointment Settings",
           description: language === "es" ? "Duración de slots, buffer y políticas" : "Slot duration, buffer and policies",
           path: "/admin/appointment-config",
-          color: "text-black dark:text-white"
         },
         {
           icon: Type,
           label: language === "es" ? "Texto" : "Text",
           description: language === "es" ? "Tamaño de texto y visibilidad del footer" : "Text size and footer visibility",
           path: "/admin/accessibility-settings",
-          color: "text-black dark:text-white"
         }
       ]
     },
@@ -172,35 +166,30 @@ export default function SettingsPage() {
           label: language === "es" ? "Métodos de Pago" : "Payment Methods",
           description: language === "es" ? "Configurar formas de pago aceptadas" : "Configure accepted payment methods",
           path: "/admin/payment-methods",
-          color: "text-black dark:text-white"
         },
         {
           icon: Database,
           label: language === "es" ? "Comisiones del Personal" : "Staff Commissions",
           description: language === "es" ? "Configurar % de comisiones por servicio" : "Configure commission % per service",
           path: "/admin/commissions",
-          color: "text-black dark:text-white"
         },
         {
           icon: Package,
           label: language === "es" ? "Inventario" : "Inventory",
           description: language === "es" ? "Gestionar productos y stock" : "Manage products and stock",
           path: "/admin/inventory",
-          color: "text-black dark:text-white"
         },
         {
           icon: BarChart3,
           label: language === "es" ? "Dashboard de Inventario" : "Inventory Dashboard",
           description: language === "es" ? "Gráficos y alertas de stock" : "Charts and stock alerts",
           path: "/admin/inventory/dashboard",
-          color: "text-black dark:text-white"
         },
         {
           icon: DollarSign,
           label: language === "es" ? "Suscripción" : "Subscription",
           description: language === "es" ? "Gestiona tu suscripción y método de pago" : "Manage your subscription and payment method",
           path: "/admin/subscription",
-          color: "text-black dark:text-white"
         }
       ]
     },
@@ -212,14 +201,12 @@ export default function SettingsPage() {
           label: language === "es" ? "Tema y Colores" : "Theme & Colors",
           description: language === "es" ? "Personalizar la apariencia de la app" : "Customize app appearance",
           path: "/admin/theme-settings",
-          color: "text-black dark:text-white"
         },
         {
           icon: Globe,
           label: language === "es" ? "Idioma y Región" : "Language & Region",
           description: language === "es" ? "Configurar idioma y formato de fechas" : "Configure language and date format",
           path: "/admin/locale-settings",
-          color: "text-black dark:text-white"
         }
       ]
     },
@@ -231,7 +218,6 @@ export default function SettingsPage() {
           label: language === "es" ? "Configurar Notificaciones" : "Notification Settings",
           description: language === "es" ? "Gestiona notificaciones que recibes y envías" : "Manage notifications you receive and send",
           path: "/admin/notification-settings",
-          color: "text-black dark:text-white"
         }
       ]
     },
@@ -243,21 +229,18 @@ export default function SettingsPage() {
           label: language === "es" ? "Legal y Ayuda" : "Legal & Help",
           description: language === "es" ? "Políticas, términos y guía de uso" : "Policies, terms and usage guide",
           path: "/admin/roles",
-          color: "text-black dark:text-white"
         },
         {
           icon: ShieldOff,
           label: language === "es" ? "Clientes bloqueados" : "Blocked Clients",
           description: language === "es" ? "Administrar clientes bloqueados" : "Manage blocked clients",
           path: "/admin/blocked-clients",
-          color: "text-black dark:text-white"
         },
         {
           icon: ShieldOff,
           label: language === "es" ? "Eliminar Cuenta" : "Delete Account",
           description: language === "es" ? "Eliminar permanentemente tu cuenta" : "Permanently delete your account",
           path: "/admin/delete-account",
-          color: "text-black dark:text-white"
         }
       ]
     }
@@ -307,10 +290,10 @@ export default function SettingsPage() {
           <div className="space-y-6">
             {settingSections.map((section) => (
               <div key={section.title}>
-                <h2 className="text-sm font-semibold text-muted-foreground mb-4 uppercase">
+                <h2 className="text-sm font-semibold text-foreground mb-4 uppercase">
                   {section.title}
                 </h2>
-                <Card className="shadow-md border-0 rounded-xl bg-gradient-to-br from-white to-gray-50/50">
+                <Card className="shadow-md border border-border rounded-xl bg-card">
                   <CardContent className="p-0">
                     {section.items.map((item, index) => {
                       const Icon = item.icon;
@@ -321,21 +304,21 @@ export default function SettingsPage() {
                           variant="ghost"
                           onClick={() => navigate(item.path)}
                           className={`w-full justify-start h-auto p-4 relative rounded-none ${
-                            index !== section.items.length - 1 ? 'border-b border-gray-100' : ''
+                            index !== section.items.length - 1 ? 'border-b border-border' : ''
                           } ${index === 0 ? 'rounded-t-xl' : ''} ${index === section.items.length - 1 ? 'rounded-b-xl' : ''}`}
                         >
                           <div className="flex items-center gap-4 flex-1">
-                            <div className={`${item.color} p-2 rounded-lg bg-gray-50 shadow-sm`}>
-                              <Icon className="h-5 w-5" />
+                            <div className="p-2 rounded-lg bg-muted shadow-sm">
+                              <Icon className="h-5 w-5 text-foreground" />
                             </div>
                             <div className="flex-1 text-left">
-                              <p className="font-semibold text-base">{item.label}</p>
+                              <p className="font-semibold text-base text-foreground">{item.label}</p>
                               <p className="text-sm text-muted-foreground mt-0.5">
                                 {item.description}
                               </p>
                             </div>
                             {showIndicator && (
-                              <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse" />
+                              <div className="w-2 h-2 bg-destructive rounded-full animate-pulse" />
                             )}
                           </div>
                         </Button>
@@ -350,7 +333,7 @@ export default function SettingsPage() {
           <div className="space-y-6">
             {settingSections.map((section) => (
               <div key={section.title}>
-                <h2 className="text-sm font-semibold text-muted-foreground mb-4 uppercase">
+                <h2 className="text-sm font-semibold text-foreground mb-4 uppercase">
                   {section.title}
                 </h2>
                 <div className="grid grid-cols-2 gap-3">
@@ -362,18 +345,18 @@ export default function SettingsPage() {
                         key={item.label}
                         variant="outline"
                         onClick={() => navigate(item.path)}
-                        className="flex flex-col items-center justify-start gap-1.5 h-auto min-h-[110px] p-3 w-full whitespace-normal relative shadow-md border-0 rounded-xl bg-gradient-to-br from-white to-gray-50/50 hover:shadow-lg transition-shadow"
+                        className="flex flex-col items-center justify-start gap-1.5 h-auto min-h-[110px] p-3 w-full whitespace-normal relative shadow-md border border-border rounded-xl bg-card hover:bg-accent hover:shadow-lg transition-shadow"
                       >
-                        <div className={`${item.color} flex-shrink-0 p-2 rounded-lg bg-gray-50 shadow-sm`}>
-                          <Icon className="h-7 w-7 stroke-[1.5]" />
+                        <div className="flex-shrink-0 p-2 rounded-lg bg-muted shadow-sm">
+                          <Icon className="h-7 w-7 stroke-[1.5] text-foreground" />
                         </div>
                         <div className="text-center w-full flex flex-col gap-0.5 flex-1 min-w-0 px-1 overflow-visible">
-                          <p className="font-semibold text-sm leading-tight w-full break-words">
+                          <p className="font-semibold text-sm leading-tight w-full break-words text-foreground">
                             {item.label}
                           </p>
                         </div>
                         {showIndicator && (
-                          <div className="absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full animate-pulse" />
+                          <div className="absolute top-2 right-2 w-2 h-2 bg-destructive rounded-full animate-pulse" />
                         )}
                       </Button>
                     );

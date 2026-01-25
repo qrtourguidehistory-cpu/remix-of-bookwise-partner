@@ -144,16 +144,16 @@ export function SettingsSheet({ open, onOpenChange }: SettingsSheetProps) {
                   key={item.label}
                   variant="outline"
                   onClick={() => handleNavigate(item.path)}
-                  className="flex flex-col items-center justify-center gap-1.5 h-auto min-h-[90px] p-3 relative shadow-md border-0 rounded-xl bg-gradient-to-br from-white to-gray-50/50 hover:shadow-lg transition-shadow"
+                  className="flex flex-col items-center justify-center gap-1.5 h-auto min-h-[90px] p-3 relative shadow-md border border-border rounded-xl bg-card hover:bg-accent hover:shadow-lg transition-shadow"
                 >
-                  <div className="p-2 rounded-lg bg-gray-50 shadow-sm">
+                  <div className="p-2 rounded-lg bg-muted shadow-sm">
                     <Icon className="h-5 w-5 text-primary flex-shrink-0" />
                   </div>
-                  <span className="text-xs font-semibold leading-tight line-clamp-2 text-center px-1">
+                  <span className="text-xs font-semibold leading-tight line-clamp-2 text-center px-1 text-card-foreground">
                     {item.label}
                   </span>
                   {showIndicator && (
-                    <div className="absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full animate-pulse" />
+                    <div className="absolute top-2 right-2 w-2 h-2 bg-destructive rounded-full animate-pulse" />
                   )}
                 </Button>
               );

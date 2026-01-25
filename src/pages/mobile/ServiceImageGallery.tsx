@@ -20,23 +20,43 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 
-const MAX_IMAGES = 3;
 const BUCKET_NAME = "business-images";
 
 interface GalleryImage {
   name: string;
   url: string;
   path: string;
+  category: 'front' | 'team' | 'interior';
 }
+
+type GalleryCategory = {
+  id: 'front' | 'team' | 'interior';
+  label: string;
+  labelEs: string;
+};
+
+const GALLERY_CATEGORIES: GalleryCategory[] = [
+  { id: 'front', label: 'Store Front', labelEs: 'Imagen del frente del local' },
+  { id: 'team', label: 'Team Photo', labelEs: 'Imagen del equipo de trabajo' },
+  { id: 'interior', label: 'Store Interior', labelEs: 'Imagen del local por dentro' },
+];
 
 export default function ServiceImageGallery() {
   const navigate = useNavigate();
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
   const { profile } = useAuth();
-  const [images, setImages] = useState<GalleryImage[]>([]);
+  const [images, setImages] = useState<Record<string, GalleryImage | null>>({
+    front: null,
+    team: null,
+    interior: null,
+  });
   const [loading, setLoading] = useState(true);
-  const [uploading, setUploading] = useState(false);
-  const [deleteImage, setDeleteImage] = useState<GalleryImage | null>(null);
+  const [uploading, setUploading] = useState<Record<string, boolean>>({
+    front: false,
+    team: false,
+    interior: false,
+  });
+  const [deleteImage, setDeleteImage] = useState<{ image: GalleryImage; category: string } | null>(null);
 
   useEffect(() => {
     if (profile?.business_id) {
@@ -49,32 +69,46 @@ export default function ServiceImageGallery() {
     
     setLoading(true);
     try {
-      const folderPath = `${profile.business_id}/gallery`;
-      const { data, error } = await supabase.storage
-        .from(BUCKET_NAME)
-        .list(folderPath, {
-          limit: MAX_IMAGES,
-          sortBy: { column: 'created_at', order: 'desc' }
-        });
+      const loadedImages: Record<string, GalleryImage | null> = {
+        front: null,
+        team: null,
+        interior: null,
+      };
 
-      if (error) throw error;
+      // Load images for each category
+      for (const category of GALLERY_CATEGORIES) {
+        const folderPath = `${profile.business_id}/gallery/${category.id}`;
+        const { data, error } = await supabase.storage
+          .from(BUCKET_NAME)
+          .list(folderPath, {
+            limit: 1,
+            sortBy: { column: 'created_at', order: 'desc' }
+          });
 
-      const imageList: GalleryImage[] = (data || [])
-        .filter(file => file.name !== '.emptyFolderPlaceholder')
-        .map(file => {
-          const path = `${folderPath}/${file.name}`;
-          const { data: urlData } = supabase.storage
-            .from(BUCKET_NAME)
-            .getPublicUrl(path);
-          
-          return {
-            name: file.name,
-            url: urlData.publicUrl,
-            path
-          };
-        });
+        if (error && error.message !== 'The resource was not found') {
+          console.error(`Error loading ${category.id}:`, error);
+          continue;
+        }
 
-      setImages(imageList);
+        if (data && data.length > 0) {
+          const file = data.find(f => f.name !== '.emptyFolderPlaceholder');
+          if (file) {
+            const path = `${folderPath}/${file.name}`;
+            const { data: urlData } = supabase.storage
+              .from(BUCKET_NAME)
+              .getPublicUrl(path);
+            
+            loadedImages[category.id] = {
+              name: file.name,
+              url: urlData.publicUrl,
+              path,
+              category: category.id,
+            };
+          }
+        }
+      }
+
+      setImages(loadedImages);
     } catch (error) {
       console.error("Error loading images:", error);
       toast.error(t("errorLoadingImages") || "Error al cargar imágenes");
@@ -83,60 +117,69 @@ export default function ServiceImageGallery() {
     }
   };
 
-  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>, category: 'front' | 'team' | 'interior') => {
     const files = Array.from(e.target.files || []);
     if (!files.length || !profile?.business_id) return;
 
-    // Check limit
-    if (images.length + files.length > MAX_IMAGES) {
+    const file = files[0]; // Only one file per category
+
+    // Check if category already has an image
+    if (images[category]) {
       toast.error(
-        t("maxImagesReached") || 
-        `Máximo ${MAX_IMAGES} imágenes permitidas. Tienes ${images.length} actualmente.`
+        t("categoryHasImage") || 
+        "Esta categoría ya tiene una imagen. Elimina la imagen actual antes de subir una nueva."
       );
+      e.target.value = '';
       return;
     }
 
-    setUploading(true);
+    setUploading(prev => ({ ...prev, [category]: true }));
     
-    for (const file of files) {
-      try {
-        // Validate file type
-        if (!file.type.startsWith('image/')) {
-          toast.error(t("invalidFileType") || "Solo se permiten imágenes");
-          continue;
-        }
-
-        // Max 5MB
-        if (file.size > 5 * 1024 * 1024) {
-          toast.error(t("fileTooLarge") || "La imagen debe ser menor a 5MB");
-          continue;
-        }
-
-        const timestamp = Date.now();
-        const ext = file.name.split('.').pop();
-        const fileName = `${timestamp}.${ext}`;
-        const filePath = `${profile.business_id}/gallery/${fileName}`;
-
-        const { error: uploadError } = await supabase.storage
-          .from(BUCKET_NAME)
-          .upload(filePath, file, {
-            cacheControl: '3600',
-            upsert: false
-          });
-
-        if (uploadError) throw uploadError;
-
-        toast.success(t("imageAdded") || "Imagen agregada");
-      } catch (error: any) {
-        console.error("Error uploading image:", error);
-        toast.error(error.message || t("errorUploadingImage") || "Error al subir imagen");
+    try {
+      // Validate file type
+      if (!file.type.startsWith('image/')) {
+        toast.error(t("invalidFileType") || "Solo se permiten imágenes");
+        return;
       }
-    }
 
-    // Reset input and reload
-    e.target.value = '';
-    await loadImages();
-    setUploading(false);
+      // Max 5MB
+      if (file.size > 5 * 1024 * 1024) {
+        toast.error(t("fileTooLarge") || "La imagen debe ser menor a 5MB");
+        return;
+      }
+
+      const timestamp = Date.now();
+      const ext = file.name.split('.').pop();
+      const fileName = `${timestamp}.${ext}`;
+      const folderPath = `${profile.business_id}/gallery/${category}`;
+      const filePath = `${folderPath}/${fileName}`;
+
+      // Delete old image if exists (shouldn't happen, but just in case)
+      const oldImage = images[category];
+      if (oldImage) {
+        await supabase.storage
+          .from(BUCKET_NAME)
+          .remove([oldImage.path]);
+      }
+
+      const { error: uploadError } = await supabase.storage
+        .from(BUCKET_NAME)
+        .upload(filePath, file, {
+          cacheControl: '3600',
+          upsert: false
+        });
+
+      if (uploadError) throw uploadError;
+
+      toast.success(t("imageAdded") || "Imagen agregada");
+      await loadImages();
+    } catch (error: any) {
+      console.error("Error uploading image:", error);
+      toast.error(error.message || t("errorUploadingImage") || "Error al subir imagen");
+    } finally {
+      setUploading(prev => ({ ...prev, [category]: false }));
+      e.target.value = '';
+    }
   };
 
   const handleDelete = async () => {
@@ -145,7 +188,7 @@ export default function ServiceImageGallery() {
     try {
       const { error } = await supabase.storage
         .from(BUCKET_NAME)
-        .remove([deleteImage.path]);
+        .remove([deleteImage.image.path]);
 
       if (error) throw error;
 
@@ -168,72 +211,92 @@ export default function ServiceImageGallery() {
           </Button>
           <div className="flex-1">
             <h1 className="text-2xl font-bold">{t("gallery") || "Galería"}</h1>
-            <p className="text-sm text-muted-foreground">
-              {images.length}/{MAX_IMAGES} {t("images") || "imágenes"}
-            </p>
           </div>
         </div>
-
-        {images.length < MAX_IMAGES && (
-          <div className="mb-6">
-            <Label htmlFor="images" className="cursor-pointer">
-              <div className="flex items-center justify-center gap-3 p-8 border-2 border-dashed border-border rounded-lg hover:border-primary transition-colors">
-                {uploading ? (
-                  <Loader2 className="h-6 w-6 text-primary animate-spin" />
-                ) : (
-                  <Upload className="h-6 w-6 text-primary" />
-                )}
-                <span className="font-medium">
-                  {uploading 
-                    ? (t("uploading") || "Subiendo...") 
-                    : (t("uploadImages") || "Subir imágenes")
-                  }
-                </span>
-              </div>
-              <Input
-                id="images"
-                type="file"
-                accept="image/*"
-                multiple
-                onChange={handleImageUpload}
-                className="hidden"
-                disabled={uploading}
-              />
-            </Label>
-          </div>
-        )}
 
         {loading ? (
           <div className="flex items-center justify-center py-12">
             <Loader2 className="h-8 w-8 text-primary animate-spin" />
           </div>
-        ) : images.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-12 text-center">
-            <ImageIcon className="h-16 w-16 text-muted-foreground mb-4" />
-            <p className="text-muted-foreground">
-              {t("noImages") || "No hay imágenes. Sube algunas para empezar."}
-            </p>
-          </div>
         ) : (
-          <div className="grid grid-cols-2 gap-4">
-            {images.map((image) => (
-              <div key={image.path} className="relative group aspect-square">
-                <img
-                  src={image.url}
-                  alt={image.name}
-                  className="w-full h-full object-cover rounded-lg"
-                />
-                <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity rounded-lg flex items-center justify-center">
-                  <Button
-                    variant="destructive"
-                    size="icon"
-                    onClick={() => setDeleteImage(image)}
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
+          <div className="space-y-6">
+            {GALLERY_CATEGORIES.map((category) => {
+              const categoryImage = images[category.id];
+              const isUploading = uploading[category.id];
+              const categoryLabel = language === "es" ? category.labelEs : category.label;
+              
+              return (
+                <div key={category.id} className="space-y-2">
+                  <Label className="text-base font-semibold">{categoryLabel}</Label>
+                  
+                  {categoryImage ? (
+                    <div className="relative group">
+                      <div className="relative aspect-video w-full rounded-lg overflow-hidden border border-border">
+                        <img
+                          src={categoryImage.url}
+                          alt={categoryLabel}
+                          className="w-full h-full object-cover"
+                        />
+                        <div className="absolute inset-0 bg-background/80 backdrop-blur-sm opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+                          <Button
+                            variant="destructive"
+                            size="sm"
+                            onClick={() => setDeleteImage({ image: categoryImage, category: category.id })}
+                          >
+                            <Trash2 className="h-4 w-4 mr-2" />
+                            {t("delete") || "Eliminar"}
+                          </Button>
+                          <Label htmlFor={`upload-${category.id}`} className="cursor-pointer">
+                            <Button
+                              variant="secondary"
+                              size="sm"
+                              asChild
+                            >
+                              <span>
+                                <Upload className="h-4 w-4 mr-2" />
+                                {t("change") || "Cambiar"}
+                              </span>
+                            </Button>
+                          </Label>
+                        </div>
+                      </div>
+                      <Input
+                        id={`upload-${category.id}`}
+                        type="file"
+                        accept="image/*"
+                        onChange={(e) => handleImageUpload(e, category.id)}
+                        className="hidden"
+                        disabled={isUploading}
+                      />
+                    </div>
+                  ) : (
+                    <Label htmlFor={`upload-${category.id}`} className="cursor-pointer">
+                      <div className="flex items-center justify-center gap-3 p-8 border-2 border-dashed border-border rounded-lg hover:border-primary transition-colors">
+                        {isUploading ? (
+                          <Loader2 className="h-6 w-6 text-primary animate-spin" />
+                        ) : (
+                          <Upload className="h-6 w-6 text-primary" />
+                        )}
+                        <span className="font-medium">
+                          {isUploading 
+                            ? (t("uploading") || "Subiendo...") 
+                            : (t("uploadImage") || "Subir imagen")
+                          }
+                        </span>
+                      </div>
+                      <Input
+                        id={`upload-${category.id}`}
+                        type="file"
+                        accept="image/*"
+                        onChange={(e) => handleImageUpload(e, category.id)}
+                        className="hidden"
+                        disabled={isUploading}
+                      />
+                    </Label>
+                  )}
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
 
@@ -257,3 +320,4 @@ export default function ServiceImageGallery() {
     </MobileLayout>
   );
 }
+

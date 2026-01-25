@@ -75,7 +75,7 @@ export default function ClientList() {
       <div className="p-4 pb-24 max-w-2xl mx-auto space-y-6">
         <div className="flex items-center justify-between mb-2">
           <h1 className="text-2xl font-bold">{t("clients")}</h1>
-          <Button onClick={() => navigate("/admin/clients/new")} className="rounded-xl font-semibold bg-black text-white hover:bg-black/90">
+          <Button onClick={() => navigate("/admin/clients/new")} className="rounded-xl font-semibold bg-primary text-primary-foreground hover:bg-primary/90">
             <UserPlus className="h-4 w-4 mr-2" />
             {t("newClient")}
           </Button>
@@ -111,17 +111,17 @@ export default function ClientList() {
 
         <div className="space-y-4">
           {filteredClients.map((client) => (
-            <div key={client.id} className="p-4 shadow-md border-0 rounded-xl bg-gradient-to-br from-white to-gray-50/50">
+            <div key={client.id} className="p-4 shadow-md border border-border rounded-xl bg-card">
               <div className="flex items-start gap-3">
-                <Avatar className="shadow-sm border border-gray-200">
+                <Avatar className="shadow-sm border border-border">
                   <AvatarImage src="" />
-                  <AvatarFallback>{client.full_name?.split(" ").map((n: string) => n[0]).join("")}</AvatarFallback>
+                  <AvatarFallback className="bg-muted text-foreground">{client.full_name?.split(" ").map((n: string) => n[0]).join("")}</AvatarFallback>
                 </Avatar>
                 <div className="flex-1 min-w-0">
-                  <h3 className="font-semibold text-base truncate">{client.full_name}</h3>
+                  <h3 className="font-semibold text-base truncate text-foreground">{client.full_name}</h3>
                   <p className="text-sm text-muted-foreground truncate mt-1">{client.email}</p>
                   <p className="text-sm text-muted-foreground mt-1">{client.phone}</p>
-                  <Badge variant="outline" className="mt-2 bg-green-50 text-green-700 border-green-200">
+                  <Badge variant="outline" className="mt-2 bg-success/20 text-success border-success/30">
                     {client.total_bookings || 0} {t("appointments") || "citas"}
                   </Badge>
                 </div>
@@ -132,7 +132,7 @@ export default function ClientList() {
                     onClick={() => navigate(`/admin/clients/edit/${client.id}`)}
                     className="rounded-lg"
                   >
-                    <Edit className="h-4 w-4" />
+                    <Edit className="h-4 w-4 text-foreground" />
                   </Button>
                   <Button
                     variant="ghost"

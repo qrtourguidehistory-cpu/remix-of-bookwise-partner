@@ -108,6 +108,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         business_id: finalBusinessId,
         businesses: businessData
       };
+
+      // CRÍTICO: Sincronizar visibilidad cuando se carga el perfil del usuario
+      // Esto asegura que la visibilidad esté siempre actualizada
+      if (finalBusinessId) {
+        try {
+          // Llamar a la Edge Function para sincronizar visibilidad (sin esperar respuesta)
+          supabase.functions.invoke('sync-business-visibility', {
+            body: {},
+          }).catch((error) => {
+            console.error('[AuthContext] Error sincronizando visibilidad (no crítico):', error);
+          });
+        } catch (error) {
+          // No crítico, solo loguear
+          console.error('[AuthContext] Error llamando sync-business-visibility:', error);
+        }
+      }
       
       setProfile(updatedProfile);
       

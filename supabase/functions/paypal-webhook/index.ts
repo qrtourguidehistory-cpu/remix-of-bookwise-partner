@@ -217,12 +217,27 @@ serve(async (req) => {
           updatedSubscription = existingSubscription;
         }
 
-        // Asegurar que el negocio está público si la suscripción está activa
-        if (business_id) {
-          await supabase
-            .from('businesses')
-            .update({ is_public: true, updated_at: new Date().toISOString() })
-            .eq('id', business_id);
+        // CRÍTICO: Sincronizar visibilidad usando Edge Function (fuente de verdad)
+        // Esto garantiza que la visibilidad se actualice correctamente sin depender de RLS
+        try {
+          const syncUrl = `${Deno.env.get('SUPABASE_URL')}/functions/v1/sync-business-visibility`;
+          const syncResponse = await fetch(syncUrl, {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`,
+              'Content-Type': 'application/json',
+            },
+          });
+
+          if (!syncResponse.ok) {
+            console.error('[paypal-webhook] Error sincronizando visibilidad:', await syncResponse.text());
+          } else {
+            const syncData = await syncResponse.json();
+            console.log('[paypal-webhook] ✅ Visibilidad sincronizada:', syncData);
+          }
+        } catch (syncError: any) {
+          console.error('[paypal-webhook] Error llamando sync-business-visibility:', syncError);
+          // No fallar el webhook, solo loguear
         }
 
         // Crear notificación de billing para el partner

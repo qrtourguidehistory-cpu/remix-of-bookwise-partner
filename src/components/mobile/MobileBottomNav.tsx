@@ -68,8 +68,11 @@ export function MobileBottomNav() {
   return (
     <>
       <nav 
-        className="fixed left-0 right-0 bg-card border-t border-border z-50 shadow-lg pb-safe"
-        style={{ bottom: "max(0px, var(--app-safe-bottom, 0px))" }}
+        className="fixed left-0 right-0 bg-card border-t border-border z-40 shadow-lg"
+        style={{ 
+          bottom: "0px",
+          paddingBottom: "max(0px, env(safe-area-inset-bottom, 0px), var(--app-safe-bottom, 0px))"
+        }}
       >
         <div className="flex items-center justify-around px-1 py-2 max-w-2xl mx-auto">
           {navItems.map((item, index) => {
