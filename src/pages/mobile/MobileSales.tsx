@@ -22,6 +22,37 @@ export default function MobileSales() {
   const [todayTotal, setTodayTotal] = useState(0);
   const [weekTotal, setWeekTotal] = useState(0);
 
+  // ✅ FIX: Declarar fetchSales antes de usarlo en useEffect
+  const fetchSales = useCallback(async () => {
+    if (!profile?.business_id) return;
+    
+    const today = new Date().toISOString().split("T")[0];
+    const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
+
+    // OPTIMIZACIÓN: Solo seleccionar columnas necesarias
+    const { data, error } = await supabase
+      .from("sales")
+      .select("id, sale_date, sale_time, client_name, service_name, price_usd, tip_amount, price_mxn, payment_method, created_at")
+      .eq("business_id", profile.business_id)
+      .order("created_at", { ascending: false })
+      .limit(20);
+
+    if (data && !error) {
+      setSales(data);
+      
+      // OPTIMIZACIÓN: Cálculos memoizados (ver abajo)
+      const todaySum = data
+        .filter((sale) => sale.sale_date === today)
+        .reduce((sum, sale) => sum + (Number(sale.price_usd) || 0) + (Number(sale.tip_amount) || 0), 0);
+      setTodayTotal(todaySum);
+
+      const weekSum = data
+        .filter((sale) => sale.sale_date >= weekAgo)
+        .reduce((sum, sale) => sum + (Number(sale.price_usd) || 0) + (Number(sale.tip_amount) || 0), 0);
+      setWeekTotal(weekSum);
+    }
+  }, [profile?.business_id]);
+
   useEffect(() => {
     if (profile?.business_id) {
       fetchSales();
@@ -56,36 +87,6 @@ export default function MobileSales() {
     setTodayTotal(0);
     setWeekTotal(0);
   }, []);
-
-  const fetchSales = useCallback(async () => {
-    if (!profile?.business_id) return;
-    
-    const today = new Date().toISOString().split("T")[0];
-    const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
-
-    // OPTIMIZACIÓN: Solo seleccionar columnas necesarias
-    const { data, error } = await supabase
-      .from("sales")
-      .select("id, sale_date, sale_time, client_name, service_name, price_usd, tip_amount, price_mxn, payment_method, created_at")
-      .eq("business_id", profile.business_id)
-      .order("created_at", { ascending: false })
-      .limit(20);
-
-    if (data && !error) {
-      setSales(data);
-      
-      // OPTIMIZACIÓN: Cálculos memoizados (ver abajo)
-      const todaySum = data
-        .filter((sale) => sale.sale_date === today)
-        .reduce((sum, sale) => sum + (Number(sale.price_usd) || 0) + (Number(sale.tip_amount) || 0), 0);
-      setTodayTotal(todaySum);
-
-      const weekSum = data
-        .filter((sale) => sale.sale_date >= weekAgo)
-        .reduce((sum, sale) => sum + (Number(sale.price_usd) || 0) + (Number(sale.tip_amount) || 0), 0);
-      setWeekTotal(weekSum);
-    }
-  }, [profile?.business_id]);
 
   // OPTIMIZACIÓN: Realtime optimizado solo para ventas
   useOptimizedSalesRealtime(

@@ -42,10 +42,7 @@ export default function DailySalesSummary() {
   const [creditSummary, setCreditSummary] = useState<{ qty: number; total: number }>({ qty: 0, total: 0 });
   const [loading, setLoading] = useState(false);
 
-  useEffect(() => {
-    loadDailyData();
-  }, [selectedDate, profile?.business_id]);
-
+  // ✅ FIX: Declarar loadDailyData antes de usarlo en useEffect
   const loadDailyData = async () => {
     if (!profile?.business_id) return;
     
@@ -248,6 +245,10 @@ export default function DailySalesSummary() {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    loadDailyData();
+  }, [selectedDate, profile?.business_id]);
 
   const handleGenerateFromSales = async () => {
     const dateStr = format(selectedDate, "yyyy-MM-dd");

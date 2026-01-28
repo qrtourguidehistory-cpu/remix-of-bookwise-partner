@@ -67,13 +67,17 @@ export function AppointmentDetailView({
   const [isDownloading, setIsDownloading] = useState(false);
   const receiptRef = useRef<HTMLDivElement>(null);
   
+  // ✅ FIX: Estado para cargar datos del cliente si la relación está vacía
+  const [loadedClientData, setLoadedClientData] = useState<any>(null);
+  
   // ✅ FIX: Calculate reserverUserId with better fallback logic
   const reserverUserId = appointment?.user_id || 
                         appointment?.clients?.user_id || 
                         undefined;
-  // Use client_id from appointment, or fallback to clients.id if relation is loaded
+  // Use client_id from appointment, or fallback to clients.id or loadedClientData.id
   const clientId = appointment?.client_id || 
                    appointment?.clients?.id || 
+                   loadedClientData?.id ||
                    undefined;
   
   // Debug logging
@@ -243,6 +247,68 @@ export function AppointmentDetailView({
     };
   }, [open, appointment?.business_id]);
 
+  // ✅ FIX: Cargar datos completos del cliente si la relación está vacía
+  // También buscar por user_id si no hay client_id
+  useEffect(() => {
+    if (!open || !appointment || !profile?.business_id) {
+      setLoadedClientData(null);
+      return;
+    }
+
+    const fetchClientData = async () => {
+      try {
+        // PRIORITY 1: Si tenemos client_id pero no tenemos datos de la relación clients, cargar directamente
+        if (appointment.client_id && !appointment.clients) {
+          console.log("🔍 [AppointmentDetailView] Buscando cliente por client_id:", appointment.client_id);
+          const { data: clientData, error: clientError } = await supabase
+            .from("clients")
+            .select("id, user_id, full_name, email, phone")
+            .eq("id", appointment.client_id)
+            .eq("business_id", profile.business_id)
+            .maybeSingle();
+
+          if (clientData && !clientError) {
+            setLoadedClientData(clientData);
+            console.log("✅ [AppointmentDetailView] Datos de cliente cargados por client_id:", clientData);
+            return;
+          } else if (clientError) {
+            console.error("❌ [AppointmentDetailView] Error cargando cliente por client_id:", clientError);
+          }
+        }
+
+        // PRIORITY 2: Si no hay client_id pero hay user_id, buscar cliente por user_id
+        if (!appointment.client_id && appointment.user_id) {
+          console.log("🔍 [AppointmentDetailView] Buscando cliente por user_id:", appointment.user_id);
+          const { data: clientData, error: clientError } = await supabase
+            .from("clients")
+            .select("id, user_id, full_name, email, phone")
+            .eq("user_id", appointment.user_id)
+            .eq("business_id", profile.business_id)
+            .maybeSingle();
+
+          if (clientData && !clientError) {
+            setLoadedClientData(clientData);
+            console.log("✅ [AppointmentDetailView] Datos de cliente cargados por user_id:", clientData);
+            return;
+          } else if (clientError) {
+            console.error("❌ [AppointmentDetailView] Error cargando cliente por user_id:", clientError);
+          }
+        }
+
+        // Si no encontramos nada, limpiar
+        if (!appointment.client_id && !appointment.user_id) {
+          console.log("⚠️ [AppointmentDetailView] No hay client_id ni user_id, no se puede cargar datos del cliente");
+          setLoadedClientData(null);
+        }
+      } catch (error) {
+        console.error("❌ [AppointmentDetailView] Error en fetchClientData:", error);
+        setLoadedClientData(null);
+      }
+    };
+
+    fetchClientData();
+  }, [open, appointment?.client_id, appointment?.user_id, appointment?.clients, profile?.business_id]);
+
   // Fetch reserver name - PRIORITY: Use client_id first if available, then user_id
   useEffect(() => {
     if (!open || !appointment) {
@@ -251,28 +317,10 @@ export function AppointmentDetailView({
     }
 
     const fetchReserverName = async () => {
-      // PRIORITY 1: If appointment has client_id, get name from clients table (most reliable)
-      if (appointment?.client_id && profile?.business_id) {
-        const { data: clientData, error: clientError } = await supabase
-          .from("clients")
-          .select("full_name")
-          .eq("id", appointment.client_id)
-          .eq("business_id", profile.business_id)
-          .maybeSingle();
-
-        if (clientData && !clientError && clientData.full_name) {
-          setReserverName(clientData.full_name);
-          return;
-        }
-      }
-
-      // PRIORITY 2: Use the loaded clients relation
-      if (appointment?.clients?.full_name) {
-        setReserverName(appointment.clients.full_name);
-        return;
-      }
-
-      // PRIORITY 3: If we have user_id, search in client_profiles FIRST, then profiles
+      // ✅ FIX: "Reserved by" debe usar user_id (quien hizo la reserva), NO client_id
+      // client_id/clients.full_name es el dueño de cuenta, pero puede ser diferente del reservador
+      
+      // PRIORITY 1: If we have user_id, search in client_profiles FIRST (most reliable for reservador)
       if (appointment?.user_id) {
         // Try client_profiles table FIRST (clients from client app)
         const { data: clientProfileData, error: clientProfileError } = await (supabase
@@ -310,15 +358,49 @@ export function AppointmentDetailView({
 
         if (profileData && !profileError && profileData.full_name) {
           setReserverName(profileData.full_name);
+          console.log("✅ [AppointmentDetailView] Nombre de reservador obtenido de profiles table:", profileData.full_name);
           return;
         }
       }
 
-      // PRIORITY 4: Fallback to appointment fields
+      // PRIORITY 2: If no user_id, try using client_id/clients.full_name as fallback
+      // (Esto es para citas antiguas que pueden no tener user_id)
+      if (appointment?.client_id && profile?.business_id) {
+        const { data: clientData, error: clientError } = await supabase
+          .from("clients")
+          .select("full_name")
+          .eq("id", appointment.client_id)
+          .eq("business_id", profile.business_id)
+          .maybeSingle();
+
+        if (clientData && !clientError && clientData.full_name) {
+          setReserverName(clientData.full_name);
+          console.log("✅ [AppointmentDetailView] Nombre de reservador obtenido de clients table (fallback):", clientData.full_name);
+          return;
+        }
+      }
+
+      // PRIORITY 3: Use the loaded clients relation as fallback
+      if (appointment?.clients?.full_name) {
+        setReserverName(appointment.clients.full_name);
+        console.log("✅ [AppointmentDetailView] Nombre de reservador obtenido de relación clients (fallback):", appointment.clients.full_name);
+        return;
+      }
+
+      // PRIORITY 4: Last fallback to appointment fields (client_name o guest_name)
+      // Solo si no hay user_id ni client_id
       const fallbackName = appointment?.client_name || 
                           appointment?.guest_name || 
                           "";
-      setReserverName(fallbackName || (language === "es" ? "Usuario" : "User"));
+      
+      if (fallbackName) {
+        setReserverName(fallbackName);
+        console.log("✅ [AppointmentDetailView] Nombre de reservador obtenido de appointment.client_name (último fallback):", fallbackName);
+      } else {
+        // Último fallback: mostrar "Usuario" solo si realmente no hay ningún nombre
+        setReserverName(language === "es" ? "Usuario" : "User");
+        console.log("⚠️ [AppointmentDetailView] No se encontró nombre del reservador, usando fallback genérico");
+      }
     };
 
     fetchReserverName();
@@ -703,14 +785,32 @@ export function AppointmentDetailView({
   };
 
   const duration = calculateDuration(safeStartTime, safeEndTime);
-  // ✅ FIX: Use clients relation for client info, fallback to appointment.client_name if no relation
-  // Ensure we always show a name, even if client_id is NULL
-  const clientName = appointment?.clients?.full_name || 
-                     appointment?.client_name || 
+  // ✅ FIX: Priority: appointment.client_name (beneficiary) > clients.full_name (account owner) > guest_name
+  // client_name es el nombre del BENEFICIARIO de esta cita específica
+  // clients.full_name es el nombre del DUEÑO DE CUENTA (no debe usarse para mostrar beneficiario)
+  const clientData = appointment?.clients || loadedClientData;
+  const clientName = appointment?.client_name || 
                      appointment?.guest_name || 
+                     clientData?.full_name || 
                      "";
-  const clientEmail = appointment?.clients?.email || appointment?.client_email || "";
-  const clientPhone = appointment?.clients?.phone || appointment?.client_phone || "";
+  const clientEmail = clientData?.email || appointment?.client_email || "";
+  const clientPhone = clientData?.phone || appointment?.client_phone || "";
+  
+  // Debug logging
+  useEffect(() => {
+    if (open && appointment) {
+      console.log("📋 [AppointmentDetailView] Client data summary:", {
+        hasClientRelation: !!appointment?.clients,
+        hasLoadedClientData: !!loadedClientData,
+        clientName,
+        clientEmail,
+        clientPhone,
+        appointment_client_name: appointment?.client_name,
+        appointment_client_id: appointment?.client_id,
+        appointment_user_id: appointment?.user_id
+      });
+    }
+  }, [open, appointment, loadedClientData, clientName, clientEmail, clientPhone]);
   
   // Get service info
   const service = fetchedService || appointment?.services;

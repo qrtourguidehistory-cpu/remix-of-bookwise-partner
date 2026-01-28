@@ -89,6 +89,7 @@ export default function AppointmentsManagement() {
       setTotalCount(count || 0);
 
       // Fetch appointments with relations
+      // ✅ FIX: Incluir client_name, guest_name y user_id para mostrar nombres cuando client_id es NULL
       const { data, error: fetchError } = await (supabase
         .from("appointments") as any)
         .select(`
@@ -100,6 +101,10 @@ export default function AppointmentsManagement() {
           payment_amount,
           payment_method,
           notes,
+          client_id,
+          user_id,
+          client_name,
+          guest_name,
           clients!appointments_client_id_fkey(full_name),
           services!appointments_service_id_fkey(name, price),
           staff!appointments_staff_id_fkey(full_name)
@@ -131,7 +136,8 @@ export default function AppointmentsManagement() {
     
     const query = searchQuery.toLowerCase();
     return appointments.filter((apt) => {
-      const clientName = apt.clients?.full_name?.toLowerCase() || "";
+      // ✅ FIX: Buscar también en client_name y guest_name
+      const clientName = (apt.clients?.full_name || apt.client_name || apt.guest_name || "").toLowerCase();
       const serviceName = apt.services?.name?.toLowerCase() || "";
       const staffName = apt.staff?.full_name?.toLowerCase() || "";
       return clientName.includes(query) || serviceName.includes(query) || staffName.includes(query);
@@ -248,7 +254,9 @@ export default function AppointmentsManagement() {
                           <TableCell className="font-medium">
                             {formatTime(apt.start_time)}
                           </TableCell>
-                          <TableCell>{apt.clients?.full_name || "—"}</TableCell>
+                          <TableCell>
+                            {apt.client_name || apt.guest_name || apt.clients?.full_name || "—"}
+                          </TableCell>
                           <TableCell>{apt.services?.name || "—"}</TableCell>
                           <TableCell>{apt.staff?.full_name || "—"}</TableCell>
                           <TableCell>

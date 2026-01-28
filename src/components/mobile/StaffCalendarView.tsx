@@ -167,6 +167,68 @@ export function StaffCalendarView({ date, filters }: StaffCalendarViewProps) {
       toast.error(language === "es" ? "No se pudieron cargar las citas" : "Couldn't load appointments");
     }
 
+    // ✅ FIX: Si appointmentsData existe pero clients está vacío, hacer consulta directa como fallback
+    let enrichedAppointments = appointmentsData || [];
+    if (appointmentsData && appointmentsData.length > 0 && profile?.business_id) {
+      const appointmentsNeedingClientData = appointmentsData.filter(
+        (apt) => !apt.clients && apt.client_id
+      );
+
+      if (appointmentsNeedingClientData.length > 0) {
+        console.log(
+          `🔍 [StaffCalendarView] ${appointmentsNeedingClientData.length} citas sin datos de cliente, consultando directamente...`
+        );
+
+        // Consultar clientes directamente
+        const clientIds = appointmentsNeedingClientData
+          .map((apt) => apt.client_id)
+          .filter((id): id is string => Boolean(id));
+
+        if (clientIds.length > 0) {
+          const { data: clientsData, error: clientsError } = await supabase
+            .from("clients")
+            .select("id, user_id, full_name, email, phone")
+            .eq("business_id", profile.business_id)
+            .in("id", clientIds);
+
+          if (clientsError) {
+            console.error("Error fetching clients directly:", clientsError);
+          } else if (clientsData) {
+            // Crear un mapa de client_id -> client data
+            const clientsMap = new Map(
+              clientsData.map((client) => [client.id, client])
+            );
+
+            // Enriquecer appointments con datos de clientes
+            enrichedAppointments = appointmentsData.map((apt) => {
+              if (!apt.clients && apt.client_id) {
+                const clientData = clientsMap.get(apt.client_id);
+                if (clientData) {
+                  return { ...apt, clients: clientData };
+                }
+              }
+              return apt;
+            });
+
+            console.log(
+              `✅ [StaffCalendarView] Enriquecidos ${clientsData.length} clientes en citas`
+            );
+          }
+        }
+      }
+
+      // Log diagnóstico
+      const appointmentsWithClients = enrichedAppointments.filter(
+        (apt) => apt.clients
+      ).length;
+      const appointmentsWithoutClients = enrichedAppointments.filter(
+        (apt) => !apt.clients && apt.client_id
+      ).length;
+      console.log(
+        `📊 [StaffCalendarView] Diagnóstico: ${appointmentsWithClients} con cliente, ${appointmentsWithoutClients} sin cliente (pero con client_id), total: ${enrichedAppointments.length}`
+      );
+    }
+
     // Fetch schedules and time off for all staff
     const { data: schedulesData } = await supabase
       .from("staff_schedules")
@@ -194,7 +256,7 @@ export function StaffCalendarView({ date, filters }: StaffCalendarViewProps) {
       .single();
 
     if (staffData) setStaff(staffData);
-    if (appointmentsData) setAppointments(appointmentsData);
+    if (enrichedAppointments) setAppointments(enrichedAppointments);
     if (schedulesData) setSchedules(schedulesData);
     if (timeOffData) setTimeOff(timeOffData);
     if (earlyDeparturesData) setEarlyDepartures(earlyDeparturesData);
@@ -542,13 +604,15 @@ export function StaffCalendarView({ date, filters }: StaffCalendarViewProps) {
                         
                         {appointmentsAtTime.map((apt, aptIndex) => {
                           const statusInfo = getStatusInfo(apt.status);
-                          // ✅ FIX: Ensure we always show a name, even if client_id is NULL
-                          const clientName = apt.clients?.full_name || 
-                                             apt.client_name || 
+                          // ✅ FIX: Priority: client_name (beneficiary) > clients.full_name (account owner) > guest_name
+                          // client_name es el nombre del BENEFICIARIO de esta cita específica
+                          // clients.full_name es el nombre del DUEÑO DE CUENTA (no debe usarse para mostrar beneficiario)
+                          const clientName = apt.client_name || 
                                              apt.guest_name || 
+                                             apt.clients?.full_name || 
                                              (apt as any)?.client?.full_name ||
-                                             'Cliente';
-                          const serviceName = apt.services?.name || 'Servicio';
+                                             (language === "es" ? "Cliente" : "Client");
+                          const serviceName = apt.services?.name || (language === "es" ? "Servicio" : "Service");
                           const startTime = formatTime(apt.start_time, timeFormat);
                           const endTime = apt.end_time ? formatTime(apt.end_time, timeFormat) : null;
                           const timeRange = endTime ? `${startTime} - ${endTime}` : startTime;

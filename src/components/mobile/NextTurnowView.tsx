@@ -215,10 +215,11 @@ export function NextTurnowView({ filters }: NextTurnowViewProps) {
             <div className="px-4 space-y-3">
               {group.appointments.map((appointment) => {
                 const statusInfo = getStatusInfo(appointment.status);
-                // Get client name - prefer the person the appointment is for
-                const clientName = appointment.clients?.full_name || 
-                                  appointment.client_name || 
+                // Get client name - PRIORITY: client_name (beneficiary) > clients.full_name (account owner) > guest_name
+                // client_name es el nombre del BENEFICIARIO de esta cita específica
+                const clientName = appointment.client_name || 
                                   appointment.guest_name || 
+                                  appointment.clients?.full_name || 
                                   (language === "es" ? "Cliente" : "Client");
                 const serviceName = appointment.services?.name || (language === "es" ? "Servicio" : "Service");
                 const startTime = formatTime(appointment.start_time, '12h');
