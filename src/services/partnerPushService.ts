@@ -2,52 +2,26 @@ import { PushNotifications } from '@capacitor/push-notifications';
 import { Capacitor } from '@capacitor/core';
 import { supabase } from '@/integrations/supabase/client';
 
-// Callback para navegación - se configura desde el componente que usa el servicio
-let navigationCallback: ((path: string) => void) | null = null;
-
-export const setNavigationCallback = (callback: (path: string) => void) => {
-  navigationCallback = callback;
-  console.log('[PartnerPush] Navigation callback configured');
-};
+// Flag para evitar múltiples inicializaciones
+let listenerInitialized = false;
 
 export const initializePartnerPush = async (userId: string) => {
   console.log('[PartnerPush] START - User:', userId);
 
   const isNative = Capacitor.isNativePlatform();
 
-  // ✅ WEB: Solicitar permisos usando Web Notification API (aunque no se guarde token FCM)
+  // WEB: Solo solicitar permisos
   if (!isNative) {
-    console.log('[PartnerPush] Web platform detected, requesting Web Notification permissions...');
-    
-    if (!('Notification' in window)) {
-      console.log('[PartnerPush] Web Notifications not supported in this browser');
-      return;
+    if ('Notification' in window) {
+      await Notification.requestPermission();
     }
-
-    try {
-      // Solicitar permisos de notificaciones web
-      const permission = await Notification.requestPermission();
-      console.log('[PartnerPush] Web Notification permission:', permission);
-      
-      if (permission === 'granted') {
-        console.log('[PartnerPush] ✅ Web Notification permission granted');
-        // En web no guardamos token FCM, las notificaciones se manejan diferente
-        // Pero sí solicitamos permisos para mejorar UX
-      } else {
-        console.log('[PartnerPush] ⚠️ Web Notification permission denied');
-      }
-    } catch (error) {
-      console.error('[PartnerPush] Error requesting web notification permission:', error);
-    }
-    
-    return; // Web no usa FCM, solo solicita permisos
+    return;
   }
 
-  // ✅ NATIVE: Flujo completo de FCM (Android/iOS)
+  // NATIVE: Flujo completo
   try {
-    // Step 1: Create channel (Android only)
+    // Android channel
     if (Capacitor.getPlatform() === 'android') {
-      console.log('[PartnerPush] Creating Android channel...');
       await PushNotifications.createChannel({
         id: 'default',
         name: 'Default',
@@ -57,108 +31,128 @@ export const initializePartnerPush = async (userId: string) => {
         vibration: true,
         sound: 'default'
       });
-      console.log('[PartnerPush] Channel created');
     }
 
-    // Step 2: Request permissions
-    console.log('[PartnerPush] Requesting native permissions...');
+    // Permisos
     const result = await PushNotifications.requestPermissions();
-    console.log('[PartnerPush] Permission result:', result.receive);
-
     if (result.receive !== 'granted') {
-      console.log('[PartnerPush] Permission NOT granted, stopping');
       return;
     }
 
-    // Step 3: Register
-    console.log('[PartnerPush] Registering for FCM...');
+    // Registrar
     await PushNotifications.register();
-    console.log('[PartnerPush] Register called');
 
-    // Step 4: Listen for token
+    // Token
     await PushNotifications.addListener('registration', async (token) => {
-      console.log('[PartnerPush] TOKEN RECEIVED:', token.value);
-      
-      try {
-        const platform = Capacitor.getPlatform() === 'ios' ? 'ios' : 'android';
-        
-        const { error } = await supabase
-          .from('client_devices')
-          .upsert({
-            user_id: userId,
-            role: 'partner',
-            platform: platform,
-            fcm_token: token.value,
-            enabled: true,
-            device_info: { device: platform, ts: new Date().toISOString() }
-          });
-
-        if (error) {
-          console.error('[PartnerPush] Supabase error:', error);
-        } else {
-          console.log('[PartnerPush] Token saved to Supabase ✓');
-        }
-      } catch (e) {
-        console.error('[PartnerPush] Exception:', e);
-      }
+      const platform = Capacitor.getPlatform() === 'ios' ? 'ios' : 'android';
+      await supabase
+        .from('client_devices')
+        .upsert({
+          user_id: userId,
+          role: 'partner',
+          platform: platform,
+          fcm_token: token.value,
+          is_active: true, // ✅ Punto 12: Marcar como activo al iniciar sesión
+          enabled: true, // Mantener enabled para compatibilidad
+          device_info: { device: platform, ts: new Date().toISOString() }
+        });
     });
 
-    // Step 5: Listen for errors
+    // Errores
     await PushNotifications.addListener('registrationError', (error) => {
       console.error('[PartnerPush] Registration error:', error);
     });
 
-    // Step 6: Listen for notifications
+    // Foreground
     await PushNotifications.addListener('pushNotificationReceived', (notification) => {
       console.log('[PartnerPush] Foreground notification:', notification);
     });
 
-    await PushNotifications.addListener('pushNotificationActionPerformed', (action) => {
-      console.log('[PartnerPush] Notification tapped:', action);
+    // ✅ LISTENER DE CLIC: Solo una vez, estructura mínima
+    if (!listenerInitialized) {
+      listenerInitialized = true;
       
-      // Extraer datos de la notificación
-      const notification = action.notification;
-      const data = notification.data;
-      
-      console.log('[PartnerPush] Notification data:', data);
-      
-      // 1. Extraemos el ID de la cita que viene de Supabase
-      const appointmentId = data?.appointment_id;
-      const businessId = data?.business_id;
-      const notificationType = data?.type;
-      
-      console.log('[PartnerPush] Extracted:', {
-        appointmentId,
-        businessId,
-        notificationType
+      await PushNotifications.addListener('pushNotificationActionPerformed', async (action) => {
+        try {
+          const notification = action.notification;
+          const data = notification?.data || {};
+          
+          // Extraer IDs
+          const appointmentId = data?.appointment_id || data?.appointmentId || data?.meta?.appointment_id;
+          const notificationId = data?.notification_id || data?.notificationId || data?.id || notification?.id;
+          const appointmentDate = data?.appointment_date || data?.meta?.appointment_date;
+          
+          console.log('[PartnerPush] LOG A: Notificación tocada (ID:', notificationId, ')');
+          
+          // ✅ MARCAR COMO LEÍDA: Directo, sin await (no bloquea)
+          if (notificationId) {
+            console.log('[PartnerPush] LOG C: Marcando leída en BD...');
+            supabase
+              .from('notifications')
+              .update({ read: true })
+              .eq('id', notificationId)
+              .then(({ error }) => {
+                if (error) {
+                  // Fallback
+                  supabase
+                    .from('client_notifications')
+                    .update({ read: true })
+                    .eq('id', notificationId);
+                } else {
+                  // Actualizar UI
+                  window.dispatchEvent(new CustomEvent('notificationRead', {
+                    detail: { notificationId }
+                  }));
+                }
+              })
+              .catch(() => {
+                // Ignorar errores
+              });
+          }
+          
+          // ✅ NAVEGACIÓN: Solo si tiene appointment_id (sin causar refrescos)
+          if (appointmentId) {
+            console.log('[PartnerPush] LOG B: Navegando a cita', appointmentId, 'fecha:', appointmentDate || 'N/A');
+            
+            // Emitir evento de navegación (Event Bus) - usa openAppointmentDetail para consistencia
+            // MobileCalendar escucha este evento y maneja la navegación sin refrescos
+            window.dispatchEvent(new CustomEvent('openAppointmentDetail', {
+              detail: {
+                appointmentId: appointmentId,
+                appointmentDate: appointmentDate
+              }
+            }));
+            
+            // También emitir ROUTING_REQUEST para compatibilidad (si es necesario navegar primero)
+            const currentPath = window.location.pathname;
+            if (currentPath !== '/mobile/calendar') {
+              window.dispatchEvent(new CustomEvent('ROUTING_REQUEST', {
+                detail: {
+                  path: '/mobile/calendar',
+                  appointmentId: appointmentId,
+                  appointmentDate: appointmentDate
+                }
+              }));
+            }
+          }
+        } catch (error) {
+          console.error('[PartnerPush] Error:', error);
+          // NO re-lanzar para evitar refresh
+        }
       });
       
-      // 2. Si el ID existe y tenemos callback de navegación, navegamos
-      if (appointmentId && navigationCallback) {
-        console.log('[PartnerPush] Navigating to appointment:', appointmentId);
-        // Navegar a la vista de detalles de la cita
-        navigationCallback(`/appointments/${appointmentId}`);
-      } else if (businessId && navigationCallback) {
-        console.log('[PartnerPush] Navigating to business:', businessId);
-        // Alternativa: navegar al negocio si no hay appointment_id
-        navigationCallback(`/businesses/${businessId}`);
-      } else {
-        console.log('[PartnerPush] No navigation target or callback not set');
-      }
-    });
-
-    console.log('[PartnerPush] Initialization COMPLETE');
-
+      console.log('[PartnerPush] ✅ Listener inicializado');
+    }
   } catch (error) {
     console.error('[PartnerPush] FATAL ERROR:', error);
   }
 };
 
 export const cleanupPartnerPush = async () => {
-  console.log('[PartnerPush] Cleanup');
   try {
     await PushNotifications.removeAllListeners();
   } catch (e) {
     console.error('[PartnerPush] Cleanup error:', e);
   }
 };
+

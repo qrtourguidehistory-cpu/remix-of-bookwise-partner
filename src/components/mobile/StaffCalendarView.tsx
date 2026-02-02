@@ -14,7 +14,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { generateTimeSlotsFromBusinessHours, formatTime } from "@/lib/timeFormat";
 import { toast } from "sonner";
 import { useLanguage } from "@/contexts/LanguageContext";
-import { notifyNextClientWhenAppointmentStarted } from "@/lib/queueNotifications";
+import { notifyNextClientWhenAppointmentStarted, notifyNextClientWhenAppointmentCompleted } from "@/lib/queueNotifications";
 import { useRealtimeAppointments } from "@/hooks/useRealtimeAppointments";
 
 interface StaffCalendarViewProps {
@@ -465,7 +465,8 @@ export function StaffCalendarView({ date, filters }: StaffCalendarViewProps) {
       });
       
       // Notify next client when appointment is started
-      if (dbStatus === "started") {
+      // IMPORTANTE: Solo ejecutar si la cita existe y no es una creación nueva
+      if (dbStatus === "started" && selectedAppointment?.id) {
         try {
           await notifyNextClientWhenAppointmentStarted({
             businessId: profile.business_id,
@@ -479,8 +480,28 @@ export function StaffCalendarView({ date, filters }: StaffCalendarViewProps) {
             language: language === "es" ? "es" : "en",
           });
         } catch (err) {
-          console.error("Error notifying next client:", err);
-          // Don't show error to user, just log it
+          console.error("Error notifying next client (non-blocking):", err);
+          // No bloquear la actualización del estado si hay error en la notificación
+        }
+      }
+      
+      // Notify next client when appointment is completed
+      // IMPORTANTE: Solo ejecutar si la cita existe y no es una creación nueva
+      if (dbStatus === "completed" && selectedAppointment?.id) {
+        try {
+          await notifyNextClientWhenAppointmentCompleted({
+            businessId: profile.business_id,
+            currentAppointment: {
+              id: selectedAppointment.id,
+              appointment_date: selectedAppointment.appointment_date,
+              end_time: selectedAppointment.end_time,
+              staff_id: selectedAppointment.staff_id,
+            },
+            language: language === "es" ? "es" : "en",
+          });
+        } catch (err) {
+          console.error("Error notifying next client when completed (non-blocking):", err);
+          // No bloquear la actualización del estado si hay error en la notificación
         }
       }
       
@@ -604,14 +625,14 @@ export function StaffCalendarView({ date, filters }: StaffCalendarViewProps) {
                         
                         {appointmentsAtTime.map((apt, aptIndex) => {
                           const statusInfo = getStatusInfo(apt.status);
-                          // ✅ FIX: Priority: client_name (beneficiary) > clients.full_name (account owner) > guest_name
-                          // client_name es el nombre del BENEFICIARIO de esta cita específica
-                          // clients.full_name es el nombre del DUEÑO DE CUENTA (no debe usarse para mostrar beneficiario)
-                          const clientName = apt.client_name || 
-                                             apt.guest_name || 
-                                             apt.clients?.full_name || 
-                                             (apt as any)?.client?.full_name ||
-                                             (language === "es" ? "Cliente" : "Client");
+                          // ✅ PRIORIDAD ESTRICTA: Si client_name existe, usarlo SIN fallback
+                          // client_name es el nombre del BENEFICIARIO de esta cita específica (ingresado manualmente)
+                          // Solo usar fallback si client_name es null, undefined o string vacío
+                          const clientName = (apt.client_name && apt.client_name.trim()) 
+                            ? apt.client_name.trim() 
+                            : (apt.guest_name && apt.guest_name.trim())
+                            ? apt.guest_name.trim()
+                            : apt.clients?.full_name || (language === "es" ? "Cliente" : "Client");
                           const serviceName = apt.services?.name || (language === "es" ? "Servicio" : "Service");
                           const startTime = formatTime(apt.start_time, timeFormat);
                           const endTime = apt.end_time ? formatTime(apt.end_time, timeFormat) : null;

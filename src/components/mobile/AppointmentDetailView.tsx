@@ -785,14 +785,15 @@ export function AppointmentDetailView({
   };
 
   const duration = calculateDuration(safeStartTime, safeEndTime);
-  // ✅ FIX: Priority: appointment.client_name (beneficiary) > clients.full_name (account owner) > guest_name
-  // client_name es el nombre del BENEFICIARIO de esta cita específica
-  // clients.full_name es el nombre del DUEÑO DE CUENTA (no debe usarse para mostrar beneficiario)
+  // ✅ PRIORIDAD ESTRICTA: Si client_name existe, usarlo SIN fallback
+  // client_name es el nombre del BENEFICIARIO de esta cita específica (ingresado manualmente)
+  // Solo usar fallback si client_name es null, undefined o string vacío
   const clientData = appointment?.clients || loadedClientData;
-  const clientName = appointment?.client_name || 
-                     appointment?.guest_name || 
-                     clientData?.full_name || 
-                     "";
+  const clientName = (appointment?.client_name && appointment.client_name.trim())
+    ? appointment.client_name.trim()
+    : (appointment?.guest_name && appointment.guest_name.trim())
+    ? appointment.guest_name.trim()
+    : clientData?.full_name || "";
   const clientEmail = clientData?.email || appointment?.client_email || "";
   const clientPhone = clientData?.phone || appointment?.client_phone || "";
   
@@ -1783,7 +1784,9 @@ export function AppointmentDetailView({
         clientId={clientId}
         userId={reserverUserId}
         businessId={profile?.business_id || ""}
-        clientName={appointment?.client_name || appointment?.clients?.full_name || reserverName}
+        clientName={(appointment?.client_name && appointment.client_name.trim())
+          ? appointment.client_name.trim()
+          : appointment?.clients?.full_name || reserverName}
       />
 
       <AddServiceSheet

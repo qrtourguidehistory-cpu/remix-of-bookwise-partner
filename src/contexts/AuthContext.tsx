@@ -3,7 +3,7 @@ import { User, Session } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { useNavigate } from "react-router-dom";
-import { initializePartnerPush, cleanupPartnerPush, setNavigationCallback } from "../services/partnerPushService";
+import { initializePartnerPush, cleanupPartnerPush } from "../services/partnerPushService";
 
 interface AuthContextType {
   user: User | null;
@@ -214,10 +214,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               if (profile?.role === 'partner') {
                 try {
                   // Configurar callback de navegación antes de inicializar
-                  setNavigationCallback((path: string) => {
-                    console.log('[AuthContext] Navigating to:', path);
-                    navigate(path);
-                  });
+                  // ✅ EVENT BUS: No usar callback, el listener emitirá eventos directamente
                   await initializePartnerPush(currentUser.id);
                 } catch (err) {
                   console.error('[AuthContext] Push init failed but continuing:', err);
@@ -302,10 +299,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               if (profile?.role === 'partner') {
                 try {
                   // Configurar callback de navegación antes de inicializar
-                  setNavigationCallback((path: string) => {
-                    console.log('[AuthContext] Navigating to:', path);
-                    navigate(path);
-                  });
+                  // ✅ EVENT BUS: No usar callback, el listener emitirá eventos directamente
                   await initializePartnerPush(currentUser.id);
                 } catch (err) {
                   console.error('[AuthContext] Push init failed but continuing:', err);
@@ -425,6 +419,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const signOut = async () => {
+    // ✅ Punto 12: Marcar dispositivos como inactivos antes de cerrar sesión
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        // Marcar todos los dispositivos del usuario como inactivos
+        // No necesitamos el token específico, marcamos todos los dispositivos del usuario
+        const { error: updateError } = await supabase
+          .from('client_devices')
+          .update({ is_active: false })
+          .eq('user_id', user.id);
+        
+        if (updateError) {
+          console.error('[AuthContext] Error marcando dispositivos como inactivos:', updateError);
+        } else {
+          console.log('[AuthContext] ✅ Dispositivos marcados como inactivos');
+        }
+      }
+    } catch (error) {
+      console.error('[AuthContext] Error marcando dispositivos como inactivos:', error);
+      // Continuar con el logout aunque falle esto
+    }
+    
     // Cleanup push notifications before signing out
     try {
       await cleanupPartnerPush();

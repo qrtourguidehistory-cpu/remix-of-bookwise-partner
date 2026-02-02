@@ -120,33 +120,101 @@ serve(async (req: Request) => {
   try {
     const requestBody: RequestBody = await req.json();
     
-    // Extract payload: handle both direct calls and webhook/trigger calls
-    const record = requestBody.record || requestBody;
+    // ✅ LOG: Payload recibido
+    console.log("📥 [PAYLOAD] Request recibido:", JSON.stringify({
+      user_id: requestBody.user_id,
+      record_user_id: requestBody.record?.user_id,
+      role: requestBody.role || requestBody.record?.role,
+      title: requestBody.title || requestBody.record?.title
+    }));
     
-    // Detectar rol de forma ultra-robusta
-    const detectedRole = detectRole(requestBody, record);
-    const roleKey = detectedRole === "partner" ? "partner" : "client";
-    const secretName = SECRETS[roleKey];
-    const appName = APP_NAMES[roleKey];
+    // ✅ FIX CRÍTICO: Extraer user_id con prioridad exacta y exclusiva
+    // PRIORIDAD 1: requestBody.user_id (directo desde call_send_push_notification)
+    // PRIORIDAD 2: requestBody.record?.user_id (solo si requestBody.user_id no existe)
+    // ❌ ELIMINADO: Todos los fallbacks (record.userId, record.clientId, etc.)
+    const targetUserId = requestBody.user_id ?? requestBody.record?.user_id;
     
-    const targetUserId = record.user_id || record.userId || record.clientId;
-    const finalTitle = record.title || "Actualización de Cita";
-    const finalBody = record.message || record.body || "Tienes una nueva actualización.";
-
-    if (!targetUserId) {
-      console.warn("⚠️ user_id, userId o clientId no proporcionado");
+    // 🚨 REGLA DE ORO: VALIDACIÓN OBLIGATORIA DE user_id
+    // ❌ COMPORTAMIENTO INACEPTABLE: Enviar notificaciones si user_id es NULL o inválido
+    // ✅ COMPORTAMIENTO CORRECTO: Fail hard, cancelar envío, sin excepciones
+    
+    // ✅ VALIDACIÓN 1: user_id NO puede ser null, undefined o string vacío
+    if (!targetUserId || typeof targetUserId !== 'string' || targetUserId.trim() === '') {
+      console.error("🚨 [REGLA DE ORO] ❌ CANCELADO: user_id es null, undefined o string vacío. NO se envía notificación.");
+      console.error("📥 Payload recibido:", JSON.stringify(requestBody, null, 2));
       return new Response(
         JSON.stringify({
           success: false,
-          message: "Notification failed",
-          error: "user_id, userId o clientId es requerido",
+          message: "Notification cancelled",
+          error: "REGLA DE ORO: user_id es requerido y no puede ser null, undefined o vacío. Envío cancelado por seguridad.",
+          cancelled: true,
         }),
         {
-          status: 200,
+          status: 400,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         }
       );
     }
+    
+    // ✅ VALIDACIÓN 2: user_id DEBE ser un UUID válido
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!uuidRegex.test(targetUserId.trim())) {
+      console.error(`🚨 [REGLA DE ORO] ❌ CANCELADO: user_id no es un UUID válido: ${targetUserId}. NO se envía notificación.`);
+      return new Response(
+        JSON.stringify({
+          success: false,
+          message: "Notification cancelled",
+          error: `REGLA DE ORO: user_id debe ser un UUID válido. Valor recibido: ${targetUserId}. Envío cancelado por seguridad.`,
+          cancelled: true,
+        }),
+        {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        }
+      );
+    }
+    
+    // Detectar rol de forma ultra-robusta
+    const detectedRole = detectRole(requestBody, requestBody.record || requestBody);
+    // ✅ Protección: Si roleKey no existe o es inválido, usar 'client' por defecto para evitar fugas
+    const roleKey = (detectedRole === "partner" || detectedRole === "client") ? detectedRole : "client";
+    // ✅ SEGURIDAD CRÍTICA: Sanitizar roleKey para prevenir inyección en URL
+    // Solo permitir letras minúsculas (a-z) - eliminar cualquier carácter especial
+    const sanitizedRole = roleKey.replace(/[^a-z]/gi, '').toLowerCase();
+    // Validar que después de sanitizar sea 'partner' o 'client'
+    const finalRole = (sanitizedRole === 'partner' || sanitizedRole === 'client') ? sanitizedRole : 'client';
+    
+    // ✅ VALIDACIÓN 3: Si role = 'client', user_id es OBLIGATORIO (ya validado arriba, pero reforzamos)
+    if (finalRole === 'client' && (!targetUserId || targetUserId.trim() === '')) {
+      console.error(`🚨 [REGLA DE ORO] ❌ CANCELADO: role='client' pero user_id es inválido. NO se envía notificación.`);
+      return new Response(
+        JSON.stringify({
+          success: false,
+          message: "Notification cancelled",
+          error: "REGLA DE ORO: Si role='client', user_id es obligatorio. Envío cancelado por seguridad.",
+          cancelled: true,
+        }),
+        {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        }
+      );
+    }
+    
+    const secretName = SECRETS[finalRole] || SECRETS.client;
+    const appName = APP_NAMES[finalRole] || APP_NAMES.client;
+    
+    // ✅ LOG: User ID final usado (ya validado)
+    console.log("✅ [REGLA DE ORO] user_id validado correctamente:", targetUserId);
+    console.log("✅ [REGLA DE ORO] role:", finalRole);
+    
+    // Extraer título y mensaje del payload
+    const record = requestBody.record || requestBody;
+    const finalTitle = record.title || requestBody.title || "Actualización de Cita";
+    const finalBody = record.message || record.body || requestBody.message || requestBody.body || "Tienes una nueva actualización.";
+
+    // ✅ Normalizar targetUserId (trim y lowercase para consistencia)
+    const normalizedUserId = targetUserId.trim().toLowerCase();
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL");
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
@@ -167,9 +235,15 @@ serve(async (req: Request) => {
     }
 
     // Buscar dispositivos del usuario en client_devices (única tabla)
+    // ✅ CORREGIDO: Agregar filtro por role para evitar envíos a roles incorrectos
     let devices: Device[] = [];
     try {
-      const devicesUrl = `${supabaseUrl}/rest/v1/client_devices?user_id=eq.${targetUserId}&enabled=eq.true&select=id,user_id,fcm_token,role,platform`;
+      // ✅ Filtro por role: solo dispositivos del rol solicitado
+      // ✅ Punto 12: Filtrar por is_active=true (dispositivos activos para recibir notificaciones)
+      // ✅ SEGURIDAD: Usar normalizedUserId (ya validado como UUID) y finalRole (sanitizado)
+      // ✅ GARANTIZAR: Consultar dispositivos SOLO por normalizedUserId (sin fallbacks)
+      const roleFilter = `&role=eq.${finalRole}`;
+      const devicesUrl = `${supabaseUrl}/rest/v1/client_devices?user_id=eq.${normalizedUserId}&is_active=eq.true${roleFilter}&select=id,user_id,fcm_token,role,platform`;
       
       const devicesRes = await fetch(devicesUrl, {
         headers: {
@@ -181,6 +255,29 @@ serve(async (req: Request) => {
 
       if (devicesRes.ok) {
         devices = await devicesRes.json();
+        
+        // ✅ LOG: Cantidad de dispositivos encontrados
+        console.log(`📱 [DEVICES] Dispositivos encontrados: ${devices.length} para user_id=${normalizedUserId}, role=${finalRole}`);
+        
+        // ✅ Protección: Verificar que todos los dispositivos tengan el user_id y role correctos
+        const uniqueUserIds = new Set(devices.map((d: Device) => d.user_id));
+        const uniqueRoles = new Set(devices.map((d: Device) => d.role));
+        
+        if (uniqueUserIds.size > 1) {
+          console.error(`❌ [NOTIFICATION] ERROR CRÍTICO: Se encontraron múltiples user_id distintos en los dispositivos:`, Array.from(uniqueUserIds));
+          // Filtrar solo los que coinciden con normalizedUserId y finalRole
+          devices = devices.filter((d: Device) => d.user_id?.toLowerCase() === normalizedUserId && d.role === finalRole);
+          console.warn(`⚠️ [NOTIFICATION] Dispositivos filtrados a ${devices.length} que coinciden con user_id=${normalizedUserId} y role=${finalRole}`);
+        }
+        
+        if (uniqueRoles.size > 1 || (uniqueRoles.size === 1 && !uniqueRoles.has(finalRole))) {
+          console.error(`❌ [NOTIFICATION] ERROR: Se encontraron roles incorrectos en los dispositivos. Esperado: ${finalRole}, Encontrados:`, Array.from(uniqueRoles));
+          // Filtrar solo los que tienen el role correcto
+          devices = devices.filter((d: Device) => d.role === finalRole);
+          console.warn(`⚠️ [NOTIFICATION] Dispositivos filtrados a ${devices.length} con role=${finalRole}`);
+        }
+        
+        // Log ya está arriba
       } else {
         console.error(`❌ Error consultando dispositivos: ${devicesRes.status} ${devicesRes.statusText}`);
       }
@@ -200,13 +297,14 @@ serve(async (req: Request) => {
     }
 
     if (!devices || devices.length === 0) {
-      console.warn(`⚠️ No se encontraron dispositivos para user_id: ${targetUserId}`);
+      console.warn(`⚠️ No se encontraron dispositivos para user_id: ${normalizedUserId}, role: ${finalRole}`);
       return new Response(
         JSON.stringify({
           success: true,
           pushSent: false,
           message: "No devices found",
-          userId: targetUserId,
+          userId: normalizedUserId,
+          role: finalRole,
         }),
         {
           status: 200,
@@ -216,21 +314,51 @@ serve(async (req: Request) => {
     }
 
     // Obtener el JSON del secreto usando el nombre del mapeo
-    const serviceAccountJson = Deno.env.get(secretName);
+    let serviceAccountJson = Deno.env.get(secretName);
+    
+    // ✅ DEBUG: Log para verificar qué secret se está buscando
+    console.log(`🔍 [SECRET] Buscando secret: ${secretName}`);
+    console.log(`🔍 [SECRET] Secret existe: ${serviceAccountJson ? 'SÍ' : 'NO'}`);
+    if (serviceAccountJson) {
+      console.log(`🔍 [SECRET] Longitud del secret: ${serviceAccountJson.length} caracteres`);
+    }
     
     if (!serviceAccountJson) {
-      console.error(`❌ Secret ${secretName} no está configurado`);
-      return new Response(
-        JSON.stringify({
-          success: false,
-          message: "Notification failed",
-          error: `Secret ${secretName} no está configurado`,
-        }),
-        {
-          status: 200,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
+      // ✅ INTENTAR ALTERNATIVAS: Verificar si el secret tiene otro nombre
+      const alternativeNames = [
+        'FIREBASE_SERVICE_ACCOUNT_CLIENT',
+        'FIREBASE_CLIENT_SERVICE_ACCOUNT',
+        'FIREBASE_SERVICE_ACCOUNT_CLIENTE',
+      ];
+      
+      for (const altName of alternativeNames) {
+        const altSecret = Deno.env.get(altName);
+        if (altSecret) {
+          console.log(`✅ [SECRET] Encontrado con nombre alternativo: ${altName}`);
+          serviceAccountJson = altSecret;
+          break;
         }
-      );
+      }
+      
+      if (!serviceAccountJson) {
+        console.error(`❌ Secret ${secretName} no está configurado`);
+        // ✅ LISTAR TODOS LOS SECRETS DISPONIBLES (solo nombres, no valores)
+        const allEnvKeys = Object.keys(Deno.env.toObject());
+        const firebaseSecrets = allEnvKeys.filter(key => key.includes('FIREBASE'));
+        console.error(`🔍 [SECRET] Secrets de Firebase disponibles: ${firebaseSecrets.join(', ')}`);
+        
+        return new Response(
+          JSON.stringify({
+            success: false,
+            message: "Notification failed",
+            error: `Secret ${secretName} no está configurado. Secrets disponibles: ${firebaseSecrets.join(', ')}`,
+          }),
+          {
+            status: 200,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          }
+        );
+      }
     }
 
     let serviceAccount: admin.ServiceAccount;
@@ -254,7 +382,7 @@ serve(async (req: Request) => {
     // Inicializar Firebase app con nombre único basado en el rol
     let currentApp: admin.app.App;
     try {
-      currentApp = getFirebaseApp(roleKey, serviceAccount);
+      currentApp = getFirebaseApp(finalRole, serviceAccount);
     } catch (error: any) {
       console.error(`❌ Error inicializando Firebase ${appName}: ${error.message}`);
       return new Response(
@@ -271,6 +399,28 @@ serve(async (req: Request) => {
     }
 
     const messaging = admin.messaging(currentApp);
+
+    // ✅ FUNCIÓN PARA SANITIZAR DATA: Convertir todos los valores a string (requisito de Firebase)
+    const sanitizeData = (data: Record<string, any>): Record<string, string> => {
+      const sanitized: Record<string, string> = {};
+      for (const [key, value] of Object.entries(data)) {
+        if (value === null || value === undefined) {
+          sanitized[key] = '';
+        } else if (typeof value === 'boolean') {
+          sanitized[key] = value ? 'true' : 'false';
+        } else if (typeof value === 'number') {
+          sanitized[key] = value.toString();
+        } else if (typeof value === 'object') {
+          sanitized[key] = JSON.stringify(value);
+        } else {
+          sanitized[key] = String(value);
+        }
+      }
+      return sanitized;
+    };
+
+    // ✅ SANITIZAR DATA ANTES DE ENVIAR A FIREBASE
+    const sanitizedData = sanitizeData(record.data || {});
 
     // Procesar cada dispositivo
     const results = await Promise.allSettled(
@@ -289,7 +439,7 @@ serve(async (req: Request) => {
               title: finalTitle,
               body: finalBody,
             },
-            data: record.data || {},
+            data: sanitizedData,
             android: {
               priority: "high" as const,
               notification: {

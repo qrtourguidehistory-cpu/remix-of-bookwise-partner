@@ -7,7 +7,7 @@ import { supabase } from "@/lib/supabaseClient";
 
 export interface PartnerNotificationData {
   business_id: string;
-  user_id?: string; // ID del usuario partner
+  user_id?: string; // ID del usuario (partner o client según el contexto)
   type: 
     | 'new_appointment' 
     | 'appointment_status_change' 
@@ -25,6 +25,7 @@ export interface PartnerNotificationData {
   client_id?: string;
   link?: string;
   meta?: Record<string, any>;
+  role?: 'partner' | 'client'; // Rol del destinatario de la notificación
 }
 
 /**
@@ -71,17 +72,21 @@ npx
       return { success: false, error: 'user_id es requerido' };
     }
 
-    console.log(`📨 [PARTNER NOTIFICATION] Llamando Edge Function 'send-push-notification' (role: partner):`, {
+    // Determinar el rol: usar el proporcionado o 'partner' por defecto
+    const notificationRole = data.role || 'partner';
+    
+    console.log(`📨 [NOTIFICATION] Llamando Edge Function 'send-push-notification' (role: ${notificationRole}):`, {
       type: data.type,
       user_id: data.user_id,
       business_id: data.business_id,
       appointment_id: data.appointment_id,
+      role: notificationRole,
     });
 
-    // ✅ Llamar Edge Function correcta: send-push-notification con role='partner'
+    // ✅ Llamar Edge Function correcta: send-push-notification con role especificado
     const { data: result, error } = await supabase.functions.invoke('send-push-notification', {
       body: {
-        role: 'partner', // ⭐ IMPORTANTE: Especificar que es para partner
+        role: notificationRole, // ⭐ IMPORTANTE: Usar el rol especificado (partner o client)
         business_id: data.business_id,
         user_id: data.user_id,
         type: data.type,
@@ -168,15 +173,21 @@ export async function notifyNewAppointment(
       ? `${clientName} ha reservado una cita para el ${appointmentDate} a las ${appointmentTime}`
       : `${clientName} has booked an appointment for ${appointmentDate} at ${appointmentTime}`,
     link: `/appointments/${appointmentId}`,
+    // ✅ AGREGAR appointment_date al meta para que esté disponible en el frontend
+    meta: {
+      appointment_date: appointmentDate, // Formato: YYYY-MM-DD
+      appointment_time: appointmentTime,
+    },
   });
 }
 
 /**
  * Notificación cuando cambia el status de una cita
+ * ✅ CORREGIDO: Ahora envía la notificación al CLIENTE, no al Partner
  */
 export async function notifyAppointmentStatusChange(
   businessId: string,
-  userId: string, // Este es el profile.id, pero necesitamos obtener owner_id del negocio
+  userId: string, // Este parámetro ya no se usa para determinar el destinatario
   appointmentId: string,
   clientId: string,
   clientName: string,
@@ -184,21 +195,39 @@ export async function notifyAppointmentStatusChange(
   newStatus: string,
   language: 'es' | 'en' = 'es'
 ): Promise<void> {
-  // Obtener owner_id del negocio
-  let ownerId = userId;
+  // ✅ Validar que tenemos clientId
+  if (!clientId) {
+    console.warn('⚠️ [NOTIFICATION] No se puede enviar notificación: clientId no proporcionado');
+    return;
+  }
+
+  // ✅ Obtener user_id del CLIENTE desde la tabla clients
+  let clientUserId: string | null = null;
   try {
-    const { data: business } = await supabase
-      .from('businesses')
-      .select('owner_id')
-      .eq('id', businessId)
+    const { data: client, error: clientError } = await supabase
+      .from('clients')
+      .select('user_id')
+      .eq('id', clientId)
+      .eq('business_id', businessId)
       .single();
     
-    if (business?.owner_id) {
-      ownerId = business.owner_id;
+    if (clientError) {
+      console.error('❌ [NOTIFICATION] Error obteniendo user_id del cliente:', clientError);
+      return;
+    }
+    
+    if (client?.user_id) {
+      clientUserId = client.user_id;
     }
   } catch (err) {
-    console.error('Error getting business owner_id:', err);
-    // Continuar con userId como fallback
+    console.error('❌ [NOTIFICATION] Excepción obteniendo user_id del cliente:', err);
+    return;
+  }
+
+  // ✅ Validación: Si el cliente NO tiene user_id (cita manual), no enviar notificación
+  if (!clientUserId) {
+    console.log('ℹ️ [NOTIFICATION] Cliente no tiene user_id (cita manual), no se envía notificación push');
+    return;
   }
 
   const statusLabels: Record<string, { es: string; en: string }> = {
@@ -213,9 +242,10 @@ export async function notifyAppointmentStatusChange(
   const oldLabel = statusLabels[oldStatus]?.[language] || oldStatus;
   const newLabel = statusLabels[newStatus]?.[language] || newStatus;
 
+  // ✅ Enviar notificación al CLIENTE con role='client'
   await createPartnerNotification({
     business_id: businessId,
-    user_id: ownerId,
+    user_id: clientUserId, // ✅ user_id del CLIENTE
     appointment_id: appointmentId,
     client_id: clientId,
     type: 'appointment_status_change',
@@ -223,10 +253,11 @@ export async function notifyAppointmentStatusChange(
       ? 'Estado de cita actualizado' 
       : 'Appointment status updated',
     message: language === 'es'
-      ? `La cita de ${clientName} cambió de "${oldLabel}" a "${newLabel}"`
-      : `${clientName}'s appointment changed from "${oldLabel}" to "${newLabel}"`,
+      ? `Tu cita cambió de "${oldLabel}" a "${newLabel}"`
+      : `Your appointment changed from "${oldLabel}" to "${newLabel}"`,
     link: `/appointments/${appointmentId}`,
     meta: { old_status: oldStatus, new_status: newStatus },
+    role: 'client', // ✅ IMPORTANTE: Especificar que es para cliente
   });
 }
 

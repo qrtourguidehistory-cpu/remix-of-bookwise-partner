@@ -215,12 +215,13 @@ export function NextTurnowView({ filters }: NextTurnowViewProps) {
             <div className="px-4 space-y-3">
               {group.appointments.map((appointment) => {
                 const statusInfo = getStatusInfo(appointment.status);
-                // Get client name - PRIORITY: client_name (beneficiary) > clients.full_name (account owner) > guest_name
-                // client_name es el nombre del BENEFICIARIO de esta cita específica
-                const clientName = appointment.client_name || 
-                                  appointment.guest_name || 
-                                  appointment.clients?.full_name || 
-                                  (language === "es" ? "Cliente" : "Client");
+                // ✅ PRIORIDAD ESTRICTA: Si client_name existe, usarlo SIN fallback
+                // client_name es el nombre del BENEFICIARIO de esta cita específica (ingresado manualmente)
+                const clientName = (appointment.client_name && appointment.client_name.trim())
+                  ? appointment.client_name.trim()
+                  : (appointment.guest_name && appointment.guest_name.trim())
+                  ? appointment.guest_name.trim()
+                  : appointment.clients?.full_name || (language === "es" ? "Cliente" : "Client");
                 const serviceName = appointment.services?.name || (language === "es" ? "Servicio" : "Service");
                 const startTime = formatTime(appointment.start_time, '12h');
 

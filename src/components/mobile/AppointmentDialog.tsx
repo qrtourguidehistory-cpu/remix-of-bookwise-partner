@@ -75,6 +75,8 @@ export function AppointmentDialog({
   const [newClientDialogOpen, setNewClientDialogOpen] = useState(false);
   const [newClientData, setNewClientData] = useState({ full_name: "", phone: "" });
   const [paymentMethod, setPaymentMethod] = useState<string>("cash");
+  const [walkInName, setWalkInName] = useState<string>(""); // ✅ PUNTO 2: Campo para nombre walk-in
+  const [walkInEmail, setWalkInEmail] = useState<string>(""); // ✅ PUNTO 2: Campo para email walk-in (opcional)
   const [formData, setFormData] = useState<{
     client_id: string;
     service_id: string;
@@ -121,6 +123,9 @@ export function AppointmentDialog({
         notes: "",
         status: "confirmed",
       });
+      // ✅ PUNTO 2: Limpiar campos walk-in al cerrar
+      setWalkInName("");
+      setWalkInEmail("");
     }
   }, [open, appointment, timeSlot, selectedTime, staffId]);
 
@@ -383,11 +388,27 @@ export function AppointmentDialog({
       return;
     }
     
-    // Validate required fields
-    if (!formData.client_id) {
+    // ✅ PUNTO 2: Permitir citas walk-in sin cliente (client_id puede ser null)
+    // Validar que haya servicio, staff y tiempos
+    // Si no hay client_id, validar que haya walkInName
+    if (!formData.client_id && !walkInName.trim()) {
       toast({
         title: "Error",
-        description: language === "es" ? "Por favor selecciona un cliente" : "Please select a client",
+        description: language === "es" 
+          ? "Por favor selecciona un cliente o ingresa el nombre del cliente para la cita" 
+          : "Please select a client or enter the client name for the appointment",
+        variant: "destructive",
+      });
+      return;
+    }
+    
+    // ✅ Validación adicional: Si hay walkInName pero está vacío después de trim, usar valor por defecto
+    if (!formData.client_id && walkInName.trim() === "") {
+      toast({
+        title: "Error",
+        description: language === "es" 
+          ? "Por favor ingresa un nombre válido para el cliente" 
+          : "Please enter a valid client name",
         variant: "destructive",
       });
       return;
@@ -457,8 +478,10 @@ export function AppointmentDialog({
         endTime24 = calculateEndTime(startTime24, duration);
       }
 
+      // ✅ CORRECCIÓN: Obtener datos del cliente seleccionado y guardarlos en la cita
+      const selectedClient = clients.find(c => c.id === formData.client_id);
+      
       const appointmentData: any = {
-        client_id: formData.client_id,
         service_id: formData.service_id,
         staff_id: formData.staff_id,
         date: format(date, "yyyy-MM-dd"),
@@ -470,6 +493,32 @@ export function AppointmentDialog({
         payment_amount: formData.status === "completed" ? servicePrice : null,
         payment_method: formData.status === "completed" ? (paymentMethod as any) : null,
       };
+
+      // ✅ CORRECCIÓN CRÍTICA: client_id debe ser NULL para citas directas sin cliente seleccionado
+      // Si NO hay cliente seleccionado (formData.client_id vacío), tratar como walk-in
+      // Esto previene que el sistema busque/creé un user_id automáticamente
+      if (selectedClient && formData.client_id) {
+        // ✅ Cliente seleccionado de la lista: usar su ID
+        appointmentData.client_id = formData.client_id;
+        appointmentData.client_name = selectedClient.full_name || null;
+        appointmentData.client_email = selectedClient.email || null;
+        appointmentData.client_phone = selectedClient.phone || null;
+      } else {
+        // ✅ CITA DIRECTA SIN CLIENTE: client_id = NULL (igual que walk-in)
+        // CRÍTICO: Si hay nombre ingresado (walkInName), usarlo; si no, usar "Cliente Sin Cita"
+        const walkInNameTrimmed = walkInName.trim();
+        appointmentData.client_id = null; // ✅ CRÍTICO: NULL para prevenir búsqueda automática de user_id
+        appointmentData.client_name = walkInNameTrimmed || (language === "es" ? "Cliente Sin Cita" : "Walk-in Client");
+        appointmentData.client_email = walkInEmail.trim() || null; // NULL si está vacío
+        appointmentData.client_phone = null;
+      }
+      
+      // ✅ VALIDACIÓN: Asegurar que tenemos al menos client_name si client_id es null
+      if (!appointmentData.client_id && !appointmentData.client_name) {
+        throw new Error(language === "es" 
+          ? "Por favor ingresa el nombre del cliente o selecciona un cliente de la lista"
+          : "Please enter client name or select a client from the list");
+      }
 
       // Add business_id only when creating new appointment
       if (!appointment && profile?.business_id) {
@@ -494,52 +543,78 @@ export function AppointmentDialog({
           description: language === "es" ? "Cita actualizada exitosamente" : "Appointment updated successfully",
         });
       } else {
+        // ✅ Asegurar que appointmentData tenga el tipo correcto para permitir client_id null
+        const insertData: any = {
+          ...appointmentData,
+          // Si client_id es null, asegurar que TypeScript lo acepte
+          client_id: appointmentData.client_id || null,
+        };
+        
         const { data: newAppointment, error } = await supabase
           .from("appointments")
-          .insert(appointmentData)
+          .insert(insertData as any) // ✅ Cast a any para permitir client_id null
           .select()
           .single();
 
-        if (error) throw error;
+        if (error) {
+          console.error("❌ [APPOINTMENT] Error detallado al crear cita:", {
+            error,
+            appointmentData: {
+              ...appointmentData,
+              client_id: appointmentData.client_id || 'NULL',
+              client_name: appointmentData.client_name || 'NULL',
+            }
+          });
+          throw error;
+        }
 
         // Send notifications if appointment is confirmed
+        // IMPORTANTE: Envolver en try/catch para que no bloquee la creación si hay error
         if (formData.status === 'confirmed' && newAppointment) {
-          const { sendNotificationToClient, scheduleNotification } = await import('@/lib/notificationService');
-          
-          // Get client info
-          const selectedClient = clients.find(c => c.id === formData.client_id);
-          
-          await sendNotificationToClient({
-            appointmentId: newAppointment.id,
-            clientId: newAppointment.client_id,
-            clientEmail: selectedClient?.email,
-            clientPhone: selectedClient?.phone,
-            clientName: selectedClient?.full_name,
-            type: 'confirmation',
-            appointmentDate: format(date, "yyyy-MM-dd"),
-            appointmentTime: convertTo24Hour(formData.start_time),
-            businessId: profile.business_id || '',
-          });
+          try {
+            const { sendNotificationToClient, scheduleNotification } = await import('@/lib/notificationService');
+            
+            // Get client info
+            const selectedClient = clients.find(c => c.id === formData.client_id);
+            
+            await sendNotificationToClient({
+              appointmentId: newAppointment.id,
+              clientId: newAppointment.client_id,
+              clientEmail: selectedClient?.email,
+              clientPhone: selectedClient?.phone,
+              clientName: selectedClient?.full_name,
+              type: 'confirmation',
+              appointmentDate: format(date, "yyyy-MM-dd"),
+              appointmentTime: convertTo24Hour(formData.start_time),
+              businessId: profile.business_id || '',
+            });
 
-          // Schedule reminder 10 minutes before
-          const appointmentDateTime = new Date(`${format(date, "yyyy-MM-dd")}T${convertTo24Hour(formData.start_time)}`);
-          const reminderTime = new Date(appointmentDateTime.getTime() - 10 * 60 * 1000);
-          
-          if (reminderTime > new Date()) {
-            await scheduleNotification(
-              newAppointment.id,
-              reminderTime,
-              'reminder',
-              profile.business_id || '',
-              {
-                clientId: newAppointment.client_id,
-                clientEmail: selectedClient?.email,
-                clientPhone: selectedClient?.phone,
-                clientName: selectedClient?.full_name,
-              }
-            );
+            // Schedule reminder 10 minutes before
+            const appointmentDateTime = new Date(`${format(date, "yyyy-MM-dd")}T${convertTo24Hour(formData.start_time)}`);
+            const reminderTime = new Date(appointmentDateTime.getTime() - 10 * 60 * 1000);
+            
+            if (reminderTime > new Date()) {
+              await scheduleNotification(
+                newAppointment.id,
+                reminderTime,
+                'reminder',
+                profile.business_id || '',
+                {
+                  clientId: newAppointment.client_id,
+                  clientEmail: selectedClient?.email,
+                  clientPhone: selectedClient?.phone,
+                  clientName: selectedClient?.full_name,
+                }
+              );
+            }
+          } catch (notificationError) {
+            // No bloquear la creación si hay error en las notificaciones
+            console.error("Error sending notifications for new appointment (non-blocking):", notificationError);
           }
         }
+
+        // IMPORTANTE: NO llamar funciones de "siguiente en turno" durante la creación
+        // Estas funciones solo deben ejecutarse cuando se ACTUALIZA el estado de una cita existente
 
         toast({
           title: t("success") || "Success",
@@ -549,11 +624,24 @@ export function AppointmentDialog({
 
       onOpenChange(false);
       onSuccess?.();
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error saving appointment:", error);
+      
+      // ✅ Mostrar mensaje de error detallado para debugging
+      const errorMessage = error?.message || error?.error?.message || 
+        (language === "es" ? "Error al guardar la cita" : "Failed to save appointment");
+      
+      // Si el error menciona client_id, mostrar mensaje más específico
+      let detailedMessage = errorMessage;
+      if (errorMessage.includes('client_id') || errorMessage.includes('client')) {
+        detailedMessage = language === "es" 
+          ? "Error: La cita requiere un cliente. Por favor selecciona un cliente o ingresa un nombre para walk-in."
+          : "Error: Appointment requires a client. Please select a client or enter a name for walk-in.";
+      }
+      
       toast({
         title: "Error",
-        description: language === "es" ? "Error al guardar la cita" : "Failed to save appointment",
+        description: detailedMessage,
         variant: "destructive",
       });
     } finally {
@@ -661,25 +749,10 @@ export function AppointmentDialog({
 
       if (error) throw error;
 
-      // Crear notificación para Partner sobre el cambio de status
-      if (oldStatus !== newStatus && profile?.business_id && profile?.id) {
-        try {
-          const { notifyAppointmentStatusChange } = await import("@/lib/partnerNotificationService");
-          await notifyAppointmentStatusChange(
-            profile.business_id,
-            profile.id,
-            appointment.id,
-            appointment.client_id || "",
-            (appointment.clients as any)?.full_name || "Cliente",
-            oldStatus,
-            newStatus,
-            language === "es" ? "es" : "en"
-          );
-        } catch (err) {
-          console.error("Error creating status change notification:", err);
-          // No mostrar error al usuario, solo log
-        }
-      }
+      // ✅ CORRECCIÓN: NO notificar al Partner cuando él mismo cambia el status
+      // El trigger SQL 'trigger_notify_client_on_status_change' ya maneja las notificaciones
+      // al cliente específico de la cita automáticamente cuando cambia el status
+      // No necesitamos llamar a notifyAppointmentStatusChange desde aquí
 
       const statusLabels: Record<string, string> = {
         confirmed: language === "es" ? "confirmada" : "confirmed",
@@ -701,7 +774,8 @@ export function AppointmentDialog({
       setFormData(prev => ({ ...prev, status: newStatus }));
       
       // Notify next client when appointment is started
-      if (newStatus === "started") {
+      // IMPORTANTE: Solo ejecutar si la cita existe (appointment.id) y no es una creación nueva
+      if (newStatus === "started" && appointment?.id) {
         try {
           const { notifyNextClientWhenAppointmentStarted } = await import("@/lib/queueNotifications");
           await notifyNextClientWhenAppointmentStarted({
@@ -716,8 +790,29 @@ export function AppointmentDialog({
             language: language === "es" ? "es" : "en",
           });
         } catch (err) {
-          console.error("Error notifying next client:", err);
-          // Don't show error to user, just log it
+          console.error("Error notifying next client (non-blocking):", err);
+          // No bloquear la actualización del estado si hay error en la notificación
+        }
+      }
+      
+      // Notify next client when appointment is completed
+      // IMPORTANTE: Solo ejecutar si la cita existe (appointment.id) y no es una creación nueva
+      if (newStatus === "completed" && appointment?.id) {
+        try {
+          const { notifyNextClientWhenAppointmentCompleted } = await import("@/lib/queueNotifications");
+          await notifyNextClientWhenAppointmentCompleted({
+            businessId: profile.business_id,
+            currentAppointment: {
+              id: appointment.id,
+              appointment_date: appointment.appointment_date || appointment.date,
+              end_time: appointment.end_time,
+              staff_id: appointment.staff_id,
+            },
+            language: language === "es" ? "es" : "en",
+          });
+        } catch (err) {
+          console.error("Error notifying next client when completed (non-blocking):", err);
+          // No bloquear la actualización del estado si hay error en la notificación
         }
       }
       
@@ -893,8 +988,15 @@ export function AppointmentDialog({
                 </Button>
               </div>
             </div>
-            <Select value={formData.client_id} onValueChange={(value) => setFormData({ ...formData, client_id: value })}>
-              <SelectTrigger className={`${!formData.client_id ? 'border-destructive/50' : ''}`}>
+            <Select value={formData.client_id} onValueChange={(value) => {
+              setFormData({ ...formData, client_id: value });
+              // Limpiar campos walk-in cuando se selecciona un cliente
+              if (value) {
+                setWalkInName("");
+                setWalkInEmail("");
+              }
+            }}>
+              <SelectTrigger className={`${!formData.client_id && !walkInName ? 'border-destructive/50' : ''}`}>
                 <SelectValue placeholder={language === "es" ? "Seleccionar cliente..." : "Select client..."} />
               </SelectTrigger>
               <SelectContent>
@@ -905,6 +1007,24 @@ export function AppointmentDialog({
                 ))}
               </SelectContent>
             </Select>
+            {/* ✅ PUNTO 2: Campo para nombre walk-in cuando no hay cliente seleccionado */}
+            {!formData.client_id && (
+              <div className="mt-2 space-y-2">
+                <Input
+                  value={walkInName}
+                  onChange={(e) => setWalkInName(e.target.value)}
+                  placeholder={language === "es" ? "Nombre del walk-in" : "Walk-in name"}
+                  className="mt-2"
+                />
+                <Input
+                  value={walkInEmail}
+                  onChange={(e) => setWalkInEmail(e.target.value)}
+                  placeholder={language === "es" ? "Email (opcional)" : "Email (optional)"}
+                  type="email"
+                  className="mt-2"
+                />
+              </div>
+            )}
           </div>
 
           <div>

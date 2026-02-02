@@ -14,7 +14,7 @@ import { formatTime, convertTo24Hour } from "@/lib/timeFormat";
 import { useOptimizedAppointmentsRealtime } from "@/hooks/useOptimizedRealtime";
 import { useAppointmentCache } from "@/hooks/useAppointmentCache";
 import { useLanguage } from "@/contexts/LanguageContext";
-import { notifyNextClientWhenAppointmentStarted } from "@/lib/queueNotifications";
+import { notifyNextClientWhenAppointmentStarted, notifyNextClientWhenAppointmentCompleted } from "@/lib/queueNotifications";
 import { useAppointmentColor } from "@/hooks/useAppointmentColor";
 import { 
   parseTimeToMinutes, 
@@ -141,17 +141,22 @@ export function DayView({ date, filters, appointmentToOpen, onAppointmentOpened 
   // OPTIMIZACIÓN: Usar caché de consultas
   const { generateCacheKey, getCached, setCached, invalidateCache } = useAppointmentCache();
 
-  const fetchAppointments = useCallback(async () => {
+  const fetchAppointments = useCallback(async (bypassCache: boolean = false) => {
     if (!profile?.business_id) {
       return;
     }
     
-    // OPTIMIZACIÓN: Verificar caché primero
+    // OPTIMIZACIÓN: Verificar caché primero (solo si no se está forzando el bypass)
     const cacheKey = generateCacheKey('day', date, filters);
-    const cachedData = getCached(cacheKey);
-    if (cachedData) {
-      setAppointments(cachedData);
-      return;
+    if (!bypassCache) {
+      const cachedData = getCached(cacheKey);
+      if (cachedData) {
+        setAppointments(cachedData);
+        return;
+      }
+    } else {
+      // Si se está forzando el bypass, invalidar el caché primero
+      invalidateCache('day');
     }
     
     const dateStr = format(date, "yyyy-MM-dd");
@@ -272,8 +277,12 @@ export function DayView({ date, filters, appointmentToOpen, onAppointmentOpened 
       if (filters.searchQuery) {
         const searchLower = filters.searchQuery.toLowerCase();
         filteredData = enrichedData.filter(apt => {
-          // ✅ FIX: Buscar en client_name (beneficiary) primero, luego clients.full_name
-          const clientName = (apt.client_name || apt.guest_name || apt.clients?.full_name || '').toLowerCase();
+          // ✅ PRIORIDAD ESTRICTA: Buscar en client_name primero (sin fallback si existe)
+          const clientName = ((apt.client_name && apt.client_name.trim()) 
+            ? apt.client_name.trim() 
+            : (apt.guest_name && apt.guest_name.trim())
+            ? apt.guest_name.trim()
+            : apt.clients?.full_name || '').toLowerCase();
           const serviceName = (apt.services?.name || '').toLowerCase();
           const staffName = (apt.staff?.full_name || '').toLowerCase();
           return clientName.includes(searchLower) ||
@@ -287,16 +296,21 @@ export function DayView({ date, filters, appointmentToOpen, onAppointmentOpened 
     } else {
       setAppointments([]);
     }
-  }, [date, filters, profile?.business_id, generateCacheKey, getCached, setCached]);
+  }, [date, filters, profile?.business_id, generateCacheKey, getCached, setCached, invalidateCache, language]);
+
+  // ✅ OPTIMIZADO: Callback envuelto en useCallback para evitar re-suscripciones
+  const handleRealtimeUpdate = useCallback(() => {
+    console.log('🔄 [DayView] Actualización en tiempo real recibida, forzando refresco...');
+    // Invalidar caché cuando hay actualizaciones en tiempo real
+    invalidateCache('day');
+    // Forzar refresco ignorando el caché
+    fetchAppointments(true);
+  }, [invalidateCache, fetchAppointments]);
 
   // OPTIMIZACIÓN: Usar realtime optimizado con auto-limpieza
   useOptimizedAppointmentsRealtime(
     profile?.business_id,
-    () => {
-      // Invalidar caché cuando hay actualizaciones en tiempo real
-      invalidateCache('day');
-      fetchAppointments();
-    },
+    handleRealtimeUpdate,
     true // Solo activo cuando el componente está montado
   );
 
@@ -603,27 +617,15 @@ export function DayView({ date, filters, appointmentToOpen, onAppointmentOpened 
 
       // Crear notificación para Partner sobre el cambio de status
       if (oldStatus !== dbStatus && profile?.business_id && profile?.id) {
-        try {
-          const { notifyAppointmentStatusChange } = await import("@/lib/partnerNotificationService");
-          const clientName = (selectedAppointment.clients as any)?.full_name || "Cliente";
-          await notifyAppointmentStatusChange(
-            profile.business_id,
-            profile.id,
-            selectedAppointment.id,
-            selectedAppointment.client_id || "",
-            clientName,
-            oldStatus,
-            dbStatus,
-            language === "es" ? "es" : "en"
-          );
-        } catch (err) {
-          console.error("Error creating status change notification:", err);
-          // No mostrar error al usuario, solo log
-        }
+        // ✅ CORRECCIÓN: NO notificar al Partner cuando él mismo cambia el status
+        // El trigger SQL 'trigger_notify_client_on_status_change' ya maneja las notificaciones
+        // al cliente específico de la cita automáticamente cuando cambia el status
+        // No necesitamos llamar a notifyAppointmentStatusChange desde aquí
       }
       
       // Notify next client when appointment is started
-      if (dbStatus === "started") {
+      // IMPORTANTE: Solo ejecutar si la cita existe y no es una creación nueva
+      if (dbStatus === "started" && selectedAppointment?.id) {
         try {
           await notifyNextClientWhenAppointmentStarted({
             businessId: profile.business_id,
@@ -637,8 +639,28 @@ export function DayView({ date, filters, appointmentToOpen, onAppointmentOpened 
             language: language === "es" ? "es" : "en",
           });
         } catch (err) {
-          console.error("Error notifying next client:", err);
-          // Don't show error to user, just log it
+          console.error("Error notifying next client (non-blocking):", err);
+          // No bloquear la actualización del estado si hay error en la notificación
+        }
+      }
+      
+      // Notify next client when appointment is completed
+      // IMPORTANTE: Solo ejecutar si la cita existe y no es una creación nueva
+      if (dbStatus === "completed" && selectedAppointment?.id) {
+        try {
+          await notifyNextClientWhenAppointmentCompleted({
+            businessId: profile.business_id,
+            currentAppointment: {
+              id: selectedAppointment.id,
+              appointment_date: selectedAppointment.appointment_date,
+              end_time: selectedAppointment.end_time,
+              staff_id: selectedAppointment.staff_id,
+            },
+            language: language === "es" ? "es" : "en",
+          });
+        } catch (err) {
+          console.error("Error notifying next client when completed (non-blocking):", err);
+          // No bloquear la actualización del estado si hay error en la notificación
         }
       }
       
@@ -883,10 +905,11 @@ export function DayView({ date, filters, appointmentToOpen, onAppointmentOpened 
               className="rounded-lg p-2 text-white text-xs font-medium shadow-lg opacity-80"
               style={{ backgroundColor: getStaffColor(draggedAppointment.staff_id) }}
             >
-              {draggedAppointment.clients?.full_name || 
-               draggedAppointment.client_name || 
-               draggedAppointment.guest_name || 
-               'Cliente'}
+              {(draggedAppointment.client_name && draggedAppointment.client_name.trim())
+                ? draggedAppointment.client_name.trim()
+                : (draggedAppointment.guest_name && draggedAppointment.guest_name.trim())
+                ? draggedAppointment.guest_name.trim()
+                : draggedAppointment.clients?.full_name || 'Cliente'}
               <br />
               {draggedAppointment.services?.name || 'Servicio'}
             </div>
@@ -914,14 +937,14 @@ function DraggableAppointment({ appointment, onEdit, isActive, position, layout,
 
   const appointmentColor = useAppointmentColor();
   
-  // Get client name - PRIORITY: client_name (beneficiary) > clients.full_name (account owner) > guest_name
-  // ✅ FIX: client_name es el nombre del BENEFICIARIO de esta cita específica
-  // clients.full_name es el nombre del DUEÑO DE CUENTA (no debe usarse para mostrar beneficiario)
-  const clientName = appointment.client_name || 
-                     appointment.guest_name || 
-                     appointment.clients?.full_name || 
-                     (appointment as any)?.client?.full_name ||
-                     'Cliente';
+  // ✅ PRIORIDAD ESTRICTA: Si client_name existe, usarlo SIN fallback
+  // client_name es el nombre del BENEFICIARIO de esta cita específica (ingresado manualmente)
+  // Solo usar fallback si client_name es null, undefined o string vacío
+  const clientName = (appointment.client_name && appointment.client_name.trim())
+    ? appointment.client_name.trim()
+    : (appointment.guest_name && appointment.guest_name.trim())
+    ? appointment.guest_name.trim()
+    : appointment.clients?.full_name || 'Cliente';
   
   // Get service name
   const serviceName = appointment.services?.name || 'Servicio';

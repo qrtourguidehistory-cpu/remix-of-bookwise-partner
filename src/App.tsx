@@ -5,7 +5,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { ThemeProvider } from "@/contexts/ThemeContext";
 import { LanguageProvider } from "@/contexts/LanguageContext";
-import { AuthProvider } from "@/contexts/AuthContext";
+import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import { useBackButton } from "@/hooks/useBackButton";
 import { usePaymentDeepLink } from "@/hooks/usePaymentDeepLink";
 import { useAppStateSubscriptionCheck } from "@/hooks/useAppStateSubscriptionCheck";
@@ -67,11 +67,26 @@ import SubscriptionsPage from "./pages/hub/SubscriptionsPage";
 const queryClient = new QueryClient();
 
 // Component to handle back button, payment deep links, and subscription checks at the router level
-function BackButtonHandler() {
+// ✅ PROTECCIÓN: Componente interno que solo se ejecuta cuando el contexto está listo
+function BackButtonHandlerInner() {
   useBackButton();
   usePaymentDeepLink();
   useAppStateSubscriptionCheck(); // Verificación automática de suscripciones pendientes
   return null;
+}
+
+// Wrapper que verifica si el AuthProvider está listo
+// ✅ PROTECCIÓN: Solo ejecutar hooks cuando el contexto esté listo
+function BackButtonHandler() {
+  // useAuth siempre está disponible dentro de AuthProvider
+  const { loading } = useAuth();
+  
+  // Solo renderizar el componente interno cuando el contexto esté completamente inicializado
+  if (loading) {
+    return null;
+  }
+  
+  return <BackButtonHandlerInner />;
 }
 
 const App = () => (

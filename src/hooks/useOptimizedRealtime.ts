@@ -130,12 +130,13 @@ export function useOptimizedAppointmentsRealtime(
     table: 'appointments',
     filter: businessId ? `business_id=eq.${businessId}` : undefined,
     events: ['INSERT', 'UPDATE', 'DELETE'],
-    onEvent: () => {
+    onEvent: (payload) => {
+      console.log('🔔 Cambio detectado en tiempo real:', payload);
       if (onUpdate) {
-        // Debounce para evitar múltiples actualizaciones rápidas
+        // Debounce aumentado a 300ms para dar estabilidad si entran varias citas al mismo tiempo
         setTimeout(() => {
           onUpdate();
-        }, 100);
+        }, 300);
       }
     },
     enabled: enabled && !!businessId,

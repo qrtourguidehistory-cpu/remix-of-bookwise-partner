@@ -267,7 +267,14 @@ export default function OnboardingFlow() {
 
   return (
     <MobileLayout>
-      <div className="min-h-screen bg-background p-4 pb-24">
+      <div 
+        className="min-h-screen bg-background p-4 pb-content-with-nav"
+        style={{
+          // ✅ Safe area: padding-bottom que considera la navegación inferior (76px) + safe-area de Android
+          // Usa la clase pb-content-with-nav que ya calcula: bottom-nav-height + safe-area-inset-bottom
+          paddingBottom: 'calc(var(--bottom-nav-height, 76px) + max(32px, env(safe-area-inset-bottom, 0px), var(--app-safe-bottom, 0px)))'
+        }}
+      >
         <div className="w-full max-w-2xl mx-auto space-y-6">
           {/* Header with logout button */}
           <div className="flex items-center justify-between mb-2">
@@ -294,6 +301,13 @@ export default function OnboardingFlow() {
                 {showLogoutConfirm && (
                   <div 
                     className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+                    style={{
+                      // ✅ Safe area: padding que considera safe-area de Android
+                      paddingBottom: 'max(16px, env(safe-area-inset-bottom, 0px), var(--app-safe-bottom, 0px))',
+                      paddingTop: 'max(16px, env(safe-area-inset-top, 0px))',
+                      paddingLeft: 'max(16px, env(safe-area-inset-left, 0px))',
+                      paddingRight: 'max(16px, env(safe-area-inset-right, 0px))'
+                    }}
                     onClick={() => setShowLogoutConfirm(false)}
                   >
                     <motion.div

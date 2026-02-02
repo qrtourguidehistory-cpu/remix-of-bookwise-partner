@@ -470,9 +470,10 @@ export default function BookingFlow() {
       const servicePrice = typeof service.price === 'string' ? parseFloat(service.price) : (service.price || 0);
       const appointmentDateStr = selectedDate?.toISOString().split("T")[0] || format(new Date(), "yyyy-MM-dd");
       
-      const { data: newAppointment, error } = await supabase.from("appointments").insert({
+      // ✅ Preparar datos de inserción con manejo correcto de client_id null
+      const insertData: any = {
         business_id: profile?.business_id || null,
-        client_id: clientId || null,
+        client_id: clientId || null, // ✅ Permitir null para walk-ins
         service_id: selectedService,
         staff_id: selectedStaff || null,
         date: appointmentDateStr,
@@ -481,9 +482,53 @@ export default function BookingFlow() {
         end_time: endTime24h,
         status: "pending",
         payment_amount: servicePrice,
-      }).select().single();
+      };
+      
+      // ✅ CRÍTICO: SIEMPRE guardar client_name si hay nombre ingresado
+      // client_name es el nombre del BENEFICIARIO de la cita (puede ser diferente del cliente de la cuenta)
+      // Esto previene que se muestre "Walk-in Client" cuando el usuario ingresó un nombre específico
+      if (clientName?.trim()) {
+        insertData.client_name = clientName.trim();
+        console.log("✅ [BOOKING] Guardando client_name:", clientName.trim());
+      } else if (!clientId) {
+        // Solo usar fallback si NO hay cliente Y NO hay nombre ingresado
+        insertData.client_name = language === "es" ? "Cliente Sin Cita" : "Walk-in Client";
+        console.log("⚠️ [BOOKING] Usando fallback para client_name:", insertData.client_name);
+      }
+      
+      // ✅ Debug: Log completo de lo que se va a insertar
+      console.log("🔍 [BOOKING] Datos a insertar:", {
+        client_id: insertData.client_id || 'NULL',
+        client_name: insertData.client_name || 'NULL',
+        clientName_original: clientName,
+        clientId_exists: !!clientId,
+      });
+      
+      const { data: newAppointment, error } = await supabase
+        .from("appointments")
+        .insert(insertData as any) // ✅ Cast a any para permitir client_id null
+        .select()
+        .single();
 
-      if (error) throw error;
+      if (error) {
+        console.error("❌ [BOOKING] Error detallado de Supabase:", {
+          error,
+          insertData: {
+            ...insertData,
+            client_id: insertData.client_id || 'NULL',
+            client_name: insertData.client_name || 'NULL',
+          }
+        });
+        throw error;
+      }
+      
+      // ✅ Debug: Verificar que client_name se guardó correctamente
+      console.log("✅ [BOOKING] Cita creada exitosamente:", {
+        appointment_id: newAppointment?.id,
+        client_id: newAppointment?.client_id || 'NULL',
+        client_name: newAppointment?.client_name || 'NULL',
+        clientName_original: clientName,
+      });
 
       // Crear notificación para Partner sobre nueva cita
       if (newAppointment && profile?.business_id && profile?.id) {
@@ -491,12 +536,27 @@ export default function BookingFlow() {
           const { notifyNewAppointment } = await import("@/lib/partnerNotificationService");
           const appointmentDate = selectedDate ? format(selectedDate, "dd/MM/yyyy") : appointmentDateStr;
           const appointmentTime = selectedTime;
+          // ✅ Obtener el nombre real del cliente: usar client_name de la cita o buscar en clients
+          let actualClientName = "Cliente";
+          if (newAppointment.client_name) {
+            actualClientName = newAppointment.client_name;
+          } else if (clientId) {
+            const { data: clientData } = await supabase
+              .from("clients")
+              .select("full_name")
+              .eq("id", clientId)
+              .single();
+            actualClientName = clientData?.full_name || clientName?.trim() || "Cliente";
+          } else {
+            actualClientName = clientName?.trim() || "Cliente";
+          }
+          
           await notifyNewAppointment(
             profile.business_id,
             profile.id,
             newAppointment.id,
             clientId || "",
-            "Demo Client", // En producción, obtener el nombre real del cliente
+            actualClientName, // ✅ Usar el nombre real del cliente
             appointmentDate,
             appointmentTime,
             language === "es" ? "es" : "en"
@@ -512,11 +572,24 @@ export default function BookingFlow() {
         description: t("notifications"),
       });
       setTimeout(() => navigate("/", { replace: true }), 1500);
-    } catch (error) {
-      console.error("Error creating appointment:", error);
+    } catch (error: any) {
+      console.error("❌ [BOOKING] Error detallado al crear cita:", error);
+      
+      // ✅ Mostrar mensaje de error detallado para debugging
+      const errorMessage = error?.message || error?.error?.message || 
+        (language === "es" ? "Error al crear la cita" : "Failed to create appointment");
+      
+      // Si el error menciona client_id, mostrar mensaje más específico
+      let detailedMessage = errorMessage;
+      if (errorMessage.includes('client_id') || errorMessage.includes('client') || errorMessage.includes('appointment_requires')) {
+        detailedMessage = language === "es" 
+          ? `Error: ${errorMessage}. Por favor verifica que todos los campos requeridos estén completos.`
+          : `Error: ${errorMessage}. Please verify that all required fields are completed.`;
+      }
+      
       toast({
         title: "Error",
-        description: "Failed to create appointment",
+        description: detailedMessage,
         variant: "destructive",
       });
     } finally {
@@ -527,17 +600,31 @@ export default function BookingFlow() {
   const service = services.find(s => s.id === selectedService);
   const selectedStaffMember = staff.find(s => s.id === selectedStaff);
 
+  // ✅ Lógica mejorada para canProceed - asegurar que el botón se muestre correctamente
   const canProceed = 
     (step === 1 && !!selectedService) ||
     (step === 2 && !!selectedStaff) ||
     (step === 3 && !!selectedDate) ||
     (step === 4 && !!selectedTime) ||
     (step === 5 && !!clientName?.trim()) ||
-    (step === 6);
+    (step === 6); // Step 6 es confirmación, siempre puede proceder
+  
+  // ✅ Debug: Log para verificar canProceed en desarrollo
+  if (process.env.NODE_ENV === 'development') {
+    console.log('🔍 [BOOKING] canProceed check:', {
+      step,
+      canProceed,
+      selectedService: !!selectedService,
+      selectedStaff: !!selectedStaff,
+      selectedDate: !!selectedDate,
+      selectedTime: !!selectedTime,
+      clientName: clientName?.trim(),
+    });
+  }
 
   return (
     <MobileLayout>
-      <div className="p-4 pb-24 max-w-2xl mx-auto">
+      <div className="p-4 pb-32 max-w-2xl mx-auto">
         <h1 className="text-2xl font-bold mb-6">{t("bookAppointment")}</h1>
         
         <BookingProgress currentStep={step} totalSteps={6} />

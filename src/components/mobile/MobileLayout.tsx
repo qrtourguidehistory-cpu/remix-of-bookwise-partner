@@ -11,7 +11,7 @@ import { supabase } from "@/lib/supabaseClient";
 import { formatDistanceToNow } from "date-fns";
 import { es, enUS } from "date-fns/locale";
 import { Capacitor } from "@capacitor/core";
-import { initializePartnerPush, setNavigationCallback } from "@/services/partnerPushService";
+// ✅ ELIMINADO: No más imports de push service aquí - se maneja en AuthContext
 
 // Context for handling appointment detail view from notifications
 interface AppointmentDetailContextType {
@@ -70,44 +70,7 @@ export default function MobileLayout({ children }: MobileLayoutProps) {
     'approval_rejected',
   ] as const;
 
-  // ✅ Solicitar permisos de notificaciones al abrir la app
-  const notificationPermissionRequested = useRef(false);
-  
-  useEffect(() => {
-    if (!profile?.id || notificationPermissionRequested.current) return;
-
-    const requestNotificationPermissions = async () => {
-      try {
-        notificationPermissionRequested.current = true;
-        console.log('[MobileLayout] 🔔 Solicitando permisos de notificaciones...');
-
-        // Llamar initializePartnerPush que maneja tanto web como nativo
-        await initializePartnerPush(profile.id);
-        
-        console.log('[MobileLayout] ✅ Permisos de notificaciones procesados');
-      } catch (error) {
-        console.error('[MobileLayout] ❌ Error solicitando permisos de notificaciones:', error);
-      }
-    };
-
-    // Solo solicitar si el usuario está autenticado y es partner
-    if (profile?.business_id) {
-      requestNotificationPermissions();
-    }
-  }, [profile?.id, profile?.business_id]);
-
-  // ✅ Configurar callback de navegación para push notifications
-  useEffect(() => {
-    setNavigationCallback((path: string) => {
-      console.log('[MobileLayout] 🧭 Navegando desde notificación push:', path);
-      navigate(path);
-    });
-
-    return () => {
-      // Cleanup: remover callback cuando el componente se desmonta
-      setNavigationCallback(() => {});
-    };
-  }, [navigate]);
+  // ✅ ELIMINADO: No registrar listeners aquí - se hace en AuthContext una sola vez
 
   useEffect(() => {
     if (!profile?.id) return;
@@ -276,12 +239,39 @@ export default function MobileLayout({ children }: MobileLayoutProps) {
 
       setupRealtimeSubscription();
 
+      // ✅ Listener para actualizar contador cuando se marca notificación como leída desde push
+      const handleNotificationRead = (event: CustomEvent) => {
+        const { notificationId } = event.detail;
+        console.log('🔔 [MobileLayout] Notification marked as read from push:', notificationId);
+        
+        // Actualizar estado local
+        setNotifications((prev) => {
+          const updated = prev.map((n) =>
+            n.id === notificationId || n.notificationId === notificationId
+              ? { ...n, read: true }
+              : n
+          );
+          
+          // Actualizar contador de no leídas
+          const hasUnreadNow = updated.some((n) => !n.read);
+          setHasUnread(hasUnreadNow);
+          
+          return updated;
+        });
+      };
+
+      window.addEventListener('notificationRead', handleNotificationRead as EventListener);
+
       // ✅ NO RE-SUSCRIBIR AUTOMÁTICAMENTE AL VOLVER DE BACKGROUND
       // El cleanup del useEffect se encarga de limpiar correctamente
 
       return () => {
         cleanupExecuted = true;
         isSubscribed = false;
+        
+        // Limpiar listener de notificaciones
+        window.removeEventListener('notificationRead', handleNotificationRead as EventListener);
+        
         if (channel) {
           console.log('🧹 [REALTIME] Limpiando suscripción');
           supabase
@@ -514,39 +504,86 @@ export default function MobileLayout({ children }: MobileLayoutProps) {
   };
 
   const openAppointmentDetail = (appointmentId: string, appointmentDate?: string) => {
-    // Close notifications sheet
+    // Cerrar panel de notificaciones
     setNotificationsOpen(false);
     
-    // Navigate to calendar first if not already there
-    const currentPath = window.location.pathname;
-    if (!currentPath.includes('/calendar') && !currentPath.includes('/mobile/calendar')) {
-      navigate('/mobile/calendar');
-      // Wait a bit for navigation, then dispatch event
-      setTimeout(() => {
-        window.dispatchEvent(new CustomEvent('openAppointmentDetail', {
-          detail: { appointmentId, appointmentDate }
-        }));
-      }, 100);
-    } else {
-      // Already on calendar page, dispatch immediately
-      window.dispatchEvent(new CustomEvent('openAppointmentDetail', {
-        detail: { appointmentId, appointmentDate }
-      }));
-    }
+    // ✅ EVENT BUS: Emitir evento directamente, sin verificar window.location
+    // El listener en MobileCalendar.tsx se encargará de la navegación si es necesario
+    window.dispatchEvent(new CustomEvent('openAppointmentDetail', {
+      detail: { appointmentId, appointmentDate }
+    }));
   };
 
-  const handleNotificationClick = async (notification: Notification) => {
-    // Close notifications sheet first
+  // ✅ FUNCIÓN AUXILIAR: Marcar como leída en segundo plano (no bloquea)
+  const markNotificationAsRead = (notification: Notification) => {
+    if (!notification.notificationId) return;
+    
+    console.log('[MobileLayout] Marcando notificación como leída:', notification.notificationId);
+    
+    // Actualizar estado local INMEDIATAMENTE (optimistic update)
+    setNotifications(prev => {
+      const updated = prev.map(n => 
+        n.id === notification.id ? { ...n, read: true } : n
+      );
+      
+      // Actualizar contador
+      const hasUnreadNow = updated.some(n => !n.read);
+      setHasUnread(hasUnreadNow);
+      
+      return updated;
+    });
+    
+    // Marcar en BD en segundo plano (sin await, no bloquea)
+    const table = notification.notificationTable || 'notifications';
+    supabase
+      .from(table as any)
+      .update({ read: true } as any)
+      .eq('id', notification.notificationId)
+      .then(({ error }) => {
+        if (error) {
+          console.error('[MobileLayout] Error marcando como leída:', error);
+          // Fallback a client_notifications
+          if (table === 'notifications') {
+            supabase
+              .from('client_notifications')
+              .update({ read: true })
+              .eq('id', notification.notificationId);
+          }
+        } else {
+          console.log('[MobileLayout] ✅ Notificación marcada como leída en BD');
+        }
+      })
+      .catch((error) => {
+        console.error('[MobileLayout] Error en fallback:', error);
+      });
+  };
+
+  const handleNotificationClick = (notification: Notification) => {
+    console.log('[MobileLayout] 🔔 Notificación clickeada:', {
+      id: notification.id,
+      appointmentId: notification.appointmentId,
+      appointmentDate: notification.appointmentDate,
+      link: notification.link,
+      notification: notification
+    });
+    
+    // ✅ ORDEN CORRECTO: PRIMERO marcar como leída, DESPUÉS navegar
+    if (!notification.read && notification.notificationId) {
+      markNotificationAsRead(notification);
+    }
+    
+    // Cerrar panel de notificaciones
     setNotificationsOpen(false);
 
-    // Handle navigation based on notification type
-    // Try to extract appointment ID from link or use appointmentId
+    // Extraer appointment ID y fecha
     let aptId = notification.appointmentId;
     let aptDate = notification.appointmentDate;
     
-    // If no appointmentId but we have a link, try to extract from link
+    console.log('[MobileLayout] 📋 Datos extraídos iniciales:', { aptId, aptDate });
+    
+    // Si no hay appointmentId, intentar extraer del link
     if (!aptId && notification.link) {
-      // Try different patterns
+      console.log('[MobileLayout] 🔍 Intentando extraer appointmentId del link:', notification.link);
       const patterns = [
         /\/admin\/calendar\/appointment\/([a-f0-9-]+)/i,
         /\/mobile\/calendar\/appointment\/([a-f0-9-]+)/i,
@@ -559,71 +596,42 @@ export default function MobileLayout({ children }: MobileLayoutProps) {
         const match = notification.link.match(pattern);
         if (match && match[1]) {
           aptId = match[1];
+          console.log('[MobileLayout] ✅ appointmentId extraído del link:', aptId);
           break;
         }
       }
       
-      // Try to extract date from link
+      // Extraer fecha del link
       const dateMatch = notification.link.match(/[?&]date=([^&]+)/i);
       if (dateMatch && dateMatch[1]) {
         aptDate = decodeURIComponent(dateMatch[1]);
+        console.log('[MobileLayout] ✅ appointmentDate extraído del link:', aptDate);
       }
     }
     
-    // If we have appointment ID, navigate to calendar and open it
+    console.log('[MobileLayout] 📋 Datos finales antes de navegar:', { aptId, aptDate });
+    
+    // ✅ NAVEGACIÓN: Usar Event Bus (openAppointmentDetail) para consistencia
     if (aptId) {
-      // Navigate to calendar first
+      console.log('[MobileLayout] ✅ Navegando a cita:', aptId, 'fecha:', aptDate || 'N/A');
+      
+      // Navegar al calendario
       navigate('/mobile/calendar');
       
-      // Wait a bit for navigation, then open appointment detail
+      // Disparar evento para abrir la cita (con delay para que la navegación se complete)
       setTimeout(() => {
-        openAppointmentDetail(aptId, aptDate);
-        
-        // Mark as read ONLY after successfully opening the appointment
-        if (!notification.read && notification.notificationId) {
-          const markAsRead = async () => {
-            try {
-              const table = notification.notificationTable || 'notifications';
-              await (supabase
-                .from(table as any)
-                .update({ read: true } as any)
-                .eq('id', notification.notificationId) as any);
-
-              // Update local state
-              setNotifications(prev => 
-                prev.map(n => n.id === notification.id ? { ...n, read: true } : n)
-              );
-              setHasUnread(notifications.some(n => n.id !== notification.id && !n.read));
-            } catch (error) {
-              console.error('Error marking notification as read:', error);
-            }
-          };
-          markAsRead();
-        }
-      }, 300);
+        console.log('[MobileLayout] 📤 Emitiendo evento openAppointmentDetail:', { appointmentId: aptId, appointmentDate: aptDate });
+        window.dispatchEvent(new CustomEvent('openAppointmentDetail', {
+          detail: { appointmentId: aptId, appointmentDate: aptDate }
+        }));
+      }, 500); // Aumentado a 500ms para dar más tiempo a la navegación
     } else if (notification.link && !notification.link.includes('/admin/appointments')) {
-      // Navigate to the link if it's not an appointment detail link and not the appointments page
+      // Navegar al link si no es una cita
+      console.log('[MobileLayout] Navegando a link:', notification.link);
       navigate(notification.link);
-      
-      // Mark as read after navigation
-      if (!notification.read && notification.notificationId) {
-        try {
-          const table = notification.notificationTable || 'notifications';
-          await (supabase
-            .from(table as any)
-            .update({ read: true } as any)
-            .eq('id', notification.notificationId) as any);
-
-          setNotifications(prev => 
-            prev.map(n => n.id === notification.id ? { ...n, read: true } : n)
-          );
-          setHasUnread(notifications.some(n => n.id !== notification.id && !n.read));
-        } catch (error) {
-          console.error('Error marking notification as read:', error);
-        }
-      }
     } else {
-      // Fallback: navigate to calendar
+      // Fallback: solo navegar al calendario
+      console.warn('[MobileLayout] ⚠️ No se encontró appointmentId, navegando a calendario (fallback)');
       navigate('/mobile/calendar');
     }
   };

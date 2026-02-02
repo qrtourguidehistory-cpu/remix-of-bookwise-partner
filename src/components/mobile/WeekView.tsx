@@ -50,16 +50,21 @@ export function WeekView({ date, filters }: WeekViewProps) {
   // OPTIMIZACIÓN: Usar caché de consultas
   const { generateCacheKey, getCached, setCached, invalidateCache } = useAppointmentCache();
 
-  const fetchAppointments = useCallback(async () => {
+  const fetchAppointments = useCallback(async (bypassCache: boolean = false) => {
     if (!profile?.business_id) return;
     
-    // OPTIMIZACIÓN: Verificar caché primero
+    // OPTIMIZACIÓN: Verificar caché primero (solo si no se está forzando el bypass)
     const cacheKey = generateCacheKey('week', date, filters);
-    const cachedData = getCached(cacheKey);
-    if (cachedData) {
-      setAppointments(cachedData);
-      setLoading(false);
-      return;
+    if (!bypassCache) {
+      const cachedData = getCached(cacheKey);
+      if (cachedData) {
+        setAppointments(cachedData);
+        setLoading(false);
+        return;
+      }
+    } else {
+      // Si se está forzando el bypass, invalidar el caché primero
+      invalidateCache('week');
     }
     
     setLoading(true);
@@ -178,15 +183,21 @@ export function WeekView({ date, filters }: WeekViewProps) {
       setCached(cacheKey, enrichedData, filters);
     }
     setLoading(false);
-  }, [date, filters, profile?.business_id, generateCacheKey, getCached, setCached]);
+  }, [date, filters, profile?.business_id, generateCacheKey, getCached, setCached, invalidateCache]);
+
+  // ✅ OPTIMIZADO: Callback envuelto en useCallback para evitar re-suscripciones
+  const handleRealtimeUpdate = useCallback(() => {
+    console.log('🔄 [WeekView] Actualización en tiempo real recibida, forzando refresco...');
+    // Invalidar caché cuando hay actualizaciones en tiempo real
+    invalidateCache('week');
+    // Forzar refresco ignorando el caché
+    fetchAppointments(true);
+  }, [invalidateCache, fetchAppointments]);
 
   // OPTIMIZACIÓN: Usar realtime optimizado con auto-limpieza
   useOptimizedAppointmentsRealtime(
     profile?.business_id,
-    () => {
-      invalidateCache('week');
-      fetchAppointments();
-    },
+    handleRealtimeUpdate,
     true
   );
 
@@ -269,12 +280,13 @@ export function WeekView({ date, filters }: WeekViewProps) {
                   <>
                     {dayAppointments.map((appointment) => {
                       const statusInfo = getStatusInfo(appointment.status);
-                      // ✅ FIX: Priority: client_name (beneficiary) > clients.full_name (account owner) > guest_name
-                      // client_name es el nombre del BENEFICIARIO de esta cita específica
-                      const clientName = appointment.client_name || 
-                                        appointment.guest_name || 
-                                        appointment.clients?.full_name || 
-                                        "Cliente";
+                      // ✅ PRIORIDAD ESTRICTA: Si client_name existe, usarlo SIN fallback
+                      // client_name es el nombre del BENEFICIARIO de esta cita específica (ingresado manualmente)
+                      const clientName = (appointment.client_name && appointment.client_name.trim())
+                        ? appointment.client_name.trim()
+                        : (appointment.guest_name && appointment.guest_name.trim())
+                        ? appointment.guest_name.trim()
+                        : appointment.clients?.full_name || "Cliente";
                       const serviceName = appointment.services?.name || "Servicio";
                       const startTime = formatTime(appointment.start_time, '12h');
                       
@@ -372,7 +384,9 @@ export function WeekView({ date, filters }: WeekViewProps) {
                 clientId: selectedAppointment.client_id,
                 clientEmail: selectedAppointment.client_email,
                 clientPhone: selectedAppointment.client_phone,
-                clientName: selectedAppointment.client_name || selectedAppointment.clients?.full_name,
+                clientName: (selectedAppointment.client_name && selectedAppointment.client_name.trim())
+                  ? selectedAppointment.client_name.trim()
+                  : selectedAppointment.clients?.full_name || "",
                 type: 'confirmation',
                 appointmentDate: appointmentDate ? new Date(appointmentDate).toLocaleDateString('es-ES') : undefined,
                 appointmentTime: appointmentTime,
@@ -387,7 +401,9 @@ export function WeekView({ date, filters }: WeekViewProps) {
                     clientId: selectedAppointment.client_id,
                     clientEmail: selectedAppointment.client_email,
                     clientPhone: selectedAppointment.client_phone,
-                    clientName: selectedAppointment.client_name || selectedAppointment.clients?.full_name,
+                    clientName: (selectedAppointment.client_name && selectedAppointment.client_name.trim())
+                  ? selectedAppointment.client_name.trim()
+                  : selectedAppointment.clients?.full_name || "",
                   });
                 }
               }
@@ -397,7 +413,9 @@ export function WeekView({ date, filters }: WeekViewProps) {
                 clientId: selectedAppointment.client_id,
                 clientEmail: selectedAppointment.client_email,
                 clientPhone: selectedAppointment.client_phone,
-                clientName: selectedAppointment.client_name || selectedAppointment.clients?.full_name,
+                clientName: (selectedAppointment.client_name && selectedAppointment.client_name.trim())
+                  ? selectedAppointment.client_name.trim()
+                  : selectedAppointment.clients?.full_name || "",
                 type: 'completion',
                 appointmentDate: appointmentDate ? new Date(appointmentDate).toLocaleDateString('es-ES') : undefined,
                 appointmentTime: appointmentTime,
@@ -409,24 +427,32 @@ export function WeekView({ date, filters }: WeekViewProps) {
                 clientId: selectedAppointment.client_id,
                 clientEmail: selectedAppointment.client_email,
                 clientPhone: selectedAppointment.client_phone,
-                clientName: selectedAppointment.client_name || selectedAppointment.clients?.full_name,
+                clientName: (selectedAppointment.client_name && selectedAppointment.client_name.trim())
+                  ? selectedAppointment.client_name.trim()
+                  : selectedAppointment.clients?.full_name || "",
                 type: 'review_request',
                 businessId: profile.business_id,
               });
 
-              const nextAppointment = await getNextAppointmentInQueue(selectedAppointment.id, profile.business_id);
-              if (nextAppointment) {
-                await sendNotificationToClient({
-                  appointmentId: nextAppointment.id,
-                  clientId: nextAppointment.client_id,
-                  clientEmail: nextAppointment.client_email,
-                  clientPhone: nextAppointment.client_phone,
-                  clientName: nextAppointment.client_name,
-                  type: 'next_in_queue',
-                  appointmentDate: nextAppointment.appointment_date || nextAppointment.date ? new Date(nextAppointment.appointment_date || nextAppointment.date).toLocaleDateString('es-ES') : undefined,
-                  appointmentTime: nextAppointment.start_time,
-                  businessId: profile.business_id,
-                });
+              // Notify next client using the new function that uses send-push-notification Edge Function
+              // IMPORTANTE: Solo ejecutar si la cita existe y no es una creación nueva
+              if (selectedAppointment?.id) {
+                try {
+                  const { notifyNextClientWhenAppointmentCompleted } = await import("@/lib/queueNotifications");
+                  await notifyNextClientWhenAppointmentCompleted({
+                    businessId: profile.business_id,
+                    currentAppointment: {
+                      id: selectedAppointment.id,
+                      appointment_date: selectedAppointment.appointment_date || selectedAppointment.date,
+                      end_time: selectedAppointment.end_time,
+                      staff_id: selectedAppointment.staff_id,
+                    },
+                    language: language === "es" ? "es" : "en",
+                  });
+                } catch (err) {
+                  console.error("Error notifying next client when completed (non-blocking):", err);
+                  // No bloquear la actualización del estado si hay error en la notificación
+                }
               }
             } else if (status === 'cancelled') {
               await sendNotificationToClient({
@@ -434,7 +460,9 @@ export function WeekView({ date, filters }: WeekViewProps) {
                 clientId: selectedAppointment.client_id,
                 clientEmail: selectedAppointment.client_email,
                 clientPhone: selectedAppointment.client_phone,
-                clientName: selectedAppointment.client_name || selectedAppointment.clients?.full_name,
+                clientName: (selectedAppointment.client_name && selectedAppointment.client_name.trim())
+                  ? selectedAppointment.client_name.trim()
+                  : selectedAppointment.clients?.full_name || "",
                 type: 'cancellation',
                 appointmentDate: appointmentDate ? new Date(appointmentDate).toLocaleDateString('es-ES') : undefined,
                 appointmentTime: appointmentTime,
