@@ -163,7 +163,6 @@ export function DayView({ date, filters, appointmentToOpen, onAppointmentOpened 
     const nextDateStr = format(addDays(date, 1), "yyyy-MM-dd");
     
     // OPTIMIZACIÓN: Solo seleccionar columnas necesarias
-    // ✅ FIX: Incluir client_name, guest_name y user_id para mostrar nombres cuando client_id es NULL
     let query = supabase
       .from("appointments")
       .select(`
@@ -175,14 +174,12 @@ export function DayView({ date, filters, appointmentToOpen, onAppointmentOpened 
         service_id,
         staff_id,
         client_id,
-        user_id,
-        client_name,
-        guest_name,
+        notes,
         payment_method,
         payment_amount,
-        clients!appointments_client_id_fkey(id, full_name, email, phone),
-        services!appointments_service_id_fkey(name, duration_minutes, price, price_usd),
-        staff!appointments_staff_id_fkey(full_name)
+        clients:client_id(id, full_name, email, phone),
+        services:service_id(name, duration_minutes, price, price_usd),
+        staff:staff_id(full_name)
       `)
       .eq("business_id", profile.business_id)
       .gte("appointment_date", dateStr)
@@ -211,39 +208,33 @@ export function DayView({ date, filters, appointmentToOpen, onAppointmentOpened 
 
     if (!error && data) {
       // ✅ FIX: Si data existe pero clients está vacío, hacer consulta directa como fallback
-      let enrichedData = data;
+      let enrichedData = data as any[];
       if (data.length > 0 && profile?.business_id) {
-        const appointmentsNeedingClientData = data.filter(
-          (apt) => !apt.clients && apt.client_id
+        const appointmentsNeedingClientData = (data as any[]).filter(
+          (apt: any) => !apt.clients && apt.client_id
         );
 
         if (appointmentsNeedingClientData.length > 0) {
-          console.log(
-            `🔍 [DayView] ${appointmentsNeedingClientData.length} citas sin datos de cliente, consultando directamente...`
-          );
-
           // Consultar clientes directamente
           const clientIds = appointmentsNeedingClientData
-            .map((apt) => apt.client_id)
-            .filter((id): id is string => Boolean(id));
+            .map((apt: any) => apt.client_id)
+            .filter((id: any): id is string => Boolean(id));
 
           if (clientIds.length > 0) {
             const { data: clientsData, error: clientsError } = await supabase
               .from("clients")
-              .select("id, user_id, full_name, email, phone")
+              .select("id, full_name, email, phone")
               .eq("business_id", profile.business_id)
               .in("id", clientIds);
 
-            if (clientsError) {
-              console.error("Error fetching clients directly:", clientsError);
-            } else if (clientsData) {
+            if (!clientsError && clientsData) {
               // Crear un mapa de client_id -> client data
               const clientsMap = new Map(
                 clientsData.map((client) => [client.id, client])
               );
 
               // Enriquecer appointments con datos de clientes
-              enrichedData = data.map((apt) => {
+              enrichedData = (data as any[]).map((apt: any) => {
                 if (!apt.clients && apt.client_id) {
                   const clientData = clientsMap.get(apt.client_id);
                   if (clientData) {
@@ -252,37 +243,17 @@ export function DayView({ date, filters, appointmentToOpen, onAppointmentOpened 
                 }
                 return apt;
               });
-
-              console.log(
-                `✅ [DayView] Enriquecidos ${clientsData.length} clientes en citas`
-              );
             }
           }
         }
-
-        // Log diagnóstico
-        const appointmentsWithClients = enrichedData.filter(
-          (apt) => apt.clients
-        ).length;
-        const appointmentsWithoutClients = enrichedData.filter(
-          (apt) => !apt.clients && apt.client_id
-        ).length;
-        console.log(
-          `📊 [DayView] Diagnóstico: ${appointmentsWithClients} con cliente, ${appointmentsWithoutClients} sin cliente (pero con client_id), total: ${enrichedData.length}`
-        );
       }
 
       // Apply search filter on client side (for related data)
-      let filteredData = enrichedData;
+      let filteredData = enrichedData as any[];
       if (filters.searchQuery) {
         const searchLower = filters.searchQuery.toLowerCase();
-        filteredData = enrichedData.filter(apt => {
-          // ✅ PRIORIDAD ESTRICTA: Buscar en client_name primero (sin fallback si existe)
-          const clientName = ((apt.client_name && apt.client_name.trim()) 
-            ? apt.client_name.trim() 
-            : (apt.guest_name && apt.guest_name.trim())
-            ? apt.guest_name.trim()
-            : apt.clients?.full_name || '').toLowerCase();
+        filteredData = (enrichedData as any[]).filter((apt: any) => {
+          const clientName = (apt.clients?.full_name || '').toLowerCase();
           const serviceName = (apt.services?.name || '').toLowerCase();
           const staffName = (apt.staff?.full_name || '').toLowerCase();
           return clientName.includes(searchLower) ||

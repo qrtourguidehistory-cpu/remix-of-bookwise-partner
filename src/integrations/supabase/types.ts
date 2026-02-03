@@ -678,6 +678,45 @@ export type Database = {
           },
         ]
       }
+      client_devices: {
+        Row: {
+          created_at: string | null
+          device_info: Json | null
+          enabled: boolean | null
+          fcm_token: string | null
+          id: string
+          is_active: boolean | null
+          platform: string
+          role: string
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          device_info?: Json | null
+          enabled?: boolean | null
+          fcm_token?: string | null
+          id?: string
+          is_active?: boolean | null
+          platform?: string
+          role?: string
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          device_info?: Json | null
+          enabled?: boolean | null
+          fcm_token?: string | null
+          id?: string
+          is_active?: boolean | null
+          platform?: string
+          role?: string
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       client_notifications: {
         Row: {
           action_url: string | null

@@ -25,8 +25,9 @@ interface StaffTimeOff {
 interface StaffEarlyDeparture {
   id: string;
   staff_id: string;
-  date: string;
-  departure_time: string;
+  departure_date: string;
+  actual_end_time: string;
+  original_end_time: string;
   reason?: string | null;
 }
 
@@ -96,7 +97,7 @@ export function useStaffAvailability(
           .from("staff_early_departures")
           .select("*")
           .eq("staff_id", staffId)
-          .eq("date", dateStr),
+          .eq("departure_date", dateStr),
       ]);
 
       if (schedulesResult.error) throw schedulesResult.error;

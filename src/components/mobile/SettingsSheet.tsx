@@ -34,31 +34,9 @@ export function SettingsSheet({ open, onOpenChange }: SettingsSheetProps) {
   }, [profile?.business_id]);
 
   const checkPendingPayment = async () => {
-    if (!profile?.business_id) return;
-    
-    try {
-      const { data, error } = await supabase
-        .from("business_subscriptions")
-        .select("status, payment_due_date")
-        .eq("business_id", profile.business_id)
-        .maybeSingle();
-
-      if (error && error.code !== 'PGRST116') {
-        console.error("Error checking subscription:", error);
-        return;
-      }
-
-      if (data) {
-        const isPastDue = data.status === 'past_due' || data.status === 'suspended';
-        const isTrialingExpired = data.status === 'trialing' && 
-          data.payment_due_date && 
-          new Date(data.payment_due_date) < new Date();
-        
-        setHasPendingPayment(isPastDue || isTrialingExpired);
-      }
-    } catch (error) {
-      console.error("Error checking pending payment:", error);
-    }
+    // Subscription checking disabled - table doesn't exist
+    // This feature will be re-enabled once the subscription system is implemented
+    setHasPendingPayment(false);
   };
 
   const menuItems = [

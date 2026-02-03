@@ -66,7 +66,7 @@ export async function createPartnerNotification(
       console.warn(`⚠️ [PARTNER NOTIFICATION] Tipo no operativo ignorado: ${data.type}`);
       return { success: false, error: `Tipo de notificación no operativo: ${data.type}` };
     }
-npx 
+ 
     if (!data.user_id) {
       console.error('❌ [PARTNER NOTIFICATION] user_id es requerido');
       return { success: false, error: 'user_id es requerido' };

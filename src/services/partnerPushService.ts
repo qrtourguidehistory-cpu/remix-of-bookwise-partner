@@ -42,20 +42,41 @@ export const initializePartnerPush = async (userId: string) => {
     // Registrar
     await PushNotifications.register();
 
-    // Token
+    // Token registration with FCM token deduplication
     await PushNotifications.addListener('registration', async (token) => {
       const platform = Capacitor.getPlatform() === 'ios' ? 'ios' : 'android';
+      
+      // PASO 1: Eliminar este token de CUALQUIER otro usuario (limpieza de duplicados)
       await supabase
-        .from('client_devices')
-        .upsert({
-          user_id: userId,
-          role: 'partner',
-          platform: platform,
-          fcm_token: token.value,
-          is_active: true, // ✅ Punto 12: Marcar como activo al iniciar sesión
-          enabled: true, // Mantener enabled para compatibilidad
-          device_info: { device: platform, ts: new Date().toISOString() }
-        });
+        .from('client_devices' as any)
+        .delete()
+        .eq('fcm_token', token.value)
+        .neq('user_id', userId);
+      
+      // PASO 2: Upsert usando fcm_token como clave de conflicto
+      const { error } = await supabase
+        .from('client_devices' as any)
+        .upsert(
+          {
+            user_id: userId,
+            role: 'partner',
+            platform: platform,
+            fcm_token: token.value,
+            is_active: true,
+            enabled: true,
+            device_info: { device: platform, ts: new Date().toISOString() }
+          },
+          { 
+            onConflict: 'fcm_token',
+            ignoreDuplicates: false 
+          }
+        );
+        
+      if (error) {
+        console.error('[PartnerPush] Error registrando token:', error);
+      } else {
+        console.log('[PartnerPush] ✅ Token registrado correctamente para user:', userId);
+      }
     });
 
     // Errores
