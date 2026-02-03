@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { FilterState } from "./CalendarHeader";
 import { supabase } from "@/lib/supabaseClient";
 import { useAuth } from "@/contexts/AuthContext";
+import { useLanguage } from "@/contexts/LanguageContext";
 import { AppointmentDialog } from "./AppointmentDialog";
 import { AppointmentDetailView } from "./AppointmentDetailView";
 import { formatTime } from "@/lib/timeFormat";
@@ -36,6 +37,7 @@ const getStatusInfo = (status: string) => {
 
 export function WeekView({ date, filters }: WeekViewProps) {
   const { profile } = useAuth();
+  const { language } = useLanguage();
   const [appointments, setAppointments] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -74,7 +76,6 @@ export function WeekView({ date, filters }: WeekViewProps) {
     const endExclusiveStr = format(addDays(weekEnd, 1), "yyyy-MM-dd");
 
     // OPTIMIZACIÓN: Solo seleccionar columnas necesarias
-    // ✅ FIX: Incluir client_name, guest_name y user_id para mostrar nombres cuando client_id es NULL
     let query = supabase
       .from("appointments")
       .select(`
@@ -86,12 +87,10 @@ export function WeekView({ date, filters }: WeekViewProps) {
         service_id,
         staff_id,
         client_id,
-        user_id,
-        client_name,
-        guest_name,
-        clients!appointments_client_id_fkey(id, full_name, email, phone),
-        services!appointments_service_id_fkey(name, duration_minutes, price),
-        staff!appointments_staff_id_fkey(full_name)
+        notes,
+        clients:client_id(id, full_name, email, phone),
+        services:service_id(name, duration_minutes, price),
+        staff:staff_id(full_name)
       `)
       .eq("business_id", profile.business_id)
       .gte("appointment_date", startDateStr)
@@ -117,39 +116,33 @@ export function WeekView({ date, filters }: WeekViewProps) {
       setAppointments([]);
     } else {
       // ✅ FIX: Si data existe pero clients está vacío, hacer consulta directa como fallback
-      let enrichedData = data || [];
+      let enrichedData = (data || []) as any[];
       if (data && data.length > 0 && profile?.business_id) {
-        const appointmentsNeedingClientData = data.filter(
-          (apt) => !apt.clients && apt.client_id
+        const appointmentsNeedingClientData = (data as any[]).filter(
+          (apt: any) => !apt.clients && apt.client_id
         );
 
         if (appointmentsNeedingClientData.length > 0) {
-          console.log(
-            `🔍 [WeekView] ${appointmentsNeedingClientData.length} citas sin datos de cliente, consultando directamente...`
-          );
-
           // Consultar clientes directamente
           const clientIds = appointmentsNeedingClientData
-            .map((apt) => apt.client_id)
-            .filter((id): id is string => Boolean(id));
+            .map((apt: any) => apt.client_id)
+            .filter((id: any): id is string => Boolean(id));
 
           if (clientIds.length > 0) {
             const { data: clientsData, error: clientsError } = await supabase
               .from("clients")
-              .select("id, user_id, full_name, email, phone")
+              .select("id, full_name, email, phone")
               .eq("business_id", profile.business_id)
               .in("id", clientIds);
 
-            if (clientsError) {
-              console.error("Error fetching clients directly:", clientsError);
-            } else if (clientsData) {
+            if (!clientsError && clientsData) {
               // Crear un mapa de client_id -> client data
               const clientsMap = new Map(
                 clientsData.map((client) => [client.id, client])
               );
 
               // Enriquecer appointments con datos de clientes
-              enrichedData = data.map((apt) => {
+              enrichedData = (data as any[]).map((apt: any) => {
                 if (!apt.clients && apt.client_id) {
                   const clientData = clientsMap.get(apt.client_id);
                   if (clientData) {
@@ -158,24 +151,9 @@ export function WeekView({ date, filters }: WeekViewProps) {
                 }
                 return apt;
               });
-
-              console.log(
-                `✅ [WeekView] Enriquecidos ${clientsData.length} clientes en citas`
-              );
             }
           }
         }
-
-        // Log diagnóstico
-        const appointmentsWithClients = enrichedData.filter(
-          (apt) => apt.clients
-        ).length;
-        const appointmentsWithoutClients = enrichedData.filter(
-          (apt) => !apt.clients && apt.client_id
-        ).length;
-        console.log(
-          `📊 [WeekView] Diagnóstico: ${appointmentsWithClients} con cliente, ${appointmentsWithoutClients} sin cliente (pero con client_id), total: ${enrichedData.length}`
-        );
       }
 
       setAppointments(enrichedData);

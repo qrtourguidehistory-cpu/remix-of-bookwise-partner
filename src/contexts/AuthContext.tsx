@@ -202,26 +202,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             }
           });
           
-          // Initialize partner push notifications
+          // Initialize partner push notifications for all users (not role-based)
           setTimeout(async () => {
             try {
-              const { data: profile } = await supabase
-                .from('profiles')
-                .select('role')
-                .eq('id', currentUser.id)
-                .single();
-              
-              if (profile?.role === 'partner') {
-                try {
-                  // Configurar callback de navegación antes de inicializar
-                  // ✅ EVENT BUS: No usar callback, el listener emitirá eventos directamente
-                  await initializePartnerPush(currentUser.id);
-                } catch (err) {
-                  console.error('[AuthContext] Push init failed but continuing:', err);
-                }
-              }
-            } catch (error) {
-              console.error('[AuthContext] Push init error:', error);
+              await initializePartnerPush(currentUser.id);
+            } catch (err) {
+              console.error('[AuthContext] Push init failed but continuing:', err);
             }
           }, 1000);
         } else {
@@ -287,26 +273,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             }
           });
           
-          // Initialize partner push notifications
+          // Initialize partner push notifications for all users
           setTimeout(async () => {
             try {
-              const { data: profile } = await supabase
-                .from('profiles')
-                .select('role')
-                .eq('id', currentUser.id)
-                .single();
-              
-              if (profile?.role === 'partner') {
-                try {
-                  // Configurar callback de navegación antes de inicializar
-                  // ✅ EVENT BUS: No usar callback, el listener emitirá eventos directamente
-                  await initializePartnerPush(currentUser.id);
-                } catch (err) {
-                  console.error('[AuthContext] Push init failed but continuing:', err);
-                }
-              }
-            } catch (error) {
-              console.error('[AuthContext] Push init error:', error);
+              await initializePartnerPush(currentUser.id);
+            } catch (err) {
+              console.error('[AuthContext] Push init failed but continuing:', err);
             }
           }, 1000);
         } else {
@@ -351,24 +323,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       toast.success("¡Bienvenido!");
       
-      // Initialize partner push notifications
+      // Initialize partner push notifications for all users
       setTimeout(async () => {
         try {
           const { data: { user } } = await supabase.auth.getUser();
           if (user) {
-            const { data: profile } = await supabase
-              .from('profiles')
-              .select('role')
-              .eq('id', user.id)
-              .single();
-            
-            if (profile?.role === 'partner') {
-              try {
-                await initializePartnerPush(user.id);
-              } catch (err) {
-                console.error('[AuthContext] Push init failed but continuing:', err);
-              }
-            }
+            await initializePartnerPush(user.id);
           }
         } catch (error) {
           console.error('[AuthContext] Push init error:', error);

@@ -3,6 +3,7 @@ import { supabase } from "@/lib/supabaseClient";
 import { useAuth } from "@/contexts/AuthContext";
 import { useNavigate, useParams } from "react-router-dom";
 import { toast } from "sonner";
+import { useLanguage } from "@/contexts/LanguageContext";
 import MobileLayout from "@/components/mobile/MobileLayout";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -14,6 +15,7 @@ import { Switch } from "@/components/ui/switch";
 
 export default function InventoryForm() {
   const { profile } = useAuth();
+  const { language } = useLanguage();
   const navigate = useNavigate();
   const { id } = useParams();
   const isEditMode = !!id;
