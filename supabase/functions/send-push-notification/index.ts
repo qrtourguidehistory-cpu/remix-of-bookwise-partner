@@ -9,7 +9,7 @@ const corsHeaders = {
 // Mapeo de roles a nombres de secrets de Firebase
 const SECRETS: Record<string, string> = {
   partner: "FIREBASE_SERVICE_ACCOUNT_PARTNER",
-  client: "FIREBASE_SERVICE_ACCOUNT_CLIENTE",
+  client: "FIREBASE_SERVICE_ACCOUNT_CLIENT",
 };
 
 // Nombres de apps Firebase para evitar colisiones
@@ -210,8 +210,9 @@ serve(async (req: Request) => {
     
     // Extraer título y mensaje del payload
     const record = requestBody.record || requestBody;
-    const finalTitle = record.title || requestBody.title || "Actualización de Cita";
-    const finalBody = record.message || record.body || requestBody.message || requestBody.body || "Tienes una nueva actualización.";
+    // ✅ Asegurar que título y cuerpo sean strings (requisito de Firebase)
+    const finalTitle = String(record.title || requestBody.title || "Actualización de Cita");
+    const finalBody = String(record.message || record.body || requestBody.message || requestBody.body || "Tienes una nueva actualización.");
 
     // ✅ Normalizar targetUserId (trim y lowercase para consistencia)
     const normalizedUserId = targetUserId.trim().toLowerCase();
@@ -314,58 +315,46 @@ serve(async (req: Request) => {
     }
 
     // Obtener el JSON del secreto usando el nombre del mapeo
-    let serviceAccountJson = Deno.env.get(secretName);
+    console.log(`🔍 [send-push-notification] Buscando secret: ${secretName} para role: ${finalRole}`);
+    const serviceAccountJson = Deno.env.get(secretName);
     
     // ✅ DEBUG: Log para verificar qué secret se está buscando
-    console.log(`🔍 [SECRET] Buscando secret: ${secretName}`);
-    console.log(`🔍 [SECRET] Secret existe: ${serviceAccountJson ? 'SÍ' : 'NO'}`);
     if (serviceAccountJson) {
-      console.log(`🔍 [SECRET] Longitud del secret: ${serviceAccountJson.length} caracteres`);
+      console.log(`✅ [send-push-notification] Secret encontrado: ${secretName}`);
+      console.log(`🔍 [send-push-notification] Longitud del secret: ${serviceAccountJson.length} caracteres`);
+    } else {
+      console.error(`❌ [send-push-notification] Secret ${secretName} no encontrado`);
     }
     
+    // ✅ REGLA DE ORO: NO FALLBACKS - Fail fast si el secret no existe
     if (!serviceAccountJson) {
-      // ✅ INTENTAR ALTERNATIVAS: Verificar si el secret tiene otro nombre
-      const alternativeNames = [
-        'FIREBASE_SERVICE_ACCOUNT_CLIENT',
-        'FIREBASE_CLIENT_SERVICE_ACCOUNT',
-        'FIREBASE_SERVICE_ACCOUNT_CLIENTE',
-      ];
+      console.error(`❌ [REGLA DE ORO] Secret ${secretName} no está configurado. NO se usan fallbacks.`);
+      // ✅ LISTAR TODOS LOS SECRETS DISPONIBLES (solo nombres, no valores) para debugging
+      const allEnvKeys = Object.keys(Deno.env.toObject());
+      const firebaseSecrets = allEnvKeys.filter(key => key.includes('FIREBASE'));
+      console.error(`🔍 [SECRET] Secrets de Firebase disponibles: ${firebaseSecrets.join(', ')}`);
       
-      for (const altName of alternativeNames) {
-        const altSecret = Deno.env.get(altName);
-        if (altSecret) {
-          console.log(`✅ [SECRET] Encontrado con nombre alternativo: ${altName}`);
-          serviceAccountJson = altSecret;
-          break;
+      return new Response(
+        JSON.stringify({
+          success: false,
+          message: "Notification cancelled",
+          error: `REGLA DE ORO: Secret ${secretName} es requerido. No se usan fallbacks.`,
+          cancelled: true,
+        }),
+        {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
         }
-      }
-      
-      if (!serviceAccountJson) {
-        console.error(`❌ Secret ${secretName} no está configurado`);
-        // ✅ LISTAR TODOS LOS SECRETS DISPONIBLES (solo nombres, no valores)
-        const allEnvKeys = Object.keys(Deno.env.toObject());
-        const firebaseSecrets = allEnvKeys.filter(key => key.includes('FIREBASE'));
-        console.error(`🔍 [SECRET] Secrets de Firebase disponibles: ${firebaseSecrets.join(', ')}`);
-        
-        return new Response(
-          JSON.stringify({
-            success: false,
-            message: "Notification failed",
-            error: `Secret ${secretName} no está configurado. Secrets disponibles: ${firebaseSecrets.join(', ')}`,
-          }),
-          {
-            status: 200,
-            headers: { ...corsHeaders, "Content-Type": "application/json" },
-          }
-        );
-      }
+      );
     }
 
     let serviceAccount: admin.ServiceAccount;
     try {
+      console.log(`🔍 [send-push-notification] Parseando secret ${secretName}...`);
       serviceAccount = JSON.parse(serviceAccountJson);
+      console.log(`✅ [send-push-notification] Secret parseado correctamente`);
     } catch (error: any) {
-      console.error(`❌ Error parseando secreto ${secretName}: ${error.message}`);
+      console.error(`❌ [send-push-notification] Error parseando secreto ${secretName}: ${error.message}`);
       return new Response(
         JSON.stringify({
           success: false,
@@ -380,11 +369,13 @@ serve(async (req: Request) => {
     }
 
     // Inicializar Firebase app con nombre único basado en el rol
+    console.log(`🚀 [send-push-notification] Inicializando Firebase Admin para role: ${finalRole}, app: ${appName}...`);
     let currentApp: admin.app.App;
     try {
       currentApp = getFirebaseApp(finalRole, serviceAccount);
+      console.log(`✅ [send-push-notification] Firebase Admin inicializado exitosamente para ${appName}`);
     } catch (error: any) {
-      console.error(`❌ Error inicializando Firebase ${appName}: ${error.message}`);
+      console.error(`❌ [send-push-notification] Error inicializando Firebase ${appName}: ${error.message}`);
       return new Response(
         JSON.stringify({
           success: false,
@@ -399,6 +390,7 @@ serve(async (req: Request) => {
     }
 
     const messaging = admin.messaging(currentApp);
+    console.log(`✅ [send-push-notification] Proyecto Firebase cargado y listo para enviar push notifications`);
 
     // ✅ FUNCIÓN PARA SANITIZAR DATA: Convertir todos los valores a string (requisito de Firebase)
     const sanitizeData = (data: Record<string, any>): Record<string, string> => {
@@ -464,6 +456,34 @@ serve(async (req: Request) => {
           };
         } catch (err: any) {
           console.error(`❌ Error enviando notificación a dispositivo ${deviceId}:`, err.message, err.code);
+          
+          // ✅ LIMPIAR TOKEN SI ES INVÁLIDO (invalid-registration-token, registration-token-not-registered)
+          if (err.code === 'messaging/registration-token-not-registered' || 
+              err.code === 'messaging/invalid-registration-token' ||
+              err.message.includes('Requested entity was not found')) {
+            
+            // Desactivar dispositivo en la BD
+            try {
+              await fetch(`${supabaseUrl}/rest/v1/client_devices?id=eq.${deviceId}`, {
+                method: 'PATCH',
+                headers: {
+                  apikey: supabaseServiceKey,
+                  Authorization: `Bearer ${supabaseServiceKey}`,
+                  'Content-Type': 'application/json',
+                  'Prefer': 'return=minimal',
+                },
+                body: JSON.stringify({
+                  enabled: false,
+                  is_active: false,
+                  fcm_token: null, // Limpiar token inválido
+                }),
+              });
+              console.log(`✅ [CLEANUP] Token inválido limpiado para dispositivo ${deviceId}`);
+            } catch (cleanupError: any) {
+              console.error(`❌ [CLEANUP] Error limpiando token inválido: ${cleanupError.message}`);
+            }
+          }
+          
           throw {
             deviceId,
             error: err.message,

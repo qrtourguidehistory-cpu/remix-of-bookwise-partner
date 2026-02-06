@@ -530,40 +530,17 @@ export default function BookingFlow() {
         clientName_original: clientName,
       });
 
-      // Crear notificación para Partner sobre nueva cita
-      if (newAppointment && profile?.business_id && profile?.id) {
+      // ✅ Notificar al Partner cuando se crea una nueva cita
+      if (!error && newAppointment?.id) {
         try {
-          const { notifyNewAppointment } = await import("@/lib/partnerNotificationService");
-          const appointmentDate = selectedDate ? format(selectedDate, "dd/MM/yyyy") : appointmentDateStr;
-          const appointmentTime = selectedTime;
-          // ✅ Obtener el nombre real del cliente: usar client_name de la cita o buscar en clients
-          let actualClientName = "Cliente";
-          if (newAppointment.client_name) {
-            actualClientName = newAppointment.client_name;
-          } else if (clientId) {
-            const { data: clientData } = await supabase
-              .from("clients")
-              .select("full_name")
-              .eq("id", clientId)
-              .single();
-            actualClientName = clientData?.full_name || clientName?.trim() || "Cliente";
-          } else {
-            actualClientName = clientName?.trim() || "Cliente";
-          }
-          
-          await notifyNewAppointment(
-            profile.business_id,
-            profile.id,
-            newAppointment.id,
-            clientId || "",
-            actualClientName, // ✅ Usar el nombre real del cliente
-            appointmentDate,
-            appointmentTime,
-            language === "es" ? "es" : "en"
-          );
+          console.log("PUSH::START::new", { appointment_id: newAppointment.id });
+          await supabase.functions.invoke('notify-new-appointment', {
+            body: { appointment_id: newAppointment.id }
+          });
+          console.log("PUSH::SUCCESS::new", { appointment_id: newAppointment.id });
         } catch (err) {
-          console.error("Error creating new appointment notification:", err);
-          // No mostrar error al usuario, solo log
+          console.log("PUSH::ERROR::new", { appointment_id: newAppointment.id, error: err });
+          console.error("Error notifying new appointment (non-blocking):", err);
         }
       }
 

@@ -87,6 +87,8 @@ export function WeekView({ date, filters }: WeekViewProps) {
         service_id,
         staff_id,
         client_id,
+        client_name,
+        guest_name,
         notes,
         clients:client_id(id, full_name, email, phone),
         services:service_id(name, duration_minutes, price),
@@ -350,67 +352,30 @@ export function WeekView({ date, filters }: WeekViewProps) {
               return;
             }
 
-            // Send notifications based on status change
-            const { sendNotificationToClient, getNextAppointmentInQueue, scheduleNotification } = await import('@/lib/notificationService');
-            
-            const appointmentDate = selectedAppointment.appointment_date || selectedAppointment.date;
-            const appointmentTime = selectedAppointment.start_time;
-            
-            if (status === 'confirmed') {
-              await sendNotificationToClient({
-                appointmentId: selectedAppointment.id,
-                clientId: selectedAppointment.client_id,
-                clientEmail: selectedAppointment.client_email,
-                clientPhone: selectedAppointment.client_phone,
-                clientName: (selectedAppointment.client_name && selectedAppointment.client_name.trim())
-                  ? selectedAppointment.client_name.trim()
-                  : selectedAppointment.clients?.full_name || "",
-                type: 'confirmation',
-                appointmentDate: appointmentDate ? new Date(appointmentDate).toLocaleDateString('es-ES') : undefined,
-                appointmentTime: appointmentTime,
-                businessId: profile.business_id,
-              });
-
-              if (appointmentDate && appointmentTime) {
-                const appointmentDateTime = new Date(`${appointmentDate}T${appointmentTime}`);
-                const reminderTime = new Date(appointmentDateTime.getTime() - 10 * 60 * 1000);
-                if (reminderTime > new Date()) {
-                  await scheduleNotification(selectedAppointment.id, reminderTime, 'reminder', profile.business_id, {
-                    clientId: selectedAppointment.client_id,
-                    clientEmail: selectedAppointment.client_email,
-                    clientPhone: selectedAppointment.client_phone,
-                    clientName: (selectedAppointment.client_name && selectedAppointment.client_name.trim())
-                  ? selectedAppointment.client_name.trim()
-                  : selectedAppointment.clients?.full_name || "",
-                  });
-                }
+            // ✅ Notificar al cliente cuando la cita se confirma
+            if (status === 'confirmed' && selectedAppointment?.id) {
+              try {
+                console.log("PUSH::START::confirm", { appointment_id: selectedAppointment.id });
+                await supabase.functions.invoke('notify-appointment-confirmed', {
+                  body: { appointment_id: selectedAppointment.id }
+                });
+                console.log("PUSH::SUCCESS::confirm", { appointment_id: selectedAppointment.id });
+              } catch (err) {
+                console.log("PUSH::ERROR::confirm", { appointment_id: selectedAppointment.id, error: err });
+                console.error("Error notifying appointment confirmed (non-blocking):", err);
               }
             } else if (status === 'completed') {
-              await sendNotificationToClient({
-                appointmentId: selectedAppointment.id,
-                clientId: selectedAppointment.client_id,
-                clientEmail: selectedAppointment.client_email,
-                clientPhone: selectedAppointment.client_phone,
-                clientName: (selectedAppointment.client_name && selectedAppointment.client_name.trim())
-                  ? selectedAppointment.client_name.trim()
-                  : selectedAppointment.clients?.full_name || "",
-                type: 'completion',
-                appointmentDate: appointmentDate ? new Date(appointmentDate).toLocaleDateString('es-ES') : undefined,
-                appointmentTime: appointmentTime,
-                businessId: profile.business_id,
-              });
-
-              await sendNotificationToClient({
-                appointmentId: selectedAppointment.id,
-                clientId: selectedAppointment.client_id,
-                clientEmail: selectedAppointment.client_email,
-                clientPhone: selectedAppointment.client_phone,
-                clientName: (selectedAppointment.client_name && selectedAppointment.client_name.trim())
-                  ? selectedAppointment.client_name.trim()
-                  : selectedAppointment.clients?.full_name || "",
-                type: 'review_request',
-                businessId: profile.business_id,
-              });
+              // ✅ Notificar al cliente cuando la cita se completa
+              try {
+                console.log("PUSH::START::complete", { appointment_id: selectedAppointment.id });
+                await supabase.functions.invoke('notify-appointment-completed', {
+                  body: { appointment_id: selectedAppointment.id }
+                });
+                console.log("PUSH::SUCCESS::complete", { appointment_id: selectedAppointment.id });
+              } catch (err) {
+                console.log("PUSH::ERROR::complete", { appointment_id: selectedAppointment.id, error: err });
+                console.error("Error notifying appointment completed (non-blocking):", err);
+              }
 
               // Notify next client using the new function that uses send-push-notification Edge Function
               // IMPORTANTE: Solo ejecutar si la cita existe y no es una creación nueva
@@ -433,19 +398,17 @@ export function WeekView({ date, filters }: WeekViewProps) {
                 }
               }
             } else if (status === 'cancelled') {
-              await sendNotificationToClient({
-                appointmentId: selectedAppointment.id,
-                clientId: selectedAppointment.client_id,
-                clientEmail: selectedAppointment.client_email,
-                clientPhone: selectedAppointment.client_phone,
-                clientName: (selectedAppointment.client_name && selectedAppointment.client_name.trim())
-                  ? selectedAppointment.client_name.trim()
-                  : selectedAppointment.clients?.full_name || "",
-                type: 'cancellation',
-                appointmentDate: appointmentDate ? new Date(appointmentDate).toLocaleDateString('es-ES') : undefined,
-                appointmentTime: appointmentTime,
-                businessId: profile.business_id,
-              });
+              // ✅ Notificar al cliente cuando la cita se cancela
+              try {
+                console.log("PUSH::START::cancel", { appointment_id: selectedAppointment.id });
+                await supabase.functions.invoke('notify-appointment-cancelled', {
+                  body: { appointment_id: selectedAppointment.id }
+                });
+                console.log("PUSH::SUCCESS::cancel", { appointment_id: selectedAppointment.id });
+              } catch (err) {
+                console.log("PUSH::ERROR::cancel", { appointment_id: selectedAppointment.id, error: err });
+                console.error("Error notifying appointment cancelled (non-blocking):", err);
+              }
             }
 
             // Toast con ID fijo para evitar duplicados (Sonner reemplazará en lugar de duplicar)

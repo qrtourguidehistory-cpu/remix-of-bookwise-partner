@@ -124,18 +124,47 @@ serve(async (req) => {
         },
       });
 
+    // ✅ REGLA DE ORO: Validar user_id antes de insertar notificación
+    // Si no se puede determinar el usuario exacto → NO SE ENVÍA NADA
     if (clientUserId) {
-      await supabase
-        .from('client_notifications')
-        .insert({
-          user_id: clientUserId,
-          appointment_id: apt.id,
-          business_id: businessId,
-          type: 'next_in_queue',
-          title: 'Eres el siguiente',
-          message: message,
-          read: false,
-        });
+      // ✅ VALIDACIÓN 1: user_id debe ser un UUID válido
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      if (!uuidRegex.test(clientUserId.trim())) {
+        console.warn(`[notify-next-client] ⚠️ user_id inválido: ${clientUserId}. NO se inserta notificación.`);
+        // Continuar sin insertar notificación (fail silently)
+      } else {
+        // ✅ VALIDACIÓN 2: Verificar que existen dispositivos activos
+        const { data: devices, error: devicesError } = await supabase
+          .from('client_devices')
+          .select('id')
+          .eq('user_id', clientUserId)
+          .eq('role', 'client')
+          .eq('enabled', true)
+          .not('fcm_token', 'is', null)
+          .neq('fcm_token', '')
+          .limit(1);
+        
+        if (devicesError) {
+          console.error(`[notify-next-client] Error verificando dispositivos: ${devicesError.message}`);
+          // NO insertar notificación si hay error
+        } else if (devices && devices.length > 0) {
+          // ✅ Hay dispositivos activos: Insertar notificación
+          await supabase
+            .from('client_notifications')
+            .insert({
+              user_id: clientUserId,
+              appointment_id: apt.id,
+              business_id: businessId,
+              type: 'next_in_queue',
+              title: 'Eres el siguiente',
+              message: message,
+              read: false,
+            });
+        } else {
+          console.warn(`[notify-next-client] ⚠️ No hay dispositivos activos para user_id: ${clientUserId}. NO se inserta notificación.`);
+          // NO insertar notificación si no hay dispositivos
+        }
+      }
     }
 
     return new Response(

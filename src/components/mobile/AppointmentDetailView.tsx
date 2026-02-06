@@ -1171,6 +1171,28 @@ export function AppointmentDetailView({
           : `Appointment moved to ${formattedDate} at ${formattedTime}`
       );
 
+      // ✅ Notificar al cliente si la cita está confirmada
+      if (!updateError && appointment?.id) {
+        try {
+          const { data: updatedAppointment } = await supabase
+            .from("appointments")
+            .select("status")
+            .eq("id", appointment.id)
+            .single();
+          
+          if (updatedAppointment?.status === "confirmed") {
+            console.log("PUSH::START::reschedule", { appointment_id: appointment.id });
+            await supabase.functions.invoke('notify-appointment-confirmed', {
+              body: { appointment_id: appointment.id }
+            });
+            console.log("PUSH::SUCCESS::reschedule", { appointment_id: appointment.id });
+          }
+        } catch (err) {
+          console.log("PUSH::ERROR::reschedule", { appointment_id: appointment.id, error: err });
+          console.error("Error notifying appointment rescheduled (non-blocking):", err);
+        }
+      }
+
       // Refresh appointment data
       if (onQuickAction) {
         onQuickAction(appointment.status as AppointmentStatus);

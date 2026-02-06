@@ -542,6 +542,33 @@ export function AppointmentDialog({
           title: t("success") || "Success",
           description: language === "es" ? "Cita actualizada exitosamente" : "Appointment updated successfully",
         });
+        
+        // ✅ Notificar al cliente si la cita está confirmada y se cambió fecha/hora
+        if (!error && appointment?.id) {
+          try {
+            const dateChanged = appointmentData.appointment_date !== appointment.appointment_date ||
+                                appointmentData.start_time !== appointment.start_time;
+            
+            if (dateChanged) {
+              const { data: updatedAppointment } = await supabase
+                .from("appointments")
+                .select("status")
+                .eq("id", appointment.id)
+                .single();
+              
+              if (updatedAppointment?.status === "confirmed") {
+                console.log("PUSH::START::reschedule", { appointment_id: appointment.id });
+                await supabase.functions.invoke('notify-appointment-confirmed', {
+                  body: { appointment_id: appointment.id }
+                });
+                console.log("PUSH::SUCCESS::reschedule", { appointment_id: appointment.id });
+              }
+            }
+          } catch (err) {
+            console.log("PUSH::ERROR::reschedule", { appointment_id: appointment.id, error: err });
+            console.error("Error notifying appointment rescheduled (non-blocking):", err);
+          }
+        }
       } else {
         // ✅ Asegurar que appointmentData tenga el tipo correcto para permitir client_id null
         const insertData: any = {
@@ -566,6 +593,20 @@ export function AppointmentDialog({
             }
           });
           throw error;
+        }
+
+        // ✅ Notificar al Partner cuando se crea una nueva cita
+        if (!error && newAppointment?.id) {
+          try {
+            console.log("PUSH::START::new", { appointment_id: newAppointment.id });
+            await supabase.functions.invoke('notify-new-appointment', {
+              body: { appointment_id: newAppointment.id }
+            });
+            console.log("PUSH::SUCCESS::new", { appointment_id: newAppointment.id });
+          } catch (err) {
+            console.log("PUSH::ERROR::new", { appointment_id: newAppointment.id, error: err });
+            console.error("Error notifying new appointment (non-blocking):", err);
+          }
         }
 
         // Send notifications if appointment is confirmed
@@ -773,46 +814,64 @@ export function AppointmentDialog({
       
       setFormData(prev => ({ ...prev, status: newStatus }));
       
-      // Notify next client when appointment is started
-      // IMPORTANTE: Solo ejecutar si la cita existe (appointment.id) y no es una creación nueva
-      if (newStatus === "started" && appointment?.id) {
+      // ✅ Notificar al cliente cuando la cita se confirma
+      if (newStatus === "confirmed" && oldStatus !== "confirmed" && appointment?.id) {
         try {
-          const { notifyNextClientWhenAppointmentStarted } = await import("@/lib/queueNotifications");
-          await notifyNextClientWhenAppointmentStarted({
-            businessId: profile.business_id,
-            currentAppointment: {
-              id: appointment.id,
-              appointment_date: appointment.appointment_date || appointment.date,
-              start_time: appointment.start_time,
-              end_time: appointment.end_time,
-              staff_id: appointment.staff_id,
-            },
-            language: language === "es" ? "es" : "en",
+          console.log("PUSH::START::confirm", { appointment_id: appointment.id });
+          await supabase.functions.invoke('notify-appointment-confirmed', {
+            body: { appointment_id: appointment.id }
           });
+          console.log("PUSH::SUCCESS::confirm", { appointment_id: appointment.id });
         } catch (err) {
-          console.error("Error notifying next client (non-blocking):", err);
-          // No bloquear la actualización del estado si hay error en la notificación
+          console.log("PUSH::ERROR::confirm", { appointment_id: appointment.id, error: err });
+          console.error("Error notifying appointment confirmed (non-blocking):", err);
         }
       }
       
-      // Notify next client when appointment is completed
-      // IMPORTANTE: Solo ejecutar si la cita existe (appointment.id) y no es una creación nueva
+      // ✅ Notificar siguiente cliente cuando la cita se inicia
+      if (newStatus === "started" && appointment?.id) {
+        try {
+          console.log("PUSH::START::start", { appointment_id: appointment.id });
+          await supabase.functions.invoke('notify-next-in-queue', {
+            body: {
+              appointment_id: appointment.id,
+              business_id: profile.business_id,
+              staff_id: appointment.staff_id || '',
+              current_appointment_end_time: appointment.end_time || appointment.start_time || '',
+            }
+          });
+          console.log("PUSH::SUCCESS::start", { appointment_id: appointment.id });
+        } catch (err) {
+          console.log("PUSH::ERROR::start", { appointment_id: appointment.id, error: err });
+          console.error("Error notifying next client (non-blocking):", err);
+        }
+      }
+      
+      // ✅ Notificar al cliente cuando la cita se completa
       if (newStatus === "completed" && appointment?.id) {
         try {
-          const { notifyNextClientWhenAppointmentCompleted } = await import("@/lib/queueNotifications");
-          await notifyNextClientWhenAppointmentCompleted({
-            businessId: profile.business_id,
-            currentAppointment: {
-              id: appointment.id,
-              appointment_date: appointment.appointment_date || appointment.date,
-              end_time: appointment.end_time,
-              staff_id: appointment.staff_id,
-            },
-            language: language === "es" ? "es" : "en",
+          console.log("PUSH::START::complete", { appointment_id: appointment.id });
+          await supabase.functions.invoke('notify-appointment-completed', {
+            body: { appointment_id: appointment.id }
           });
+          console.log("PUSH::SUCCESS::complete", { appointment_id: appointment.id });
         } catch (err) {
-          console.error("Error notifying next client when completed (non-blocking):", err);
-          // No bloquear la actualización del estado si hay error en la notificación
+          console.log("PUSH::ERROR::complete", { appointment_id: appointment.id, error: err });
+          console.error("Error notifying appointment completed (non-blocking):", err);
+        }
+      }
+      
+      // ✅ Notificar al cliente cuando la cita se cancela
+      if (newStatus === "cancelled" && appointment?.id) {
+        try {
+          console.log("PUSH::START::cancel", { appointment_id: appointment.id });
+          await supabase.functions.invoke('notify-appointment-cancelled', {
+            body: { appointment_id: appointment.id }
+          });
+          console.log("PUSH::SUCCESS::cancel", { appointment_id: appointment.id });
+        } catch (err) {
+          console.log("PUSH::ERROR::cancel", { appointment_id: appointment.id, error: err });
+          console.error("Error notifying appointment cancelled (non-blocking):", err);
         }
       }
       
