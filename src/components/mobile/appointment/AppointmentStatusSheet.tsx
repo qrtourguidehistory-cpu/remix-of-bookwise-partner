@@ -28,6 +28,7 @@ interface StatusSheetProps {
     has_pending_request?: boolean | null;
   } | null;
   onEarlyArrivalRequest?: () => void;
+  onNextInTurn?: () => void;
 }
 
 export function AppointmentStatusSheet({
@@ -37,6 +38,7 @@ export function AppointmentStatusSheet({
   onChange,
   appointment,
   onEarlyArrivalRequest,
+  onNextInTurn,
 }: StatusSheetProps) {
   const { language } = useLanguage();
 
@@ -82,6 +84,14 @@ export function AppointmentStatusSheet({
     appointment.status !== "completed" &&
     appointment.status !== "no_show" &&
     appointment.status !== "started" &&
+    (appointment.status === "pending" || appointment.status === "confirmed");
+  
+  // Check if "Siguiente en turno" button should be shown
+  // Only for pending or confirmed appointments that are not cancelled or completed
+  const showNextInTurn = appointment && 
+    appointment.status !== "cancelled" &&
+    appointment.status !== "completed" &&
+    appointment.status !== "no_show" &&
     (appointment.status === "pending" || appointment.status === "confirmed");
   
   // REMOVED: No longer checking for pending requests - allows multiple requests
@@ -143,6 +153,31 @@ export function AppointmentStatusSheet({
                     {language === "es" 
                       ? "Puede asistir"
                       : "Can attend early"
+                    }
+                  </span>
+                </div>
+                <span className="w-5" />
+              </button>
+            </>
+          )}
+          
+          {/* Next in Turn Option - Visible for pending or confirmed appointments */}
+          {showNextInTurn && onNextInTurn && (
+            <>
+              <div className="border-t border-border/60" />
+              <button
+                className="w-full flex items-center justify-between px-6 py-4 text-left border-t border-border/60 text-foreground hover:bg-accent/50 transition-colors"
+                onClick={() => {
+                  onNextInTurn();
+                  onOpenChange(false);
+                }}
+              >
+                <div className="flex items-center gap-4">
+                  <Play className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+                  <span className="text-base">
+                    {language === "es" 
+                      ? "Siguiente en turno"
+                      : "Next in turn"
                     }
                   </span>
                 </div>

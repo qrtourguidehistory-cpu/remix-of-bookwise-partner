@@ -14,8 +14,7 @@ import { useSubscriptionStatus } from "@/hooks/useSubscriptionStatus";
 import { savePendingSubscription, clearPendingSubscription } from "@/lib/subscriptionPersistence";
 import { App } from "@capacitor/app";
 import { Capacitor } from "@capacitor/core";
-import { Browser } from "@capacitor/browser";
-import { usePayPalSubscription } from "@/hooks/usePayPalSubscription";
+import { purchaseProduct, verifyPremiumEntitlement, identifyUser } from "@/lib/revenueCatService";
 import { 
   CreditCard,
   Calendar, 
@@ -32,7 +31,8 @@ import {
   RefreshCw,
   Info,
   Check,
-  X
+  X,
+  ShoppingBag
 } from "lucide-react";
 
 interface BusinessSubscription {
@@ -109,12 +109,8 @@ export default function SubscriptionPage() {
   const [processingPortal, setProcessingPortal] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isPaymentInProgress, setIsPaymentInProgress] = useState(false); // Flag para deshabilitar useEffect durante pago
-  const [checkoutLoading, setCheckoutLoading] = useState(false); // Loading para pago único
   const [showSuccessBanner, setShowSuccessBanner] = useState(false); // Banner de éxito cuando se activa suscripción
   const [previousSubscriptionStatus, setPreviousSubscriptionStatus] = useState<string | null>(null); // Para detectar cambio de estado
-  
-  // Hook para manejar suscripciones de PayPal con Capacitor Browser
-  const { createSubscription: createPayPalSubscription, loading: paypalLoading } = usePayPalSubscription();
 
   // Log cuando el componente se monta
   useEffect(() => {
@@ -177,7 +173,7 @@ export default function SubscriptionPage() {
       
       // CRÍTICO: Detectar cambio de estado a 'active' para mostrar banner
       // SOLO mostrar banner si realmente cambió de estado inactivo a activo
-      // NO mostrar si el usuario canceló el proceso de PayPal
+      // NO mostrar si el usuario canceló el proceso de compra
       const newStatus = (data as any)?.status;
       const wasInactive = previousSubscriptionStatus && 
                          (previousSubscriptionStatus !== 'active' && previousSubscriptionStatus !== 'trialing');
@@ -296,11 +292,10 @@ export default function SubscriptionPage() {
 
     // CRÍTICO: Manejar timeout y app regresando sin deep link
     const handleTimeout = () => {
-      console.log('[SubscriptionPage] ⏰ Timeout: PayPal no respondió, reseteando estado');
+      console.log('[SubscriptionPage] ⏰ Timeout: Compra no completada, reseteando estado');
       setIsPaymentInProgress(false);
       paymentInProgressRef.current = false;
       // Verificar si la suscripción se activó de todas formas (polling)
-      // CRÍTICO: NO usar window.location.reload() - solo refrescar datos
       fetchSubscription();
       setTimeout(() => {
         fetchSubscription();
@@ -311,11 +306,10 @@ export default function SubscriptionPage() {
     };
 
     const handleAppReturned = () => {
-      console.log('[SubscriptionPage] 🔄 App regresó sin deep link, reseteando estado');
+      console.log('[SubscriptionPage] 🔄 App regresó, reseteando estado');
       setIsPaymentInProgress(false);
       paymentInProgressRef.current = false;
       // Verificar si la suscripción se activó de todas formas (polling)
-      // CRÍTICO: NO usar window.location.reload() - solo refrescar datos
       fetchSubscription();
       setTimeout(() => {
         fetchSubscription();
@@ -326,7 +320,6 @@ export default function SubscriptionPage() {
     };
 
     // Listener para detectar cuando la app vuelve al foreground
-    // Si el usuario cierra PayPal manualmente, esto lo detectará
     let appStateListener: any = null;
     App.addListener('appStateChange', ({ isActive }) => {
       if (isActive && paymentInProgressRef.current) {
@@ -356,7 +349,8 @@ export default function SubscriptionPage() {
       appStateListener = listener;
     });
 
-    // Registrar listeners para eventos personalizados del hook
+    // Registrar listeners para eventos personalizados (mantenidos por compatibilidad)
+    // Estos listeners pueden ser útiles si hay usuarios con suscripciones antiguas
     window.addEventListener('paypal-deep-link-received', handleDeepLinkReceived);
     window.addEventListener('paypal-subscription-success', handleSubscriptionSuccess);
     window.addEventListener('paypal-subscription-cancel', handleSubscriptionCancel);
@@ -466,7 +460,7 @@ export default function SubscriptionPage() {
     };
   }, [profile?.business_id, fetchSubscription, isPaymentInProgress]);
 
-  // Manejar el callback de PayPal después del pago
+  // Manejar callbacks de pago (mantenido por compatibilidad con suscripciones antiguas)
   useEffect(() => {
     if (typeof window === 'undefined') return;
     
@@ -509,143 +503,63 @@ export default function SubscriptionPage() {
     }
   }, [profile?.business_id, language, toast, fetchSubscription]);
 
-  // Handlers antiguos eliminados - ahora usamos usePayPalSubscription hook
+  // Handlers antiguos eliminados - ahora usamos RevenueCat para Android
 
-  // Handler para pago único con PayPal Checkout
-  const handleOneTimePayment = async () => {
-    if (!profile?.id) {
-      toast({
-        title: language === "es" ? "Error" : "Error",
-        description: language === "es"
-          ? "Información de usuario no disponible"
-          : "User information not available",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    setCheckoutLoading(true);
-    try {
-      console.log('[SubscriptionPage] Creando pago único con PayPal...');
-
-      // Llamar a la Edge Function para crear el checkout
-      const { data, error } = await supabase.functions.invoke('create-paypal-checkout', {
-        body: {
-          user_id: profile.id,
-          amount: 9.51, // Monto fijo - sincronizado con PayPal
-        }
-      });
-
-      if (error) {
-        throw new Error(error.message || 'Error al crear checkout en PayPal');
-      }
-
-      if (!data?.approval_url) {
-        throw new Error('No se recibió la URL de aprobación de PayPal');
-      }
-
-      console.log('[SubscriptionPage] Abriendo PayPal Checkout...');
-
-      // Abrir PayPal en el navegador
-      if (Capacitor.isNativePlatform()) {
-        await Browser.open({
-          url: data.approval_url,
-          presentationStyle: 'fullscreen',
-          windowName: '_self',
-        });
-      } else {
-        // Web: redirigir directamente
-        window.location.href = data.approval_url;
-      }
-    } catch (error: any) {
-      console.error('[SubscriptionPage] Error en pago único:', error);
-      toast({
-        title: language === "es" ? "Error" : "Error",
-        description: error?.message || (language === "es"
-          ? "Error al procesar el pago"
-          : "Error processing payment"),
-        variant: "destructive",
-      });
-    } finally {
-      setCheckoutLoading(false);
-    }
-  };
 
   const handleManageSubscription = async () => {
-    if (!profile?.business_id || !subscription) return;
+    if (!profile?.id) return;
 
     setProcessingPortal(true);
     try {
-      // CRÍTICO: Detectar el proveedor de pago (solo PayPal actualmente)
-      const isPayPal = !!subscription.paypal_subscription_id;
-
-      if (isPayPal) {
-        // CRÍTICO: Validar que existe paypal_subscription_id
-        if (!subscription.paypal_subscription_id) {
-          toast({
-            title: language === "es" ? "Error" : "Error",
-            description: language === "es"
-              ? "No se encontró el ID de suscripción de PayPal. Por favor, contacta con soporte."
-              : "PayPal subscription ID not found. Please contact support.",
-            variant: "destructive",
-          });
-          return;
-        }
-        
-        // URL correcta para gestionar suscripciones en PayPal
-        // PayPal redirige automáticamente según el entorno (sandbox/live) basado en la sesión del usuario
-        // CRÍTICO: Usar la URL correcta que lleva directo a la página de gestión de la suscripción
-        // Esta URL requiere que el usuario esté autenticado en PayPal, pero PayPal redirigirá al login si no lo está
-        // Luego redirigirá automáticamente a la página de gestión de la suscripción específica
-        const paypalManageUrl = `https://www.paypal.com/myaccount/autopay/connect/${subscription.paypal_subscription_id}`;
-        
+      // Abrir Google Play Store para gestionar la suscripción
+      // En Android, podemos abrir directamente la página de suscripciones de Google Play
+      if (Capacitor.getPlatform() === "android") {
         try {
-          // Intentar abrir en el navegador
-          if (Capacitor.isNativePlatform()) {
-            const { Browser } = await import('@capacitor/browser');
-            await Browser.open({
-              url: paypalManageUrl,
-              presentationStyle: 'fullscreen',
-            });
-          } else {
-            window.open(paypalManageUrl, '_blank');
-          }
+          // URL para abrir Google Play Store - página de suscripciones
+          // Esta URL abre directamente la sección de suscripciones en Google Play
+          const playStoreUrl = "https://play.google.com/store/account/subscriptions";
+          
+          const { Browser } = await import('@capacitor/browser');
+          await Browser.open({
+            url: playStoreUrl,
+            presentationStyle: 'fullscreen',
+          });
           
           toast({
-            title: language === "es" ? "Redirigiendo a PayPal" : "Redirecting to PayPal",
+            title: language === "es" ? "Abriendo Google Play Store" : "Opening Google Play Store",
             description: language === "es"
-              ? "Serás redirigido a PayPal para gestionar tu suscripción, cancelar o descargar recibos."
-              : "You will be redirected to PayPal to manage your subscription, cancel, or download receipts.",
+              ? "Serás redirigido a Google Play Store para gestionar tu suscripción, cancelar o descargar recibos."
+              : "You will be redirected to Google Play Store to manage your subscription, cancel, or download receipts.",
             variant: "default",
           });
         } catch (error: any) {
-          console.error('[SubscriptionPage] Error opening PayPal management:', error);
+          console.error('[SubscriptionPage] Error opening Google Play Store:', error);
           toast({
             title: language === "es" ? "Error" : "Error",
             description: language === "es"
-              ? `No se pudo abrir PayPal. Por favor, visita ${paypalManageUrl} e inicia sesión para gestionar tu suscripción.`
-              : `Could not open PayPal. Please visit ${paypalManageUrl} and sign in to manage your subscription.`,
+              ? "No se pudo abrir Google Play Store. Por favor, abre Google Play Store manualmente y ve a Suscripciones."
+              : "Could not open Google Play Store. Please open Google Play Store manually and go to Subscriptions.",
             variant: "destructive",
           });
         }
       } else {
-        // Solo PayPal está soportado actualmente
+        // Si no es Android, mostrar mensaje
         toast({
-          title: language === "es" ? "Error" : "Error",
+          title: language === "es" ? "No disponible" : "Not available",
           description: language === "es"
-            ? "No se encontró una suscripción de PayPal activa. Por favor, contacta con soporte."
-            : "No active PayPal subscription found. Please contact support.",
-          variant: "destructive",
+            ? "La gestión de suscripciones solo está disponible en dispositivos Android."
+            : "Subscription management is only available on Android devices.",
+          variant: "default",
         });
       }
     } catch (error: any) {
-      console.error("Error al crear portal de gestión:", error);
+      console.error("Error al abrir gestión de suscripción:", error);
       
       toast({
         title: language === "es" ? "Error" : "Error",
         description: error?.message || (language === "es" 
-          ? "No se pudo abrir el portal de gestión. Por favor, intenta de nuevo." 
-          : "Could not open management portal. Please try again."),
+          ? "No se pudo abrir la gestión de suscripción. Por favor, intenta de nuevo." 
+          : "Could not open subscription management. Please try again."),
         variant: "destructive",
       });
     } finally {
@@ -680,7 +594,6 @@ export default function SubscriptionPage() {
   console.log('[SubscriptionPage] 🔍 Estado de renderizado:', {
     hasSubscription: !!subscription,
     status: subscription?.status,
-    hasPaypalId: !!subscription?.paypal_subscription_id,
     hasPendingPayment,
     needsSetup,
     shouldShowPaymentForm
@@ -870,7 +783,7 @@ export default function SubscriptionPage() {
                 {language === "es" ? "Tarifa Mensual" : "Monthly Fee"}
               </span>
               <span className="font-bold text-lg text-primary">
-                ${(subscription?.monthly_fee ?? 9.51).toFixed(2)} USD
+                ${(subscription?.monthly_fee ?? 9.99).toFixed(2)} USD
               </span>
             </div>
             {/* CRÍTICO: Solo mostrar próxima renovación si subscription existe y tiene fecha */}
@@ -911,16 +824,18 @@ export default function SubscriptionPage() {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            {subscription?.status === 'active' && subscription?.paypal_subscription_id && !hasPendingPayment ? (
+            {subscription?.status === 'active' && !hasPendingPayment ? (
               <div className="space-y-3">
                 <div className="flex items-center gap-3 p-3 bg-muted rounded-lg">
                   <div className="p-2 bg-card rounded-lg shadow-sm">
-                    <CreditCard className="h-5 w-5 text-primary" />
+                    <ShoppingBag className="h-5 w-5 text-primary" />
                   </div>
                   <div className="flex-1">
-                    <p className="font-medium">PayPal</p>
+                    <p className="font-medium">
+                      {language === "es" ? "Google Play Store" : "Google Play Store"}
+                    </p>
                     <p className="text-xs text-muted-foreground">
-                      {language === "es" ? "Método de pago configurado" : "Payment method configured"}
+                      {language === "es" ? "Pago procesado de forma segura" : "Payment processed securely"}
                     </p>
                   </div>
                   <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
@@ -933,107 +848,151 @@ export default function SubscriptionPage() {
                 <p className="text-sm text-muted-foreground">
                   {subscription?.status === 'cancelled'
                     ? (language === "es" 
-                        ? "Tu suscripción está cancelada. Haz clic en el botón para reactivarla con PayPal."
-                        : "Your subscription is cancelled. Click the button to reactivate it with PayPal.")
+                        ? "Tu suscripción está cancelada. Haz clic en el botón para reactivarla a través de Google Play Store."
+                        : "Your subscription is cancelled. Click the button to reactivate it through Google Play Store.")
                     : hasPendingPayment 
                     ? (language === "es" 
                         ? "Actualiza tu método de pago para reactivar tu suscripción."
                         : "Update your payment method to reactivate your subscription.")
                     : (language === "es" 
-                        ? "Haz clic en el botón para activar tu suscripción con PayPal."
-                        : "Click the button to activate your subscription with PayPal.")}
+                        ? "Haz clic en el botón para activar tu suscripción a través de Google Play Store."
+                        : "Click the button to activate your subscription through Google Play Store.")}
                 </p>
-                {/* Botón de PayPal usando Capacitor Browser */}
-                <Button
-                  onClick={async () => {
-                    if (!profile?.business_id || !profile?.id) {
-                      toast({
-                        title: language === "es" ? "Error" : "Error",
-                        description: language === "es"
-                          ? "Información de usuario no disponible"
-                          : "User information not available",
-                        variant: "destructive",
-                      });
-                      return;
-                    }
-
-                    setIsPaymentInProgress(true);
-                    const result = await createPayPalSubscription(
-                      profile.business_id,
-                      profile.id,
-                      subscription?.id
-                    );
-
-                    if (!result.success) {
-                      setIsPaymentInProgress(false);
-                    }
-                    // Si es exitoso, el hook manejará el deep link y cerrará el browser
-                    // El estado isPaymentInProgress se reseteará cuando se reciba el deep link
-                  }}
-                  disabled={paypalLoading || isPaymentInProgress || checkoutLoading}
-                  className="w-full h-12 rounded-xl shadow-sm font-semibold text-base"
-                  size="lg"
-                >
-                  {paypalLoading || isPaymentInProgress ? (
-                    <>
-                      <Loader2 className="h-5 w-5 mr-2 animate-spin" />
-                      {language === "es" ? "Procesando..." : "Processing..."}
-                    </>
-                  ) : (
-                    <>
-                      <CreditCard className="h-5 w-5 mr-2" />
-                      {language === "es" ? "Suscribirse con PayPal" : "Subscribe with PayPal"}
-                    </>
-                  )}
-                </Button>
-                {/* Botón de Pago Único */}
-                <div className="mt-3">
+                {/* Botón de suscripción con RevenueCat/Google Play */}
+                {Capacitor.getPlatform() === "android" ? (
                   <Button
-                    onClick={handleOneTimePayment}
-                    disabled={checkoutLoading || isPaymentInProgress}
-                    variant="outline"
-                    className="w-full h-12 rounded-xl shadow-sm font-semibold text-base bg-card hover:bg-accent active:bg-accent/80 border border-border transition-colors duration-200"
+                    onClick={async () => {
+                      if (!profile?.id) {
+                        toast({
+                          title: language === "es" ? "Error" : "Error",
+                          description: language === "es"
+                            ? "Información de usuario no disponible"
+                            : "User information not available",
+                          variant: "destructive",
+                        });
+                        return;
+                      }
+
+                      setIsPaymentInProgress(true);
+                      
+                      try {
+                        console.log('[SubscriptionPage] 💳 Iniciando compra con RevenueCat...');
+                        
+                        // CRÍTICO: Identificar al usuario en RevenueCat antes de comprar
+                        console.log('[SubscriptionPage] 🔐 Identificando usuario en RevenueCat antes de comprar...');
+                        try {
+                          await identifyUser(profile.id);
+                          console.log('[SubscriptionPage] ✅ Usuario identificado correctamente');
+                        } catch (identifyError: any) {
+                          console.error('[SubscriptionPage] ⚠️ Error identificando usuario, continuando con compra:', identifyError);
+                          // Continuar con la compra aunque falle la identificación (puede que ya esté identificado)
+                        }
+                        
+                        // Realizar la compra del paquete mensual (usa offering default)
+                        const result = await purchaseProduct();
+                        
+                        if (result.success) {
+                          console.log('[SubscriptionPage] ✅ Compra exitosa, verificando entitlement...');
+                          
+                          // Verificar y actualizar el entitlement en Supabase
+                          const hasProAccess = await verifyPremiumEntitlement(profile.id);
+                          
+                          if (hasProAccess) {
+                            toast({
+                              title: language === "es" ? "¡Suscripción activada!" : "Subscription activated!",
+                              description: language === "es"
+                                ? "Tu suscripción premium ha sido activada correctamente"
+                                : "Your premium subscription has been activated successfully",
+                            });
+                            
+                            // Refrescar la suscripción
+                            await fetchSubscription();
+                            
+                            // Recargar después de un delay para actualizar UI
+                            setTimeout(() => {
+                              window.location.reload();
+                            }, 1000);
+                          } else {
+                            console.warn('[SubscriptionPage] ⚠️ Compra exitosa pero entitlement no verificado');
+                            toast({
+                              title: language === "es" ? "Compra completada" : "Purchase completed",
+                              description: language === "es"
+                                ? "Tu compra se completó. La suscripción se activará en breve."
+                                : "Your purchase was completed. The subscription will activate shortly.",
+                            });
+                            
+                            // Refrescar después de un delay
+                            setTimeout(() => {
+                              fetchSubscription();
+                              setTimeout(() => {
+                                window.location.reload();
+                              }, 2000);
+                            }, 1000);
+                          }
+                        } else {
+                          // Si el usuario canceló, no mostrar error
+                          if (result.error?.includes("cancelada") || result.error?.includes("cancelled")) {
+                            console.log('[SubscriptionPage] ℹ️ Usuario canceló la compra');
+                            setIsPaymentInProgress(false);
+                            return;
+                          }
+                          
+                          // Mostrar error
+                          toast({
+                            title: language === "es" ? "Error en la compra" : "Purchase error",
+                            description: result.error || (language === "es" 
+                              ? "No se pudo completar la compra. Por favor, intenta de nuevo." 
+                              : "Could not complete purchase. Please try again."),
+                            variant: "destructive",
+                          });
+                          setIsPaymentInProgress(false);
+                        }
+                      } catch (error: any) {
+                        console.error('[SubscriptionPage] ❌ Error activando suscripción:', error);
+                        toast({
+                          title: language === "es" ? "Error" : "Error",
+                          description: error.message || (language === "es" 
+                            ? "Ocurrió un error al procesar la compra. Por favor, intenta de nuevo." 
+                            : "An error occurred processing the purchase. Please try again."),
+                          variant: "destructive",
+                        });
+                        setIsPaymentInProgress(false);
+                      }
+                    }}
+                    disabled={isPaymentInProgress}
+                    className="w-full h-12 rounded-xl shadow-sm font-semibold text-base bg-black text-white hover:bg-gray-900"
                     size="lg"
                   >
-                    {checkoutLoading ? (
+                    {isPaymentInProgress ? (
                       <>
                         <Loader2 className="h-5 w-5 mr-2 animate-spin" />
                         {language === "es" ? "Procesando..." : "Processing..."}
                       </>
                     ) : (
                       <>
-                        <CreditCard className="h-5 w-5 mr-2" />
-                        {language === "es" ? "Pagar con Tarjeta Crédito o Débito" : "Pay with Credit or Debit Card"}
+                        <ShoppingBag className="h-5 w-5 mr-2" />
+                        {language === "es" ? "Suscribirse con Google Play" : "Subscribe with Google Play"}
                       </>
                     )}
                   </Button>
-                  <p className="text-xs text-muted-foreground text-center mt-2">
-                    {language === "es" ? "Powered by PayPal" : "Powered by PayPal"}
-                  </p>
-                  {/* Información sobre cómo pagar */}
-                  <div className="mt-4 p-4 bg-muted rounded-lg border border-border">
-                    <div className="flex items-start gap-2 mb-3">
-                      <Info className="h-4 w-4 text-muted-foreground mt-0.5 flex-shrink-0" />
-                      <h4 className="text-sm font-semibold text-foreground">
-                        {language === "es" ? "¿Cómo pagar directo con tu tarjeta?" : "How to pay directly with your card?"}
-                      </h4>
-                    </div>
-                    <ul className="space-y-2 text-xs text-muted-foreground">
-                      <li className="flex items-start gap-2">
-                        <Check className="h-3.5 w-3.5 text-green-600 mt-0.5 flex-shrink-0" />
-                        <span>{language === "es" ? "Haz clic en el botón 'Pagar con Tarjeta Crédito o Débito' de arriba." : "Click the 'Pay with Credit or Debit Card' button above."}</span>
-                      </li>
-                      <li className="flex items-start gap-2">
-                        <Check className="h-3.5 w-3.5 text-green-600 mt-0.5 flex-shrink-0" />
-                        <span>{language === "es" ? "Selecciona 'Abrir cuenta' o 'Pagar como invitado'." : "Select 'Open account' or 'Pay as guest'."}</span>
-                      </li>
-                      <li className="flex items-start gap-2">
-                        <Check className="h-3.5 w-3.5 text-green-600 mt-0.5 flex-shrink-0" />
-                        <span>{language === "es" ? "Ingresa los datos de tu tarjeta y sigue los pasos (no es obligatorio mantener la cuenta de PayPal al finalizar)." : "Enter your card details and follow the steps (you don't need to keep the PayPal account after completing)."}</span>
-                      </li>
-                    </ul>
-                  </div>
-                </div>
+                ) : (
+                  <Alert>
+                    <Info className="h-4 w-4" />
+                    <AlertTitle>
+                      {language === "es" ? "Suscripción disponible en Android" : "Subscription available on Android"}
+                    </AlertTitle>
+                    <AlertDescription>
+                      {language === "es"
+                        ? "Las suscripciones a través de Google Play Store solo están disponibles en dispositivos Android. Por favor, usa la app en Android para activar tu suscripción."
+                        : "Subscriptions through Google Play Store are only available on Android devices. Please use the Android app to activate your subscription."}
+                    </AlertDescription>
+                  </Alert>
+                )}
+                <p className="text-xs text-muted-foreground text-center mt-2">
+                  {language === "es" 
+                    ? "Pago procesado de forma segura a través de Google Play Store" 
+                    : "Payment processed securely through Google Play Store"}
+                </p>
               </div>
             )}
           </CardContent>
@@ -1041,10 +1000,9 @@ export default function SubscriptionPage() {
 
         {/* Botones de acción - RENDER SEGURO */}
         <div className="space-y-3">
-          {/* CRÍTICO: Mostrar botón de gestión solo si subscription existe, está activa y tiene PayPal */}
+          {/* CRÍTICO: Mostrar botón de gestión solo si subscription existe y está activa */}
           {subscription && 
-           subscription.status === 'active' && 
-           subscription.paypal_subscription_id && (
+           subscription.status === 'active' && (
             <Button 
               onClick={handleManageSubscription}
               disabled={processingPortal}

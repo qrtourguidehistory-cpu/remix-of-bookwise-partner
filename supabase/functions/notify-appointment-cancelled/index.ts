@@ -75,7 +75,66 @@ serve(async (req: Request) => {
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // ✅ PASO 1: Obtener información de la cita y cliente
+    // ✅ CORRECCIÓN GLOBAL 5: LOCK ATÓMICO - PRIMER PASO (igual que confirmación)
+    // Obtener user_id del cliente (necesario para el lock)
+    const { data: appointmentPreview, error: previewError } = await supabase
+      .from("appointments")
+      .select(`
+        id,
+        client_id,
+        clients!inner(id, user_id)
+      `)
+      .eq("id", appointment_id)
+      .single();
+
+    if (previewError || !appointmentPreview) {
+      console.error("❌ [notify-appointment-cancelled] Error obteniendo preview de cita:", previewError);
+      return new Response(
+        JSON.stringify({ success: false, error: "Cita no encontrada" }),
+        { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    const previewClient = (appointmentPreview.clients as any);
+    const clientUserId = previewClient?.user_id;
+
+    if (!clientUserId || typeof clientUserId !== 'string') {
+      console.warn("⚠️ [notify-appointment-cancelled] Cliente no tiene user_id (cita manual)");
+      return new Response(
+        JSON.stringify({ success: true, message: "Cliente no tiene user_id, no se envía push" }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // ✅ LOCK ATÓMICO: INSERT en push_notification_sent como PRIMER paso real
+    // Esto previene ejecuciones concurrentes duplicadas
+    const { error: lockError } = await supabase
+      .from("push_notification_sent")
+      .insert({
+        appointment_id: appointment_id,
+        notification_type: "cancellation",
+        edge_function: "notify-appointment-cancelled",
+        sent_at: new Date().toISOString(),
+      });
+
+    if (lockError) {
+      // Si el error es 23505 (duplicate key), significa que otra ejecución ya adquirió el lock
+      if (lockError.code === '23505' || 
+          lockError.message?.includes('unique') || 
+          lockError.message?.includes('duplicate')) {
+        console.log("🔒 [notify-appointment-cancelled] PUSH::LOCKED::already_processing - Otra ejecución ya está procesando");
+        return new Response(
+          JSON.stringify({ success: true, message: "Already processing", locked: true }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+      // Otro tipo de error en el lock, loguear pero continuar (no crítico)
+      console.warn("⚠️ [notify-appointment-cancelled] Error en lock (no crítico):", lockError.message);
+    } else {
+      console.log("✅ [notify-appointment-cancelled] Lock adquirido exitosamente");
+    }
+
+    // ✅ PASO 2: Obtener información completa de la cita y cliente
     const { data: appointment, error: appointmentError } = await supabase
       .from("appointments")
       .select(`
@@ -98,18 +157,15 @@ serve(async (req: Request) => {
     }
 
     const client = (appointment.clients as any);
-    const clientUserId = client?.user_id;
-
-    // ✅ VALIDACIÓN 2: user_id del cliente es obligatorio
-    if (!clientUserId || typeof clientUserId !== 'string') {
-      console.warn("⚠️ [notify-appointment-cancelled] Cliente no tiene user_id (cita manual)");
-      return new Response(
-        JSON.stringify({ success: true, message: "Cliente no tiene user_id, no se envía push" }),
-        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+    // clientUserId ya se obtuvo en el preview, pero validar que coincida
+    const appointmentClientUserId = client?.user_id;
+    
+    if (appointmentClientUserId !== clientUserId) {
+      console.warn("⚠️ [notify-appointment-cancelled] user_id no coincide entre preview y query completo");
+      // Continuar con el user_id del preview (ya validado)
     }
 
-    // ✅ VALIDACIÓN 3: user_id debe ser UUID válido
+    // ✅ VALIDACIÓN: user_id debe ser UUID válido
     const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
     if (!uuidRegex.test(clientUserId.trim())) {
       console.error("❌ [notify-appointment-cancelled] user_id no es UUID válido:", clientUserId);
@@ -242,6 +298,63 @@ serve(async (req: Request) => {
     const failed = results.filter((r) => r.status === "rejected").length;
 
     console.log(`📊 [notify-appointment-cancelled] Resultados: ${successful} exitosos, ${failed} fallidos`);
+
+    // ✅ PASO 7: Insertar en client_notifications SOLO si el push se envió exitosamente
+    if (successful > 0) {
+      console.log("✅ [notify-appointment-cancelled] PUSH_SENT - Al menos un push enviado exitosamente");
+      
+      const clientData = appointment.clients as any;
+      const clientId = appointment.client_id;
+      const businessId = appointment.business_id;
+      
+      try {
+        // Insertar en client_notifications con manejo de duplicados (ON CONFLICT DO NOTHING)
+        // El constraint UNIQUE (user_id, appointment_id, type) previene duplicados a nivel de DB
+        const { data: insertedNotification, error: insertError } = await supabase
+          .from("client_notifications")
+          .insert({
+            user_id: clientUserId,
+            client_id: clientId,
+            appointment_id: appointment_id,
+            business_id: businessId,
+            type: "cancellation",
+            title: title,
+            message: body,
+            role: "client",
+            read: false,
+            meta: {
+              type: "cancellation",
+              business_id: businessId,
+              appointment_date: appointment.appointment_date || null,
+              appointment_time: appointmentTime,
+              consolidated: true,
+              push_sent: true
+            }
+          })
+          .select()
+          .single();
+        
+        if (insertError) {
+          // Si el error es por constraint UNIQUE (duplicado), es esperado (ON CONFLICT DO NOTHING)
+          if (insertError.code === '23505' || 
+              insertError.message?.includes('unique') || 
+              insertError.message?.includes('duplicate') ||
+              insertError.message?.includes('violates unique constraint')) {
+            console.log("ℹ️ [notify-appointment-cancelled] DB_NOTIFICATION_SKIPPED_DUPLICATE - Ya existe registro en campana (idempotencia)");
+          } else {
+            // Otro tipo de error, loguear pero no fallar
+            console.warn("⚠️ [notify-appointment-cancelled] Error al insertar en DB (no crítico):", insertError.message);
+          }
+        } else if (insertedNotification) {
+          console.log("✅ [notify-appointment-cancelled] DB_NOTIFICATION_INSERTED - Registro creado en campana exitosamente");
+        }
+      } catch (dbError: any) {
+        // Error inesperado al insertar, loguear pero no fallar
+        console.warn("⚠️ [notify-appointment-cancelled] Excepción al insertar en DB (no crítico):", dbError.message);
+      }
+    } else {
+      console.log("ℹ️ [notify-appointment-cancelled] PUSH_NOT_SENT - No se envió ningún push, no se inserta en DB");
+    }
 
     return new Response(
       JSON.stringify({

@@ -1,12 +1,14 @@
 apply plugin: 'com.android.application'
 
-def date = new Date()
-def formattedDate = date.format('yyyyMMddHH')
+// Sincronización de SDK - Forzar que todos los plugins usen el mismo Target SDK
+project.ext.set('targetSdkVersion', 36)
+project.ext.set('compileSdkVersion', 36)
+project.ext.set("minSdkVersion", rootProject.ext.minSdkVersion)
 
 android {
     signingConfigs {
         config_pro {
-            storeFile file('C:\\Users\\laptop\\Desktop\\LLAVE PARTNER TUNROW\\llave_miturnow.jks')
+            storeFile new File("C:/Users/laptop/Desktop/LLAVE PARTNER TURNOW/llave_miturnow.jks")
             storePassword '1Delarosa'
             keyAlias 'produccion'
             keyPassword '1Delarosa'
@@ -18,9 +20,12 @@ android {
         applicationId "com.miturnow.partner"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode formattedDate.toInteger()
-        versionName "1.0"
+        versionCode 2026031814
+        versionName "1.2.2"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+        ndk {
+            abiFilters 'armeabi-v7a', 'arm64-v8a', 'x86', 'x86_64'
+        }
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
              // Default: https://android.googlesource.com/platform/frameworks/base/+/282e181b58cf72b6ca770dc7ca5f91f135444502/tools/aapt/AaptAssets.cpp#61
@@ -28,11 +33,48 @@ android {
         }
     }
     buildTypes {
+        debug {
+            minifyEnabled false
+            debuggable true
+            // ✅ CRÍTICO: Usar firma de producción para que Google Play Billing funcione
+            // Sin esto, los builds debug usan debug keystore y Google Play rechaza las compras
+            signingConfig signingConfigs.config_pro
+        }
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
             signingConfig signingConfigs.config_pro
         }
+    }
+    
+    // Configuración para asegurar compatibilidad de actualización
+    // Deshabilitar splits para evitar problemas de compatibilidad
+    splits {
+        abi {
+            enable false
+        }
+        density {
+            enable false
+        }
+    }
+    
+    // Configuración de bundle para compatibilidad
+    bundle {
+        language {
+            enableSplit = false
+        }
+        density {
+            enableSplit = false
+        }
+        abi {
+            enableSplit = false
+        }
+    }
+    
+    // Asegurar que el packaging incluya todas las arquitecturas necesarias
+    packagingOptions {
+        pickFirst '**/libc++_shared.so'
+        pickFirst '**/libjsc.so'
     }
 }
 
@@ -56,6 +98,9 @@ dependencies {
     // Firebase
     implementation platform('com.google.firebase:firebase-bom:32.7.0')
     implementation 'com.google.firebase:firebase-messaging'
+    
+    // Google Play Billing Library 7.0+ (required by Google Play)
+    implementation 'com.android.billingclient:billing:7.1.1'
 }
 
 apply from: 'capacitor.build.gradle'

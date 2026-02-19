@@ -165,12 +165,16 @@ export function WeekView({ date, filters }: WeekViewProps) {
     setLoading(false);
   }, [date, filters, profile?.business_id, generateCacheKey, getCached, setCached, invalidateCache]);
 
-  // ✅ OPTIMIZADO: Callback envuelto en useCallback para evitar re-suscripciones
-  const handleRealtimeUpdate = useCallback(() => {
-    console.log('🔄 [WeekView] Actualización en tiempo real recibida, forzando refresco...');
-    // Invalidar caché cuando hay actualizaciones en tiempo real
-    invalidateCache('week');
+  // ✅ CORRECCIÓN GLOBAL: Callback envuelto en useCallback para evitar re-suscripciones
+  const handleRealtimeUpdate = useCallback((payload?: any) => {
+    console.log('🔄 [WeekView] Actualización en tiempo real recibida, forzando refresco...', payload);
+    
+    // ✅ CORRECCIÓN GLOBAL 1: SIEMPRE invalidar y refetch, sin verificar rango
+    // Esto asegura que INSERT siempre actualice la vista, incluso si la cita está fuera del rango visible
+    invalidateCache(); // Sin parámetro = invalida todo (day, week, month)
+    
     // Forzar refresco ignorando el caché
+    // El query filtrará por fecha automáticamente, pero la invalidación ya ocurrió
     fetchAppointments(true);
   }, [invalidateCache, fetchAppointments]);
 

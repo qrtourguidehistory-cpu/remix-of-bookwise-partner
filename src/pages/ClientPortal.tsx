@@ -123,6 +123,19 @@ export default function ClientPortal() {
         .eq("id", appointmentId);
 
       if (error) throw error;
+      
+      // ✅ Notificar al partner que el cliente canceló la cita
+      try {
+        console.log("PUSH::START::partner-cancel", { appointment_id: appointmentId });
+        await supabase.functions.invoke('notify-partner-appointment-cancelled', {
+          body: { appointment_id: appointmentId }
+        });
+        console.log("PUSH::SUCCESS::partner-cancel", { appointment_id: appointmentId });
+      } catch (err) {
+        console.log("PUSH::ERROR::partner-cancel", { appointment_id: appointmentId, error: err });
+        console.error("Error notifying partner about cancellation (non-blocking):", err);
+      }
+      
       toast.success("Appointment cancelled successfully");
       loadAppointments();
     } catch (error: any) {

@@ -19,7 +19,7 @@ interface Device {
 }
 
 function getFirebaseApp(serviceAccount: admin.ServiceAccount): admin.app.App {
-  const appName = "app-client";
+  const appName = "app-partner";
   try {
     const existingApps = admin.apps || [];
     const existingApp = existingApps.find((a: any) => a && a.name === appName);
@@ -42,11 +42,11 @@ serve(async (req: Request) => {
   try {
     const { appointment_id }: RequestBody = await req.json();
     
-    console.log("📨 [notify-appointment-completed] Evento: Cita completada");
-    console.log("📋 [notify-appointment-completed] appointment_id:", appointment_id);
+    console.log("📨 [notify-partner-appointment-cancelled] Evento: Cita cancelada por cliente");
+    console.log("📋 [notify-partner-appointment-cancelled] appointment_id:", appointment_id);
     
     if (!appointment_id || typeof appointment_id !== 'string' || appointment_id.trim() === '') {
-      console.error("❌ [notify-appointment-completed] appointment_id es requerido");
+      console.error("❌ [notify-partner-appointment-cancelled] appointment_id es requerido");
       return new Response(
         JSON.stringify({ success: false, error: "appointment_id es requerido" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -65,53 +65,56 @@ serve(async (req: Request) => {
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
+    // Obtener información de la cita, negocio y cliente
     const { data: appointment, error: appointmentError } = await supabase
       .from("appointments")
       .select(`
         id,
         business_id,
         client_id,
+        client_name,
         appointment_date,
         start_time,
-        clients!inner(id, user_id, full_name)
+        businesses!inner(id, owner_id, business_name)
       `)
       .eq("id", appointment_id)
       .single();
 
     if (appointmentError || !appointment) {
-      console.error("❌ [notify-appointment-completed] Error obteniendo cita:", appointmentError);
+      console.error("❌ [notify-partner-appointment-cancelled] Error obteniendo cita:", appointmentError);
       return new Response(
         JSON.stringify({ success: false, error: "Cita no encontrada" }),
         { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    const client = (appointment.clients as any);
-    const clientUserId = client?.user_id;
+    const business = (appointment.businesses as any);
+    const ownerId = business?.owner_id;
 
-    if (!clientUserId || typeof clientUserId !== 'string') {
-      console.warn("⚠️ [notify-appointment-completed] Cliente no tiene user_id");
+    if (!ownerId || typeof ownerId !== 'string') {
+      console.warn("⚠️ [notify-partner-appointment-cancelled] Negocio no tiene owner_id");
       return new Response(
-        JSON.stringify({ success: true, message: "Cliente no tiene user_id, no se envía push" }),
+        JSON.stringify({ success: true, message: "Negocio no tiene owner_id, no se envía push" }),
         { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
     const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-    if (!uuidRegex.test(clientUserId.trim())) {
+    if (!uuidRegex.test(ownerId.trim())) {
       return new Response(
-        JSON.stringify({ success: false, error: "user_id inválido" }),
+        JSON.stringify({ success: false, error: "owner_id inválido" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    console.log("✅ [notify-appointment-completed] user_id receptor:", clientUserId);
+    console.log("✅ [notify-partner-appointment-cancelled] user_id receptor (owner):", ownerId);
 
+    // Buscar dispositivos activos del partner (owner)
     const { data: devices, error: devicesError } = await supabase
       .from("client_devices")
       .select("id, user_id, fcm_token, platform")
-      .eq("user_id", clientUserId)
-      .eq("role", "client")
+      .eq("user_id", ownerId)
+      .eq("role", "partner")
       .eq("is_active", true)
       .eq("enabled", true)
       .not("fcm_token", "is", null)
@@ -125,46 +128,47 @@ serve(async (req: Request) => {
     }
 
     if (!devices || devices.length === 0) {
-      console.warn("⚠️ [notify-appointment-completed] No se encontraron dispositivos activos");
+      console.warn("⚠️ [notify-partner-appointment-cancelled] No se encontraron dispositivos activos");
       return new Response(
         JSON.stringify({ success: true, pushSent: false, message: "No devices found" }),
         { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    console.log(`📱 [notify-appointment-completed] Dispositivos encontrados: ${devices.length}`);
+    console.log(`📱 [notify-partner-appointment-cancelled] Dispositivos encontrados: ${devices.length}`);
 
-    console.log("🔍 [notify-appointment-completed] Buscando secret FIREBASE_SERVICE_ACCOUNT_CLIENT...");
-    const serviceAccountJson = Deno.env.get("FIREBASE_SERVICE_ACCOUNT_CLIENT");
+    console.log("🔍 [notify-partner-appointment-cancelled] Buscando secret FIREBASE_SERVICE_ACCOUNT_PARTNER...");
+    const serviceAccountJson = Deno.env.get("FIREBASE_SERVICE_ACCOUNT_PARTNER");
     if (!serviceAccountJson) {
-      console.error("❌ [notify-appointment-completed] FIREBASE_SERVICE_ACCOUNT_CLIENT no configurado");
+      console.error("❌ [notify-partner-appointment-cancelled] FIREBASE_SERVICE_ACCOUNT_PARTNER no configurado");
       return new Response(
-        JSON.stringify({ success: false, error: "FIREBASE_SERVICE_ACCOUNT_CLIENT not configured" }),
+        JSON.stringify({ success: false, error: "FIREBASE_SERVICE_ACCOUNT_PARTNER not configured" }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    console.log("✅ [notify-appointment-completed] Secret encontrado");
+    console.log("✅ [notify-partner-appointment-cancelled] Secret encontrado");
 
     let serviceAccount: admin.ServiceAccount;
     try {
       serviceAccount = JSON.parse(serviceAccountJson);
-      console.log("✅ [notify-appointment-completed] Secret parseado correctamente");
+      console.log("✅ [notify-partner-appointment-cancelled] Secret parseado correctamente");
     } catch (error: any) {
-      console.error("❌ [notify-appointment-completed] Error parseando secret:", error);
+      console.error("❌ [notify-partner-appointment-cancelled] Error parseando secret:", error);
       return new Response(
-        JSON.stringify({ success: false, error: "Error parseando FIREBASE_SERVICE_ACCOUNT_CLIENT" }),
+        JSON.stringify({ success: false, error: "Error parseando FIREBASE_SERVICE_ACCOUNT_PARTNER" }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    console.log("🚀 [notify-appointment-completed] Inicializando Firebase Admin...");
+    console.log("🚀 [notify-partner-appointment-cancelled] Inicializando Firebase Admin...");
     const firebaseApp = getFirebaseApp(serviceAccount);
     const messaging = admin.messaging(firebaseApp);
-    console.log("✅ [notify-appointment-completed] Firebase Admin inicializado exitosamente");
+    console.log("✅ [notify-partner-appointment-cancelled] Firebase Admin inicializado exitosamente");
 
-    const title = "Cita completada";
-    const body = "Tu cita ha sido completada. ¡Gracias por visitarnos! ¿Cómo fue tu experiencia?";
+    const clientName = appointment.client_name || 'Cliente';
+    const title = "Cita cancelada";
+    const body = `${clientName} canceló su cita`;
 
     const results = await Promise.allSettled(
       devices.map(async (device: Device) => {
@@ -173,7 +177,7 @@ serve(async (req: Request) => {
             token: device.fcm_token,
             notification: { title, body },
             data: {
-              type: "appointment_completed",
+              type: "appointment_cancelled",
               appointment_id: appointment_id,
             },
             android: {
@@ -186,10 +190,10 @@ serve(async (req: Request) => {
               },
             },
           });
-          console.log(`✅ [notify-appointment-completed] Push enviado a dispositivo ${device.id}`);
+          console.log(`✅ [notify-partner-appointment-cancelled] Push enviado a dispositivo ${device.id}`);
           return { deviceId: device.id, status: "fulfilled" };
         } catch (err: any) {
-          console.error(`❌ [notify-appointment-completed] Error en dispositivo ${device.id}:`, err.message);
+          console.error(`❌ [notify-partner-appointment-cancelled] Error en dispositivo ${device.id}:`, err.message);
           if (err.code === 'messaging/registration-token-not-registered' || 
               err.code === 'messaging/invalid-registration-token') {
             await supabase
@@ -205,38 +209,35 @@ serve(async (req: Request) => {
     const successful = results.filter((r) => r.status === "fulfilled").length;
     const failed = results.filter((r) => r.status === "rejected").length;
 
-    console.log(`📊 [notify-appointment-completed] Resultados: ${successful} exitosos, ${failed} fallidos`);
+    console.log(`📊 [notify-partner-appointment-cancelled] Resultados: ${successful} exitosos, ${failed} fallidos`);
 
-    // ✅ PASO: Insertar en client_notifications SOLO si el push se envió exitosamente
+    // ✅ PASO: Insertar en notifications SOLO si el push se envió exitosamente
     if (successful > 0) {
-      console.log("✅ [notify-appointment-completed] PUSH_SENT - Al menos un push enviado exitosamente");
+      console.log("✅ [notify-partner-appointment-cancelled] PUSH_SENT - Al menos un push enviado exitosamente");
       
-      const clientData = appointment.clients as any;
-      const clientId = appointment.client_id;
       const businessId = appointment.business_id;
-      const appointmentTime = appointment.start_time || '';
+      const clientId = appointment.client_id;
+      const businessName = business?.business_name || '';
       
       try {
-        // Insertar en client_notifications con manejo de duplicados (ON CONFLICT DO NOTHING)
-        // El constraint UNIQUE (user_id, appointment_id, type) previene duplicados a nivel de DB
+        // Insertar en notifications con manejo de duplicados (ON CONFLICT DO NOTHING)
         const { data: insertedNotification, error: insertError } = await supabase
-          .from("client_notifications")
+          .from("notifications")
           .insert({
-            user_id: clientUserId,
-            client_id: clientId,
-            appointment_id: appointment_id,
-            business_id: businessId,
-            type: "appointment_completed",
+            user_id: ownerId,
+            type: "appointment_cancelled",
             title: title,
             message: body,
-            role: "client",
             read: false,
+            appointment_id: appointment_id,
+            client_id: clientId,
             meta: {
-              type: "appointment_completed",
+              type: "appointment_cancelled",
               business_id: businessId,
+              business_name: businessName,
+              client_name: clientName,
               appointment_date: appointment.appointment_date || null,
-              appointment_time: appointmentTime,
-              request_review: true,
+              appointment_time: appointment.start_time || null,
               consolidated: true,
               push_sent: true
             }
@@ -250,20 +251,20 @@ serve(async (req: Request) => {
               insertError.message?.includes('unique') || 
               insertError.message?.includes('duplicate') ||
               insertError.message?.includes('violates unique constraint')) {
-            console.log("ℹ️ [notify-appointment-completed] DB_NOTIFICATION_SKIPPED_DUPLICATE - Ya existe registro en campana (idempotencia)");
+            console.log("ℹ️ [notify-partner-appointment-cancelled] DB_NOTIFICATION_SKIPPED_DUPLICATE - Ya existe registro en campana (idempotencia)");
           } else {
             // Otro tipo de error, loguear pero no fallar
-            console.warn("⚠️ [notify-appointment-completed] Error al insertar en DB (no crítico):", insertError.message);
+            console.warn("⚠️ [notify-partner-appointment-cancelled] Error al insertar en DB (no crítico):", insertError.message);
           }
         } else if (insertedNotification) {
-          console.log("✅ [notify-appointment-completed] DB_NOTIFICATION_INSERTED - Registro creado en campana exitosamente");
+          console.log("✅ [notify-partner-appointment-cancelled] DB_NOTIFICATION_INSERTED - Registro creado en campana exitosamente");
         }
       } catch (dbError: any) {
         // Error inesperado al insertar, loguear pero no fallar
-        console.warn("⚠️ [notify-appointment-completed] Excepción al insertar en DB (no crítico):", dbError.message);
+        console.warn("⚠️ [notify-partner-appointment-cancelled] Excepción al insertar en DB (no crítico):", dbError.message);
       }
     } else {
-      console.log("ℹ️ [notify-appointment-completed] PUSH_NOT_SENT - No se envió ningún push, no se inserta en DB");
+      console.log("ℹ️ [notify-partner-appointment-cancelled] PUSH_NOT_SENT - No se envió ningún push, no se inserta en DB");
     }
 
     return new Response(
@@ -274,12 +275,12 @@ serve(async (req: Request) => {
         failed: failed,
         total: devices.length,
         appointment_id: appointment_id,
-        user_id: clientUserId,
+        user_id: ownerId,
       }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (error: any) {
-    console.error("❌ [notify-appointment-completed] Error general:", error.message);
+    console.error("❌ [notify-partner-appointment-cancelled] Error general:", error.message);
     return new Response(
       JSON.stringify({ success: false, error: error.message || "Unknown error" }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }

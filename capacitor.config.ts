@@ -4,6 +4,16 @@ const config: CapacitorConfig = {
   appId: 'com.miturnow.partner',
   appName: 'Mi Turnow Partner',
   webDir: 'dist',
+  server: {
+    // Permitir navegación a todos los dominios externos necesarios
+    allowNavigation: [
+      'https://api.revenuecat.com',
+      'https://*.revenuecat.com',
+      'https://*.supabase.co',
+      'https://*.googleapis.com',
+      'https://*.google.com',
+    ],
+  },
   plugins: {
     SplashScreen: {
       launchShowDuration: 0,
@@ -21,6 +31,13 @@ const config: CapacitorConfig = {
     },
     PushNotifications: {
       presentationOptions: ["badge", "sound", "alert"],
+    },
+    // Desactivar plugins que interfieren con RevenueCat SDK nativo
+    CapacitorCookies: {
+      enabled: false,
+    },
+    CapacitorHttp: {
+      enabled: false,
     },
   },
   android: {

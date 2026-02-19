@@ -59,7 +59,12 @@ export function useOptimizedRealtime(config: RealtimeConfig) {
         },
         (payload) => {
           if (callbackRef.current) {
-            callbackRef.current(payload);
+            // ✅ ETAPA 1 FIX: Agregar eventType al payload para facilitar verificación
+            const enrichedPayload = {
+              ...payload,
+              eventType: config.events?.[0] || '*',
+            };
+            callbackRef.current(enrichedPayload);
           }
         }
       );
@@ -78,7 +83,12 @@ export function useOptimizedRealtime(config: RealtimeConfig) {
           },
           (payload) => {
             if (callbackRef.current) {
-              callbackRef.current(payload);
+              // ✅ ETAPA 1 FIX: Agregar eventType al payload para facilitar verificación
+              const enrichedPayload = {
+                ...payload,
+                eventType: event,
+              };
+              callbackRef.current(enrichedPayload);
             }
           }
         );
@@ -133,10 +143,12 @@ export function useOptimizedAppointmentsRealtime(
     onEvent: (payload) => {
       console.log('🔔 Cambio detectado en tiempo real:', payload);
       if (onUpdate) {
-        // Debounce aumentado a 300ms para dar estabilidad si entran varias citas al mismo tiempo
+        // ✅ Delay aumentado a 800ms para asegurar que la base de datos complete la transacción
+        // Esto es especialmente importante cuando el cliente cancela desde otra app
+        // ✅ ETAPA 1 FIX: Pasar el payload completo al callback para que pueda verificar fechas
         setTimeout(() => {
-          onUpdate();
-        }, 300);
+          onUpdate(payload);
+        }, 800);
       }
     },
     enabled: enabled && !!businessId,

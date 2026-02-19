@@ -1741,6 +1741,64 @@ export function AppointmentDetailView({
           status: appointment.status,
           has_pending_request: hasPendingRequest,
         }}
+        onNextInTurn={async () => {
+          if (!appointment?.id || !profile?.business_id || !appointment.staff_id) {
+            toast.error(language === "es" ? "Error: información de cita incompleta" : "Error: incomplete appointment information");
+            return;
+          }
+
+          // Validate appointment status
+          if (appointment.status !== "pending" && appointment.status !== "confirmed") {
+            toast.error(
+              language === "es" 
+                ? "Solo se puede marcar como siguiente en turno para citas en estado 'Booked' o 'Confirmada'" 
+                : "Can only mark as next in turn for 'Booked' or 'Confirmed' appointments"
+            );
+            return;
+          }
+
+          try {
+            // Calcular end_time aproximado (usar start_time + 30 min si no hay end_time)
+            const startTime = appointment.start_time || "00:00";
+            const [hours, minutes] = startTime.split(":").map(Number);
+            const startMinutes = hours * 60 + minutes;
+            const durationMinutes = appointment.duration_minutes || 30;
+            const endMinutes = startMinutes + durationMinutes;
+            const endHours = Math.floor(endMinutes / 60);
+            const endMins = endMinutes % 60;
+            const currentAppointmentEndTime = `${String(endHours).padStart(2, "0")}:${String(endMins).padStart(2, "0")}`;
+
+            console.log("PUSH::START::next-in-turn", { appointment_id: appointment.id });
+            const { data, error } = await supabase.functions.invoke('notify-next-in-queue', {
+              body: {
+                appointment_id: appointment.id,
+                business_id: profile.business_id,
+                staff_id: appointment.staff_id,
+                current_appointment_end_time: currentAppointmentEndTime,
+              }
+            });
+
+            if (error) {
+              console.log("PUSH::ERROR::next-in-turn", { appointment_id: appointment.id, error });
+              throw error;
+            }
+
+            console.log("PUSH::SUCCESS::next-in-turn", { appointment_id: appointment.id });
+            toast.success(
+              language === "es" 
+                ? "Cliente notificado como siguiente en turno" 
+                : "Client notified as next in turn"
+            );
+
+            // Refresh appointment data
+            if (onQuickAction) {
+              onQuickAction(appointment.status as AppointmentStatus);
+            }
+          } catch (error: any) {
+            console.error("Error notifying next in turn:", error);
+            toast.error(error.message || (language === "es" ? "Error al notificar siguiente en turno" : "Failed to notify next in turn"));
+          }
+        }}
       />
 
       <AppointmentClientActionsSheet

@@ -309,3 +309,5 @@ COMMIT;
 --
 -- Debe retornar 0 filas (ninguna función con user_id hardcodeado)
 
+
+

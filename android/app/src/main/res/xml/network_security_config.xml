@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 
+    Configuración de seguridad de red para RevenueCat y servicios relacionados
+    Permite conexiones HTTPS/HTTP necesarias para el funcionamiento del SDK
+    
+    ⚠️ CRÍTICO PARA ANDROID 15 (SDK 36):
+    - Solo confiamos en certificados del sistema (<certificates src="system" />)
+    - NO incluimos certificados de usuario (<certificates src="user" />) porque:
+      1. Android 15 valida TODOS los certificados de usuario del dispositivo
+      2. Si hay certificados inválidos/corruptos/auto-firmados, Android 15 bloquea TODAS las conexiones
+      3. Los servicios públicos (RevenueCat, Google, Supabase) usan certificados válidos del sistema
+      4. Incluir certificados de usuario causa "Unable to start a network connection" y InvalidCredentialsError
+-->
+<network-security-config>
+    <!-- Configuración base: PERMITIR TODO sin restricciones -->
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <!-- Solo certificados del sistema (Android 15 compatible) -->
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+    
+    <!-- Configuración específica para RevenueCat - TODOS los dominios y subdominios -->
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="true">revenuecat.com</domain>
+        <domain includeSubdomains="true">api.revenuecat.com</domain>
+        <domain includeSubdomains="true">api2.revenuecat.com</domain>
+        <domain includeSubdomains="true">purchases.revenuecat.com</domain>
+        <domain includeSubdomains="true">app.revenuecat.com</domain>
+        <trust-anchors>
+            <!-- Solo certificados del sistema (Android 15 compatible) -->
+            <certificates src="system" />
+        </trust-anchors>
+    </domain-config>
+    
+    <!-- Configuración para Google Play Services y Billing -->
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="true">googleapis.com</domain>
+        <domain includeSubdomains="true">google.com</domain>
+        <domain includeSubdomains="true">android.clients.google.com</domain>
+        <domain includeSubdomains="true">play.googleapis.com</domain>
+        <trust-anchors>
+            <!-- Solo certificados del sistema (Android 15 compatible) -->
+            <certificates src="system" />
+        </trust-anchors>
+    </domain-config>
+    
+    <!-- Configuración para Supabase -->
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="true">supabase.co</domain>
+        <trust-anchors>
+            <!-- Solo certificados del sistema (Android 15 compatible) -->
+            <certificates src="system" />
+        </trust-anchors>
+    </domain-config>
+    
+    <!-- Configuración para PayPal (si se usa) -->
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="true">paypal.com</domain>
+        <domain includeSubdomains="true">paypalobjects.com</domain>
+        <trust-anchors>
+            <!-- Solo certificados del sistema (Android 15 compatible) -->
+            <certificates src="system" />
+        </trust-anchors>
+    </domain-config>
+</network-security-config>
+

@@ -3,8 +3,11 @@ import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { useSubscriptionStatus } from "@/hooks/useSubscriptionStatus";
+import { purchaseProduct, verifyPremiumEntitlement, identifyUser } from "@/lib/revenueCatService";
+import { Capacitor } from "@capacitor/core";
 import { Button } from "@/components/ui/button";
 import { Loader2, Rocket, Lock, LogOut, User, Sparkles, Calendar, Star, MapPin, X, ArrowLeft } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -19,36 +22,108 @@ export default function Paywall() {
   const { profile, signOut } = useAuth();
   const { language } = useLanguage();
   const { subscription } = useSubscriptionStatus();
+  const { toast } = useToast();
   const [processing, setProcessing] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
 
   const handleActivateSubscription = async () => {
     console.log('[Paywall] 🚀 handleActivateSubscription llamado');
-    setProcessing(true);
-    try {
-      console.log('[Paywall] 📍 Navegando a /admin/subscription...');
-      // Navegar a la página de suscripción que manejará la activación
-      // Usar replace para evitar que el usuario pueda volver al paywall
+    
+    // Verificar si estamos en Android (RevenueCat solo funciona en Android)
+    if (Capacitor.getPlatform() !== "android") {
+      // Si no es Android, redirigir a la página de suscripción web
       navigate("/admin/subscription", { replace: true });
-      console.log('[Paywall] ✅ Navegación completada');
-    } catch (error: any) {
-      console.error('[Paywall] ❌ Error activando suscripción:', {
-        error,
-        message: error?.message,
-        stack: error?.stack,
-        name: error?.name,
+      return;
+    }
+
+    if (!profile?.id) {
+      toast({
+        title: language === "es" ? "Error" : "Error",
+        description: language === "es" 
+          ? "No se pudo obtener la información del usuario" 
+          : "Could not get user information",
+        variant: "destructive",
       });
-      // Mostrar error al usuario
-      alert(
-        language === "es" 
-          ? "Error al abrir la página de suscripción. Por favor, intenta de nuevo." 
-          : "Error opening subscription page. Please try again."
-      );
+      return;
+    }
+
+    setProcessing(true);
+    
+    try {
+      console.log('[Paywall] 💳 Iniciando compra con RevenueCat...');
+      
+      // CRÍTICO: Identificar al usuario en RevenueCat antes de comprar
+      console.log('[Paywall] 🔐 Identificando usuario en RevenueCat antes de comprar...');
+      try {
+        await identifyUser(profile.id);
+        console.log('[Paywall] ✅ Usuario identificado correctamente');
+      } catch (identifyError: any) {
+        console.error('[Paywall] ⚠️ Error identificando usuario, continuando con compra:', identifyError);
+        // Continuar con la compra aunque falle la identificación (puede que ya esté identificado)
+      }
+      
+      // Realizar la compra del paquete mensual (usa offering default)
+      const result = await purchaseProduct();
+      
+      if (result.success) {
+        console.log('[Paywall] ✅ Compra exitosa, verificando entitlement...');
+        
+        // Verificar y actualizar el entitlement en Supabase
+        const hasProAccess = await verifyPremiumEntitlement(profile.id);
+        
+        if (hasProAccess) {
+          toast({
+            title: language === "es" ? "¡Suscripción activada!" : "Subscription activated!",
+            description: language === "es"
+              ? "Tu suscripción premium ha sido activada correctamente"
+              : "Your premium subscription has been activated successfully",
+          });
+          
+          // Recargar la página para actualizar el estado de suscripción
+          setTimeout(() => {
+            window.location.reload();
+          }, 1000);
+        } else {
+          console.warn('[Paywall] ⚠️ Compra exitosa pero entitlement no verificado');
+          toast({
+            title: language === "es" ? "Compra completada" : "Purchase completed",
+            description: language === "es"
+              ? "Tu compra se completó. La suscripción se activará en breve."
+              : "Your purchase was completed. The subscription will activate shortly.",
+          });
+          
+          // Recargar después de un delay para dar tiempo a que se actualice
+          setTimeout(() => {
+            window.location.reload();
+          }, 2000);
+        }
+      } else {
+        // Si el usuario canceló, no mostrar error
+        if (result.error?.includes("cancelada") || result.error?.includes("cancelled")) {
+          console.log('[Paywall] ℹ️ Usuario canceló la compra');
+          return;
+        }
+        
+        // Mostrar error
+        toast({
+          title: language === "es" ? "Error en la compra" : "Purchase error",
+          description: result.error || (language === "es" 
+            ? "No se pudo completar la compra. Por favor, intenta de nuevo." 
+            : "Could not complete purchase. Please try again."),
+          variant: "destructive",
+        });
+      }
+    } catch (error: any) {
+      console.error('[Paywall] ❌ Error activando suscripción:', error);
+      toast({
+        title: language === "es" ? "Error" : "Error",
+        description: error.message || (language === "es" 
+          ? "Ocurrió un error al procesar la compra. Por favor, intenta de nuevo." 
+          : "An error occurred processing the purchase. Please try again."),
+        variant: "destructive",
+      });
     } finally {
-      // No resetear processing inmediatamente para dar tiempo a la navegación
-      setTimeout(() => {
-        setProcessing(false);
-      }, 500);
+      setProcessing(false);
     }
   };
 

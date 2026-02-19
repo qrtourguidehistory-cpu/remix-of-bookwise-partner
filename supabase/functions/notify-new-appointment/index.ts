@@ -211,6 +211,63 @@ serve(async (req: Request) => {
 
     console.log(`📊 [notify-new-appointment] Resultados: ${successful} exitosos, ${failed} fallidos`);
 
+    // ✅ PASO: Insertar en notifications SOLO si el push se envió exitosamente
+    if (successful > 0) {
+      console.log("✅ [notify-new-appointment] PUSH_SENT - Al menos un push enviado exitosamente");
+      
+      const businessId = appointment.business_id;
+      const clientId = appointment.client_id;
+      const businessName = business?.business_name || '';
+      
+      try {
+        // Insertar en notifications con manejo de duplicados (ON CONFLICT DO NOTHING)
+        // La tabla notifications no tiene constraint UNIQUE explícito, pero manejamos errores
+        const { data: insertedNotification, error: insertError } = await supabase
+          .from("notifications")
+          .insert({
+            user_id: ownerId,
+            type: "new_appointment",
+            title: title,
+            message: body,
+            read: false,
+            appointment_id: appointment_id,
+            client_id: clientId,
+            meta: {
+              type: "new_appointment",
+              business_id: businessId,
+              business_name: businessName,
+              client_name: clientName,
+              appointment_date: appointment.appointment_date || null,
+              appointment_time: appointment.start_time || null,
+              consolidated: true,
+              push_sent: true
+            }
+          })
+          .select()
+          .single();
+        
+        if (insertError) {
+          // Si el error es por constraint UNIQUE (duplicado), es esperado (ON CONFLICT DO NOTHING)
+          if (insertError.code === '23505' || 
+              insertError.message?.includes('unique') || 
+              insertError.message?.includes('duplicate') ||
+              insertError.message?.includes('violates unique constraint')) {
+            console.log("ℹ️ [notify-new-appointment] DB_NOTIFICATION_SKIPPED_DUPLICATE - Ya existe registro en campana (idempotencia)");
+          } else {
+            // Otro tipo de error, loguear pero no fallar
+            console.warn("⚠️ [notify-new-appointment] Error al insertar en DB (no crítico):", insertError.message);
+          }
+        } else if (insertedNotification) {
+          console.log("✅ [notify-new-appointment] DB_NOTIFICATION_INSERTED - Registro creado en campana exitosamente");
+        }
+      } catch (dbError: any) {
+        // Error inesperado al insertar, loguear pero no fallar
+        console.warn("⚠️ [notify-new-appointment] Excepción al insertar en DB (no crítico):", dbError.message);
+      }
+    } else {
+      console.log("ℹ️ [notify-new-appointment] PUSH_NOT_SENT - No se envió ningún push, no se inserta en DB");
+    }
+
     return new Response(
       JSON.stringify({
         success: true,

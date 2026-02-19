@@ -151,7 +151,6 @@ export default function MobileLayout({ children }: MobileLayoutProps) {
               (payload) => {
                 console.log('🔔 [REALTIME] Nueva notificación recibida:', payload);
                 
-                // Fallback defensivo: Agregar directamente sin refetch completo
                 const newNotif = payload.new as any;
                 
                 // Validar que sea un tipo operativo esencial
@@ -159,43 +158,12 @@ export default function MobileLayout({ children }: MobileLayoutProps) {
                   console.log(`⚠️ [REALTIME] Tipo ignorado: ${newNotif.type}`);
                   return;
                 }
-
-                // Procesar y agregar la nueva notificación al estado
-                const timeAgo = formatDistanceToNow(new Date(newNotif.created_at), {
-                  addSuffix: false,
-                  locale: language === 'es' ? es : enUS,
-                });
-
-                let type: Notification['type'] = 'appointment';
-                if (newNotif.type === 'approval_rejected') {
-                  type = 'cancellation';
-                } else if (newNotif.type === 'approval_approved') {
-                  type = 'reminder';
-                }
-
-                const processedNotif: Notification = {
-                  id: newNotif.id,
-                  title: newNotif.title || (language === 'es' ? 'Notificación' : 'Notification'),
-                  message: newNotif.message || '',
-                  time: timeAgo,
-                  type,
-                  read: false,
-                  notificationId: newNotif.id,
-                  notificationTable: 'notifications',
-                  link: newNotif.link,
-                };
-
-                // Agregar al inicio del array (más reciente primero)
-                setNotifications((prev) => {
-                  // Evitar duplicados
-                  if (prev.some((n) => n.id === newNotif.id)) {
-                    console.log('⚠️ [REALTIME] Notificación duplicada ignorada:', newNotif.id);
-                    return prev;
-                  }
-                  return [processedNotif, ...prev];
-                });
-
-                setHasUnread(true);
+                
+                // ✅ ETAPA 2 FIX: SOLO hacer refetch completo, NO mutar estado local
+                // Esto evita inconsistencias y duplicados
+                setTimeout(() => {
+                  fetchNotifications(ownerId);
+                }, 500);
               }
             )
             .on(
@@ -208,15 +176,11 @@ export default function MobileLayout({ children }: MobileLayoutProps) {
               },
               (payload) => {
                 console.log('🔔 [REALTIME] Notificación actualizada:', payload);
-                // Actualizar notificación existente (ej: marcada como leída)
-                const updatedNotif = payload.new as any;
-                setNotifications((prev) =>
-                  prev.map((n) =>
-                    n.id === updatedNotif.id
-                      ? { ...n, read: updatedNotif.read || false }
-                      : n
-                  )
-                );
+                // ✅ FIX: Hacer refetch completo para asegurar consistencia
+                // Esto es más confiable que actualizar solo el estado local
+                setTimeout(() => {
+                  fetchNotifications(ownerId);
+                }, 300);
               }
             )
             .subscribe((status) => {

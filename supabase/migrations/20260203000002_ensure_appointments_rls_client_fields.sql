@@ -181,3 +181,5 @@ COMMIT;
 --    - Service role puede leer todas las columnas para Edge Functions
 --    - Todo esto incluye automáticamente client_name y guest_name
 
+
+

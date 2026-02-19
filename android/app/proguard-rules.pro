@@ -19,3 +19,11 @@
 # If you keep the line number information, uncomment this to
 # hide the original source file name.
 #-renamesourcefileattribute SourceFile
+
+# RevenueCat SDK - Keep all classes to prevent network issues
+-keep class com.revenuecat.purchases.** { *; }
+-keep class com.revenuecat.** { *; }
+-dontwarn com.revenuecat.**
+-dontwarn okhttp3.**
+-dontwarn okio.**
+-dontwarn retrofit2.**

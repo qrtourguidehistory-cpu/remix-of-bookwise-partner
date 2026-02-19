@@ -4,6 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { useNavigate } from "react-router-dom";
 import { initializePartnerPush, cleanupPartnerPush } from "../services/partnerPushService";
+import { verifyPremiumEntitlement, identifyUser } from "../lib/revenueCatService";
 
 interface AuthContextType {
   user: User | null;
@@ -210,6 +211,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               console.error('[AuthContext] Push init failed but continuing:', err);
             }
           }, 1000);
+
+          // ✅ IDENTIFICACIÓN TOTAL: Identificar usuario en RevenueCat también en INITIAL_SESSION
+          // Esto asegura que el webhook siempre encuentre el perfil
+          setTimeout(async () => {
+            try {
+              console.log('[AuthContext] 🔐 Identificando usuario en RevenueCat (INITIAL_SESSION):', currentUser.id);
+              await identifyUser(currentUser.id);
+              // Verificar entitlement después de identificar
+              await verifyPremiumEntitlement(currentUser.id);
+            } catch (err) {
+              console.error('[AuthContext] RevenueCat identification/verification failed (INITIAL_SESSION) but continuing:', err);
+            }
+          }, 2000); // Delay to ensure RevenueCat is initialized
         } else {
           // No session, we're done
           setLoading(false);
@@ -230,8 +244,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         // Process INITIAL_SESSION only if not already initialized
         if (event === 'INITIAL_SESSION') {
           if (!isInitializedRef.current) {
-            // Let initializeAuth handle it
+            // Let initializeAuth handle it (ya identifica al usuario ahí)
             return;
+          }
+          // ✅ Si ya está inicializado pero recibimos INITIAL_SESSION, también identificar
+          // Esto cubre casos edge donde el evento se dispara después de la inicialización
+          if (currentUser) {
+            setTimeout(async () => {
+              try {
+                console.log('[AuthContext] 🔐 Identificando usuario en RevenueCat (INITIAL_SESSION late):', currentUser.id);
+                await identifyUser(currentUser.id);
+                await verifyPremiumEntitlement(currentUser.id);
+              } catch (err) {
+                console.error('[AuthContext] RevenueCat identification failed (INITIAL_SESSION late) but continuing:', err);
+              }
+            }, 2000);
           }
           return;
         }
@@ -281,6 +308,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               console.error('[AuthContext] Push init failed but continuing:', err);
             }
           }, 1000);
+
+          // Identify user in RevenueCat and verify premium entitlement after login
+          if (event === 'SIGNED_IN') {
+            setTimeout(async () => {
+              try {
+                // Primero identificar al usuario en RevenueCat
+                await identifyUser(currentUser.id);
+                // Luego verificar el entitlement
+                await verifyPremiumEntitlement(currentUser.id);
+              } catch (err) {
+                console.error('[AuthContext] RevenueCat identification/verification failed but continuing:', err);
+              }
+            }, 2000); // Delay to ensure RevenueCat is initialized
+          }
         } else {
           // No user, clear profile
           setProfile(null);
@@ -329,6 +370,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           const { data: { user } } = await supabase.auth.getUser();
           if (user) {
             await initializePartnerPush(user.id);
+            
+            // Identify user in RevenueCat and verify premium entitlement after login
+            setTimeout(async () => {
+              try {
+                // Primero identificar al usuario en RevenueCat
+                await identifyUser(user.id);
+                // Luego verificar el entitlement
+                await verifyPremiumEntitlement(user.id);
+              } catch (error) {
+                console.error('[AuthContext] RevenueCat identification/verification error:', error);
+              }
+            }, 2000); // Delay to ensure RevenueCat is initialized
           }
         } catch (error) {
           console.error('[AuthContext] Push init error:', error);
