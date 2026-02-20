@@ -10,6 +10,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
 import { useLanguage } from "@/contexts/LanguageContext";
+import { useSubscriptionStatus } from "@/hooks/useSubscriptionStatus";
 import { supabase } from "@/lib/supabaseClient";
 import { Badge } from "@/components/ui/badge";
 import { validatePublicVisibilityRequirements, PublicVisibilityRequirements } from "@/lib/validatePublicVisibility";
@@ -57,6 +58,7 @@ export default function BusinessProfileSettings() {
   const { toast } = useToast();
   const { profile, loading: authLoading } = useAuth();
   const { language } = useLanguage();
+  const { status: subscriptionStatus } = useSubscriptionStatus();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [business, setBusiness] = useState<BusinessProfile | null>(null);
@@ -1276,17 +1278,59 @@ export default function BusinessProfileSettings() {
                 {/* APPROVED Status */}
                 {business.approval_status === 'approved' && (
                   <>
-                    <Alert className="border-green-500/50 bg-green-500/10">
-                      <CheckCircle className="h-4 w-4 text-green-600" />
-                      <AlertTitle className="text-green-700">
-                        {language === "es" ? "¡Tu negocio está publicado!" : "Your business is published!"}
-                      </AlertTitle>
-                      <AlertDescription className="text-green-600">
-                        {language === "es" 
-                          ? "Los clientes pueden encontrarte en MiTurnow Client."
-                          : "Clients can find you on MiTurnow Client."}
-                      </AlertDescription>
-                    </Alert>
+                    {/* Solo mostrar "Publicado" si is_public es realmente true */}
+                    {business.is_public === true ? (
+                      <Alert className="border-green-500/50 bg-green-500/10">
+                        <CheckCircle className="h-4 w-4 text-green-600" />
+                        <AlertTitle className="text-green-700">
+                          {language === "es" ? "¡Tu negocio está publicado!" : "Your business is published!"}
+                        </AlertTitle>
+                        <AlertDescription className="text-green-600">
+                          {language === "es" 
+                            ? "Los clientes pueden encontrarte en MiTurnow Client."
+                            : "Clients can find you on MiTurnow Client."}
+                        </AlertDescription>
+                      </Alert>
+                    ) : (
+                      /* Si is_public es false pero tiene suscripción activa, mostrar aviso */
+                      (subscriptionStatus === 'active' || profile?.is_premium === true) ? (
+                        <Alert className="border-yellow-500/50 bg-yellow-500/10">
+                          <AlertCircle className="h-4 w-4 text-yellow-600" />
+                          <AlertTitle className="text-yellow-700">
+                            {language === "es" ? "Suscripción activa" : "Active subscription"}
+                          </AlertTitle>
+                          <AlertDescription className="text-yellow-600">
+                            {language === "es" 
+                              ? "Tu suscripción está activa pero tu negocio aún no es público. Esto puede tardar unos momentos en actualizarse."
+                              : "Your subscription is active but your business is not yet public. This may take a few moments to update."}
+                          </AlertDescription>
+                        </Alert>
+                      ) : (
+                        /* Si no tiene suscripción activa y no es público */
+                        <Alert className="border-orange-500/50 bg-orange-500/10">
+                          <AlertTriangle className="h-4 w-4 text-orange-600" />
+                          <AlertTitle className="text-orange-700">
+                            {language === "es" ? "Negocio aprobado pero no público" : "Business approved but not public"}
+                          </AlertTitle>
+                          <AlertDescription className="text-orange-600">
+                            {language === "es" 
+                              ? "Tu negocio está aprobado pero no es visible para los clientes. Activa tu suscripción para hacerlo público."
+                              : "Your business is approved but not visible to clients. Activate your subscription to make it public."}
+                          </AlertDescription>
+                        </Alert>
+                      )
+                    )}
+                    {/* Aviso sobre suscripción activa (solo si es público) */}
+                    {business.is_public === true && (subscriptionStatus === 'active' || profile?.is_premium === true) && (
+                      <Alert className="border-blue-500/50 bg-blue-500/10 mt-4">
+                        <Sparkles className="h-4 w-4 text-blue-600" />
+                        <AlertDescription className="text-blue-600 text-sm">
+                          {language === "es" 
+                            ? "Tu negocio es visible para los clientes porque tienes una suscripción activa."
+                            : "Your business is visible to clients because you have an active subscription."}
+                        </AlertDescription>
+                      </Alert>
+                    )}
                     {hasChangesAfterApproval && (
                       <Alert variant="destructive" className="mt-4">
                         <AlertTriangle className="h-4 w-4" />

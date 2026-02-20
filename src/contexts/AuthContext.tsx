@@ -5,6 +5,8 @@ import { toast } from "sonner";
 import { useNavigate } from "react-router-dom";
 import { initializePartnerPush, cleanupPartnerPush } from "../services/partnerPushService";
 import { verifyPremiumEntitlement, identifyUser } from "../lib/revenueCatService";
+import { Purchases } from "@revenuecat/purchases-capacitor";
+import { Capacitor } from "@capacitor/core";
 
 interface AuthContextType {
   user: User | null;
@@ -110,21 +112,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         businesses: businessData
       };
 
-      // CRÍTICO: Sincronizar visibilidad cuando se carga el perfil del usuario
-      // Esto asegura que la visibilidad esté siempre actualizada
-      if (finalBusinessId) {
-        try {
-          // Llamar a la Edge Function para sincronizar visibilidad (sin esperar respuesta)
-          supabase.functions.invoke('sync-business-visibility', {
-            body: {},
-          }).catch((error) => {
-            console.error('[AuthContext] Error sincronizando visibilidad (no crítico):', error);
-          });
-        } catch (error) {
-          // No crítico, solo loguear
-          console.error('[AuthContext] Error llamando sync-business-visibility:', error);
-        }
-      }
       
       setProfile(updatedProfile);
       
@@ -212,18 +199,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             }
           }, 1000);
 
-          // ✅ IDENTIFICACIÓN TOTAL: Identificar usuario en RevenueCat también en INITIAL_SESSION
-          // Esto asegura que el webhook siempre encuentre el perfil
+          // ✅ IDENTIFICACIÓN TOTAL: logIn() SIEMPRE antes de verifyPremiumEntitlement()
+          // Esto "suelda" el recibo de Google al UUID de Supabase antes de verificar.
           setTimeout(async () => {
             try {
-              console.log('[AuthContext] 🔐 Identificando usuario en RevenueCat (INITIAL_SESSION):', currentUser.id);
+              console.log('[AuthContext] 🔐 [1/3] Identificando usuario en RevenueCat (INITIAL_SESSION):', currentUser.id);
               await identifyUser(currentUser.id);
-              // Verificar entitlement después de identificar
-              await verifyPremiumEntitlement(currentUser.id);
+              console.log('[AuthContext] ✅ [2/3] Usuario identificado. Verificando entitlement...');
+              const isPremium = await verifyPremiumEntitlement(currentUser.id);
+              console.log('[AuthContext] ✅ [3/3] verifyPremiumEntitlement completado. isPremium:', isPremium);
+              // Refrescar el perfil en memoria para que la UI refleje el estado actualizado
+              if (isPremium) {
+                await fetchUserProfile(currentUser.id);
+              }
             } catch (err) {
               console.error('[AuthContext] RevenueCat identification/verification failed (INITIAL_SESSION) but continuing:', err);
             }
-          }, 2000); // Delay to ensure RevenueCat is initialized
+          }, 2000); // Delay to ensure RevenueCat SDK is initialized
         } else {
           // No session, we're done
           setLoading(false);
@@ -309,18 +301,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             }
           }, 1000);
 
-          // Identify user in RevenueCat and verify premium entitlement after login
+          // ✅ SIGNED_IN: logIn() antes de verify — identidad soldada al UUID
           if (event === 'SIGNED_IN') {
             setTimeout(async () => {
               try {
-                // Primero identificar al usuario en RevenueCat
+                console.log('[AuthContext] 🔐 [1/3] Identificando usuario en RevenueCat (SIGNED_IN):', currentUser.id);
                 await identifyUser(currentUser.id);
-                // Luego verificar el entitlement
-                await verifyPremiumEntitlement(currentUser.id);
+                console.log('[AuthContext] ✅ [2/3] Usuario identificado. Verificando entitlement...');
+                const isPremium = await verifyPremiumEntitlement(currentUser.id);
+                console.log('[AuthContext] ✅ [3/3] verifyPremiumEntitlement completado. isPremium:', isPremium);
+                if (isPremium) {
+                  await fetchUserProfile(currentUser.id);
+                }
               } catch (err) {
                 console.error('[AuthContext] RevenueCat identification/verification failed but continuing:', err);
               }
-            }, 2000); // Delay to ensure RevenueCat is initialized
+            }, 2000);
           }
         } else {
           // No user, clear profile
@@ -432,6 +428,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const signOut = async () => {
+    // ✅ CRÍTICO: Limpiar identidad de RevenueCat ANTES de cerrar sesión
+    // Si no se hace esto, la identidad de RevenueCat se queda 'pegada' en el dispositivo
+    // y causa el error "Account identifiers don't match" en cuentas nuevas
+    if (Capacitor.getPlatform() === "android") {
+      try {
+        console.log('[AuthContext] 🧹 Limpiando identidad de RevenueCat...');
+        await Purchases.logOut();
+        console.log('[AuthContext] ✅ RevenueCat logOut completado');
+      } catch (rcError: any) {
+        console.error('[AuthContext] ⚠️ Error en RevenueCat logOut (no crítico):', rcError);
+        // Continuar con el logout aunque falle esto
+      }
+    }
+    
     // ✅ Punto 12: Marcar dispositivos como inactivos antes de cerrar sesión
     try {
       const { data: { user } } = await supabase.auth.getUser();

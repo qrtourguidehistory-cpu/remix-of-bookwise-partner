@@ -9,13 +9,17 @@ const corsHeaders = {
 };
 
 /**
- * Interfaz para el evento de RevenueCat
+ * ✅ ID del entitlement premium — debe coincidir con el RevenueCat Dashboard.
+ * Actualmente configurado como: 'partner_mensual_pro'
  */
+const PREMIUM_ENTITLEMENT_ID = 'partner_mensual_pro';
+
 interface RevenueCatEvent {
   event: {
     id: string;
     type: string;
     app_user_id: string;
+    aliases?: string[];
     product_id?: string;
     period_type?: string;
     purchased_at_ms?: number;
@@ -27,17 +31,18 @@ interface RevenueCatEvent {
 }
 
 /**
- * Tipos de eventos que activan is_premium = true
+ * Eventos que activan is_premium = true
  */
 const PREMIUM_ACTIVE_EVENTS = [
   'INITIAL_PURCHASE',
   'RENEWAL',
   'REACTIVATION',
   'UNCANCELLATION',
+  'SUBSCRIPTION_EXTENDED',
 ];
 
 /**
- * Tipos de eventos que desactivan is_premium = false
+ * Eventos que desactivan is_premium = false
  */
 const PREMIUM_INACTIVE_EVENTS = [
   'CANCELLATION',
@@ -46,211 +51,156 @@ const PREMIUM_INACTIVE_EVENTS = [
   'SUBSCRIPTION_PAUSED',
 ];
 
+// Regex para validar UUID v4
+const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 serve(async (req) => {
-  // Manejar preflight OPTIONS
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
   }
 
-  // Solo aceptar POST
   if (req.method !== 'POST') {
     return new Response(
-      JSON.stringify({ 
-        success: false, 
-        error: 'Method not allowed. Only POST requests are accepted.' 
-      }),
+      JSON.stringify({ success: false, error: 'Method not allowed. Only POST accepted.' }),
       { status: 405, headers: corsHeaders }
     );
   }
 
   try {
-    // Obtener variables de entorno
     const supabaseUrl = Deno.env.get('SUPABASE_URL');
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
 
     if (!supabaseUrl || !supabaseServiceKey) {
-      console.error('❌ [RevenueCat Webhook] Variables de entorno no configuradas');
+      console.error('[RC Webhook] ❌ Variables de entorno no configuradas');
       return new Response(
-        JSON.stringify({ 
-          success: false, 
-          error: 'Server configuration error: SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY must be set.' 
-        }),
+        JSON.stringify({ success: false, error: 'Server configuration error.' }),
         { status: 500, headers: corsHeaders }
       );
     }
 
-    // Crear cliente de Supabase con service role key (bypass RLS)
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
-
-    // Parsear el body del webhook
     const body: RevenueCatEvent = await req.json();
-    
-    console.log('[RevenueCat Webhook] 📥 Evento recibido:', {
-      eventId: body.event?.id,
-      eventType: body.event?.type,
-      appUserId: body.event?.app_user_id,
-      productId: body.event?.product_id,
+
+    const eventType = body?.event?.type;
+    const appUserId = body?.event?.app_user_id;
+    const aliases = body?.event?.aliases ?? [];
+
+    console.log('[RC Webhook] 📥 Evento recibido:', {
+      eventType,
+      appUserId,
+      aliases,
+      productId: body?.event?.product_id,
+      environment: body?.event?.environment,
     });
 
-    // Validar que el evento tenga la estructura esperada
-    if (!body.event || !body.event.type || !body.event.app_user_id) {
-      console.error('❌ [RevenueCat Webhook] Estructura de evento inválida:', body);
+    if (!eventType || !appUserId) {
+      console.error('[RC Webhook] ❌ Estructura de evento inválida:', body);
       return new Response(
-        JSON.stringify({ 
-          success: false, 
-          error: 'Invalid event structure. Missing required fields: event.type, event.app_user_id' 
-        }),
+        JSON.stringify({ success: false, error: 'Missing event.type or event.app_user_id' }),
         { status: 400, headers: corsHeaders }
       );
     }
 
-    const eventType = body.event.type;
-    const appUserId = body.event.app_user_id;
-
-    // Validar que app_user_id sea un UUID válido
-    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-    if (!uuidRegex.test(appUserId)) {
-      console.error('❌ [RevenueCat Webhook] app_user_id no es un UUID válido:', appUserId);
-      return new Response(
-        JSON.stringify({ 
-          success: false, 
-          error: 'Invalid app_user_id format. Expected UUID.' 
-        }),
-        { status: 400, headers: corsHeaders }
-      );
-    }
-
-    // Determinar el valor de is_premium basado en el tipo de evento
+    // ── Determinar isPremium ────────────────────────────────────────────────────
     let isPremium: boolean | null = null;
-    let action: string = '';
-
     if (PREMIUM_ACTIVE_EVENTS.includes(eventType)) {
       isPremium = true;
-      action = 'ACTIVAR';
     } else if (PREMIUM_INACTIVE_EVENTS.includes(eventType)) {
       isPremium = false;
-      action = 'DESACTIVAR';
     } else {
-      // Eventos que no afectan el estado premium (ej: TRIAL_STARTED, TRIAL_CANCELLED, etc.)
-      console.log(`ℹ️ [RevenueCat Webhook] Evento ${eventType} no afecta is_premium, ignorando...`);
+      console.log(`[RC Webhook] ℹ️ Evento '${eventType}' ignorado (no afecta premium).`);
       return new Response(
-        JSON.stringify({ 
-          success: true, 
-          message: `Event ${eventType} does not affect premium status`,
-          skipped: true 
-        }),
+        JSON.stringify({ success: true, message: `Event ${eventType} ignored.`, skipped: true }),
         { status: 200, headers: corsHeaders }
       );
     }
 
-    // Actualizar el perfil del usuario
-    console.log(`🔄 [RevenueCat Webhook] ${action} is_premium para usuario ${appUserId}...`);
-    
-    const { data: updatedProfile, error: updateError } = await supabase
-      .from('profiles')
-      .update({ 
-        is_premium: isPremium,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', appUserId)
-      .select('id, is_premium')
-      .single();
+    // ── Buscar el UUID de Supabase ──────────────────────────────────────────────
+    // RevenueCat envía app_user_id que puede ser el UUID de Supabase o un $RCAnonymousID.
+    // También incluimos aliases para cubrir el caso de compra anónima migrada a UUID.
+    const candidateIds = [appUserId, ...aliases].filter(
+      (id) => typeof id === 'string' && uuidRegex.test(id)
+    );
 
-    if (updateError) {
-      // Si el error es que no se encontró el perfil, intentar crear uno básico
-      if (updateError.code === 'PGRST116' || updateError.message?.includes('No rows')) {
-        console.warn(`⚠️ [RevenueCat Webhook] Perfil no encontrado para ${appUserId}, intentando crear...`);
-        
-        // Intentar crear el perfil básico
-        const { data: newProfile, error: createError } = await supabase
-          .from('profiles')
-          .insert({
-            id: appUserId,
-            is_premium: isPremium,
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
-          })
-          .select('id, is_premium')
-          .single();
+    console.log('[RC Webhook] 🔍 UUID candidatos:', candidateIds);
 
-        if (createError) {
-          console.error('❌ [RevenueCat Webhook] Error creando perfil:', createError);
-          return new Response(
-            JSON.stringify({ 
-              success: false, 
-              error: `Failed to create profile: ${createError.message}`,
-              details: createError 
-            }),
-            { status: 500, headers: corsHeaders }
-          );
-        }
-
-        console.log(`✅ [RevenueCat Webhook] Perfil creado y actualizado:`, {
-          userId: newProfile.id,
-          isPremium: newProfile.is_premium,
-        });
-
-        return new Response(
-          JSON.stringify({ 
-            success: true, 
-            message: 'Profile created and updated',
-            userId: newProfile.id,
-            isPremium: newProfile.is_premium,
-            eventType: eventType,
-          }),
-          { status: 200, headers: corsHeaders }
-        );
-      }
-
-      console.error('❌ [RevenueCat Webhook] Error actualizando perfil:', updateError);
+    if (candidateIds.length === 0) {
+      console.error(`[RC Webhook] ❌ Ningún UUID válido encontrado. app_user_id: ${appUserId}, aliases: ${aliases}`);
       return new Response(
-        JSON.stringify({ 
-          success: false, 
-          error: `Failed to update profile: ${updateError.message}`,
-          details: updateError 
+        JSON.stringify({
+          success: false,
+          error: 'No valid UUID found in app_user_id or aliases. Did the user log in before purchasing?',
+          appUserId,
+          aliases,
         }),
-        { status: 500, headers: corsHeaders }
+        { status: 400, headers: corsHeaders }
       );
     }
 
-    if (!updatedProfile) {
-      console.error('❌ [RevenueCat Webhook] Perfil no encontrado después de actualizar');
+    // ── Actualizar todos los perfiles candidatos ────────────────────────────────
+    let updatedCount = 0;
+    const errors: string[] = [];
+
+    for (const uuid of candidateIds) {
+      // Verificar que el perfil existe antes de actualizar
+      const { data: existingProfile } = await supabase
+        .from('profiles')
+        .select('id, is_premium')
+        .eq('id', uuid)
+        .maybeSingle();
+
+      if (!existingProfile) {
+        console.warn(`[RC Webhook] ⚠️ Perfil no encontrado para UUID: ${uuid}`);
+        continue;
+      }
+
+      console.log(`[RC Webhook] 🔄 Actualizando perfil ${uuid}: is_premium = ${isPremium} (antes: ${existingProfile.is_premium})`);
+
+      const { error: updateError } = await supabase
+        .from('profiles')
+        .update({
+          is_premium: isPremium,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', uuid);
+
+      if (updateError) {
+        console.error(`[RC Webhook] ❌ Error actualizando ${uuid}:`, updateError);
+        errors.push(`${uuid}: ${updateError.message}`);
+      } else {
+        console.log(`[RC Webhook] ✅ Perfil ${uuid} → is_premium = ${isPremium}`);
+        updatedCount++;
+      }
+    }
+
+    if (updatedCount === 0) {
       return new Response(
-        JSON.stringify({ 
-          success: false, 
-          error: 'Profile not found after update' 
+        JSON.stringify({
+          success: false,
+          error: 'No profiles were updated.',
+          candidateIds,
+          errors,
         }),
         { status: 404, headers: corsHeaders }
       );
     }
 
-    console.log(`✅ [RevenueCat Webhook] Perfil actualizado exitosamente:`, {
-      userId: updatedProfile.id,
-      isPremium: updatedProfile.is_premium,
-      eventType: eventType,
-    });
-
     return new Response(
-      JSON.stringify({ 
-        success: true, 
-        message: 'Profile updated successfully',
-        userId: updatedProfile.id,
-        isPremium: updatedProfile.is_premium,
-        eventType: eventType,
+      JSON.stringify({
+        success: true,
+        eventType,
+        isPremium,
+        updatedProfiles: updatedCount,
+        candidateIds,
       }),
       { status: 200, headers: corsHeaders }
     );
 
   } catch (error: any) {
-    console.error('❌ [RevenueCat Webhook] Error inesperado:', error);
+    console.error('[RC Webhook] ❌ Error inesperado:', error?.message);
     return new Response(
-      JSON.stringify({ 
-        success: false, 
-        error: error?.message || 'Internal server error',
-        stack: error?.stack 
-      }),
+      JSON.stringify({ success: false, error: error?.message || 'Internal server error' }),
       { status: 500, headers: corsHeaders }
     );
   }
 });
-

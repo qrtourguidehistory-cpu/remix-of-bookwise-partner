@@ -229,28 +229,6 @@ serve(async (req) => {
         );
       }
 
-      // CRÍTICO: Sincronizar visibilidad usando Edge Function (fuente de verdad)
-      // Esto garantiza que la visibilidad se actualice correctamente sin depender de RLS
-      try {
-        const syncUrl = `${Deno.env.get('SUPABASE_URL')}/functions/v1/sync-business-visibility`;
-        const syncResponse = await fetch(syncUrl, {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`,
-            'Content-Type': 'application/json',
-          },
-        });
-
-        if (!syncResponse.ok) {
-          console.error('[process-paypal-return] Error sincronizando visibilidad:', await syncResponse.text());
-        } else {
-          const syncData = await syncResponse.json();
-          console.log('[process-paypal-return] ✅ Visibilidad sincronizada:', syncData);
-        }
-      } catch (syncError: any) {
-        console.error('[process-paypal-return] Error llamando sync-business-visibility:', syncError);
-        // No fallar la respuesta principal, solo loguear
-      }
 
       return new Response(
         JSON.stringify({

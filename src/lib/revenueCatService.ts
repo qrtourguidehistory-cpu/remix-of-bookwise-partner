@@ -3,6 +3,35 @@ import { supabase } from "@/integrations/supabase/client";
 import { Capacitor } from "@capacitor/core";
 
 /**
+ * ✅ CONSTANTE GLOBAL: ID del entitlement premium en RevenueCat Dashboard.
+ * Cambiar SOLO aquí si se renombra en el Dashboard — se propaga a todo el código.
+ */
+export const PREMIUM_ENTITLEMENT_ID = "partner_mensual_pro";
+
+/**
+ * ✅ UNLOCK OPTIMISTA: Escribe is_premium = true en Supabase inmediatamente.
+ * Usar SOLO cuando Google Play/RevenueCat confirmó el pago pero el entitlement
+ * aún no está activo en el SDK (race condition post-compra).
+ * El webhook de RevenueCat o el siguiente getCustomerInfo confirmarán el estado real.
+ */
+export async function forceUnlockPremium(userId: string): Promise<void> {
+  try {
+    console.log("[RevenueCat] ⚡ forceUnlockPremium: escribiendo is_premium=true para", userId);
+    const { error } = await supabase
+      .from("profiles")
+      .update({ is_premium: true, updated_at: new Date().toISOString() })
+      .eq("id", userId);
+    if (error) {
+      console.error("[RevenueCat] ❌ forceUnlockPremium error:", error);
+    } else {
+      console.log("[RevenueCat] ✅ forceUnlockPremium: is_premium=true guardado");
+    }
+  } catch (err) {
+    console.error("[RevenueCat] ❌ forceUnlockPremium excepción:", err);
+  }
+}
+
+/**
  * Helper: inspecciona el customerInfo completo para diagnóstico
  * Se llama cuando entitlements es undefined/null para ver qué llegó exactamente
  */
@@ -41,10 +70,11 @@ export async function verifyPremiumEntitlement(userId: string): Promise<boolean>
   }
 
   try {
-    console.log("[RevenueCat] Verificando entitlement 'pro' para usuario:", userId);
+    console.log(`[RevenueCat] Verificando entitlement '${PREMIUM_ENTITLEMENT_ID}' para usuario:`, userId);
 
     // Obtener información del cliente de RevenueCat
-    const customerInfo = await Purchases.getCustomerInfo();
+    // ✅ El SDK v12 retorna { customerInfo: CustomerInfo }, hay que desestructurar
+    const { customerInfo } = await Purchases.getCustomerInfo();
 
     // ✅ DIAGNÓSTICO: Loggear si entitlements es undefined
     if (!customerInfo?.entitlements) {
@@ -58,49 +88,117 @@ export async function verifyPremiumEntitlement(userId: string): Promise<boolean>
       return false;
     }
 
-    // ✅ DEFENSIVO: Acceso seguro con encadenamiento opcional
-    const hasPremiumAccess = customerInfo?.entitlements?.active?.["pro"] !== undefined;
+    // ✅ FUENTE DE VERDAD: RevenueCat > Supabase
+    const hasPremiumAccess = customerInfo?.entitlements?.active?.[PREMIUM_ENTITLEMENT_ID] !== undefined;
+    const activeKeys = Object.keys(customerInfo?.entitlements?.active ?? {});
 
-    console.log("[RevenueCat] Estado del entitlement pro:", {
+    console.log(`[RevenueCat] Estado del entitlement '${PREMIUM_ENTITLEMENT_ID}':`, {
       hasPremiumAccess,
-      // ✅ DEFENSIVO: Object.keys solo si active existe
-      activeEntitlements: Object.keys(customerInfo?.entitlements?.active ?? {}),
+      activeEntitlements: activeKeys,
       userId,
     });
 
-    // Actualizar el campo is_premium en Supabase
-    const { error: updateError } = await supabase
-      .from("profiles")
-      .update({ 
-        is_premium: hasPremiumAccess,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", userId);
-
-    if (updateError) {
-      console.error("[RevenueCat] Error actualizando is_premium en Supabase:", updateError);
-      throw updateError;
+    if (activeKeys.length > 0 && !hasPremiumAccess) {
+      console.warn("[RevenueCat] ⚠️ Entitlements activos NO coinciden con PREMIUM_ENTITLEMENT_ID.");
+      console.warn(`[RevenueCat] Buscando: '${PREMIUM_ENTITLEMENT_ID}', encontrados:`, activeKeys);
     }
 
-    console.log("[RevenueCat] ✅ is_premium actualizado correctamente:", hasPremiumAccess);
+    // ✅ LÓGICA DE HIERRO: Solo actualizar Supabase a true cuando RC confirma premium.
+    // Nunca forzar is_premium = false desde aquí — eso lo hace el webhook de RevenueCat.
+    if (hasPremiumAccess) {
+      const { error: updateError } = await supabase
+        .from("profiles")
+        .update({ 
+          is_premium: true,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", userId);
+
+      if (updateError) {
+        console.error("[RevenueCat] Error actualizando is_premium = true en Supabase:", updateError);
+      } else {
+        console.log("[RevenueCat] ✅ is_premium = true guardado en Supabase");
+      }
+    } else {
+      // RC no tiene el entitlement activo, pero NO tocamos Supabase.
+      // El webhook se encargará de actualizar is_premium=false cuando corresponda.
+      console.log("[RevenueCat] ℹ️ Entitlement no activo en RC. Supabase NO modificado (webhook manejará el estado).");
+    }
 
     return hasPremiumAccess;
   } catch (error: any) {
     console.error("[RevenueCat] Error verificando entitlement premium:", error);
+    // ✅ CRÍTICO: Error de red / SDK → mantener último estado conocido. NO tocar Supabase.
+    return false;
+  }
+}
+
+/**
+ * Restaura las compras del usuario desde Google Play.
+ * Útil cuando la app no reconoce la suscripción activa.
+ * Actualiza is_premium en Supabase si encuentra entitlements activos.
+ * 
+ * @param userId - ID del usuario en Supabase
+ * @returns Promise<boolean> - true si se restauró un entitlement activo
+ */
+export async function restorePurchases(userId: string): Promise<boolean> {
+  if (Capacitor.getPlatform() !== "android") {
+    console.warn("[RevenueCat] restorePurchases solo funciona en Android.");
+    return false;
+  }
+
+  try {
+    // ✅ SEGURIDAD: NO usar Purchases.restorePurchases() porque re-valida TODO el Google Play
+    // del dispositivo, permitiendo que usuarios sin suscripción obtengan acceso si comparten
+    // dispositivo con alguien que sí tiene una suscripción activa.
+    //
+    // En cambio: invalidar caché local + consultar directamente el servidor de RevenueCat.
+    // RevenueCat asocia suscripciones por UUID de Supabase (vía logIn), no por dispositivo.
+    // Si el usuario legítimamente compró, su UUID ya tiene la suscripción en el servidor RC.
+    console.log("[RevenueCat] 🔄 Verificando suscripción en el servidor de RevenueCat...");
+    console.log("[RevenueCat] (usando getCustomerInfo seguro, NO restorePurchases del dispositivo)");
     
-    // Si hay un error, intentar actualizar a false por seguridad
-    try {
-      await supabase
-        .from("profiles")
-        .update({ 
-          is_premium: false,
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", userId);
-    } catch (fallbackError) {
-      console.error("[RevenueCat] Error en fallback update:", fallbackError);
+    // Invalidar caché local para obtener datos frescos del servidor
+    await Purchases.invalidateCustomerInfoCache();
+    console.log("[RevenueCat] 🗑️ Caché invalidada. Consultando servidor RC...");
+    
+    const { customerInfo } = await Purchases.getCustomerInfo();
+    console.log("[RevenueCat] ✅ Consulta completada. App User ID:", customerInfo?.originalAppUserId);
+
+    const hasProAccess = customerInfo?.entitlements?.active?.[PREMIUM_ENTITLEMENT_ID] !== undefined;
+    const activeKeys = Object.keys(customerInfo?.entitlements?.active ?? {});
+    console.log("[RevenueCat] Entitlements activos tras restaurar:", activeKeys);
+    console.log(`[RevenueCat] Tiene acceso '${PREMIUM_ENTITLEMENT_ID}':`, hasProAccess);
+
+    if (activeKeys.length > 0 && !hasProAccess) {
+      console.warn("[RevenueCat] ⚠️ HAY entitlements activos pero ninguno coincide con PREMIUM_ENTITLEMENT_ID.");
+      console.warn(`[RevenueCat] Buscando: '${PREMIUM_ENTITLEMENT_ID}', encontrados:`, activeKeys);
     }
 
+    // ✅ FUENTE DE VERDAD: Si RC dice premium → forzar true en Supabase.
+    // Si RC no lo encuentra → NO forzar false; mantener estado actual.
+    if (hasProAccess) {
+      const { error } = await supabase
+        .from("profiles")
+        .update({ is_premium: true, updated_at: new Date().toISOString() })
+        .eq("id", userId);
+      if (error) {
+        console.error("[RevenueCat] ❌ Error actualizando is_premium = true tras restaurar:", error);
+      } else {
+        console.log("[RevenueCat] ✅ is_premium = true guardado en Supabase tras restaurar");
+      }
+    } else {
+      console.log("[RevenueCat] ℹ️ restorePurchases: entitlement no activo. Supabase NO modificado.");
+    }
+
+    return hasProAccess;
+  } catch (error: any) {
+    console.error("[RevenueCat] ❌ Error en restorePurchases:", error);
+    console.error("[RevenueCat] Error details:", {
+      message: error?.message,
+      code: error?.code,
+      underlyingErrorMessage: error?.underlyingErrorMessage,
+    });
     return false;
   }
 }
@@ -117,7 +215,8 @@ export async function getPremiumEntitlementStatus(): Promise<boolean> {
   }
 
   try {
-    const customerInfo = await Purchases.getCustomerInfo();
+    // ✅ El SDK v12 retorna { customerInfo: CustomerInfo }, hay que desestructurar
+    const { customerInfo } = await Purchases.getCustomerInfo();
 
     // ✅ DIAGNÓSTICO: Loggear si entitlements es undefined
     if (!customerInfo?.entitlements) {
@@ -126,7 +225,7 @@ export async function getPremiumEntitlementStatus(): Promise<boolean> {
     }
 
     // ✅ DEFENSIVO: Acceso seguro con encadenamiento opcional
-    return customerInfo?.entitlements?.active?.["pro"] !== undefined;
+    return customerInfo?.entitlements?.active?.[PREMIUM_ENTITLEMENT_ID] !== undefined;
   } catch (error) {
     console.error("[RevenueCat] Error obteniendo estado de entitlement:", error);
     return false;
@@ -185,8 +284,9 @@ export async function identifyUser(userId: string): Promise<void> {
     console.log("[RevenueCat] UUID de Supabase:", userId);
     
     // ✅ Obtener el App User ID actual antes de identificar
+    // El SDK v12 retorna { customerInfo: CustomerInfo }, hay que desestructurar
     try {
-      const customerInfoBefore = await Purchases.getCustomerInfo();
+      const { customerInfo: customerInfoBefore } = await Purchases.getCustomerInfo();
       console.log("[RevenueCat] App User ID ANTES de identificar:", customerInfoBefore?.originalAppUserId);
       console.log("[RevenueCat] Es anonymous ID:", customerInfoBefore?.originalAppUserId?.startsWith("$RCAnonymousID"));
 
@@ -271,7 +371,9 @@ export async function purchaseProduct(): Promise<{ success: boolean; error?: str
     let needsIdentification = false;
     
     try {
-      customerInfo = await Purchases.getCustomerInfo();
+      // ✅ El SDK v12 retorna { customerInfo }, hay que desestructurar
+      const result = await Purchases.getCustomerInfo();
+      customerInfo = result.customerInfo;
       console.log("[RevenueCat] App User ID actual:", customerInfo?.originalAppUserId);
       
       // Verificar si el usuario está identificado (no es anonymous)
@@ -432,12 +534,73 @@ export async function purchaseProduct(): Promise<{ success: boolean; error?: str
       purchaseCustomerInfo = purchaseResult.customerInfo;
       console.log("[RevenueCat] ✅ Compra procesada exitosamente");
     } catch (purchaseError: any) {
-      // Si el usuario canceló, retornar sin error
+      // ✅ Si el usuario canceló, retornar sin error
       if (purchaseError?.userCancelled) {
         console.log("[RevenueCat] ℹ️ Usuario canceló la compra");
         return { success: false, error: "Compra cancelada por el usuario" };
       }
-      throw purchaseError; // Re-lanzar para que se maneje en el catch general
+      
+      // ✅ CRÍTICO: "Product Already Purchased" = el usuario YA TIENE suscripción activa
+      // Google Play devuelve este error si intentas comprar algo que ya tienes
+      // En este caso debemos obtener el customerInfo actual y tratarlo como ÉXITO
+      const isAlreadyOwned = 
+        purchaseError?.code === "PRODUCT_ALREADY_PURCHASED" ||
+        purchaseError?.readableErrorCode === "PRODUCT_ALREADY_PURCHASED" ||
+        purchaseError?.underlyingErrorMessage?.includes("already active") ||
+        purchaseError?.underlyingErrorMessage?.includes("already owned") ||
+        purchaseError?.message?.includes("already active") ||
+        purchaseError?.message?.includes("already owned") ||
+        purchaseError?.message?.includes("ITEM_ALREADY_OWNED");
+        
+      if (isAlreadyOwned) {
+        console.log("[RevenueCat] 📦 Producto ya poseído - el usuario tiene suscripción activa");
+        console.log("[RevenueCat] 🔄 Invalidando cache y obteniendo estado actual...");
+        
+        try {
+          // Forzar invalidación de caché para obtener datos frescos de RevenueCat
+          await Purchases.invalidateCustomerInfoCache();
+          // ✅ El SDK v12 retorna { customerInfo }, hay que desestructurar
+          const refreshResult = await Purchases.getCustomerInfo();
+          purchaseCustomerInfo = refreshResult.customerInfo;
+          console.log("[RevenueCat] ✅ CustomerInfo actualizado para usuario con suscripción existente");
+          console.log("[RevenueCat] App User ID:", purchaseCustomerInfo?.originalAppUserId);
+          console.log("[RevenueCat] Entitlements activos:", Object.keys(purchaseCustomerInfo?.entitlements?.active ?? {}));
+        } catch (refreshError: any) {
+          console.error("[RevenueCat] ❌ Error refrescando customerInfo:", refreshError);
+          // Si falla el refresh, retornar éxito de todas formas - el webhook manejará el estado
+          return { success: true };
+        }
+        
+        // Continuar con el flujo normal (verificar entitlements del customerInfo obtenido)
+      } else {
+        // ✅ CRÍTICO: DEVELOPER_ERROR - "Account identifiers don't match"
+        // Ocurre cuando se intenta usar la misma cuenta de Google Play en distintas cuentas de la app
+        const isDeveloperError = 
+          purchaseError?.code === "DEVELOPER_ERROR" ||
+          purchaseError?.readableErrorCode === "DEVELOPER_ERROR" ||
+          purchaseError?.underlyingErrorMessage?.includes("Account identifiers don't match") ||
+          purchaseError?.underlyingErrorMessage?.includes("account identifiers") ||
+          purchaseError?.message?.includes("Account identifiers don't match");
+        
+        if (isDeveloperError) {
+          console.error("[RevenueCat] ❌ DEVELOPER_ERROR: Account identifiers don't match");
+          console.error("[RevenueCat] Esta cuenta de Google Play ya tiene una suscripción vinculada a otro usuario.");
+          return {
+            success: false,
+            error: "Esta cuenta de Google Play ya tiene una suscripción vinculada a otro usuario. Por favor, usa la cuenta original o cambia de cuenta en la Play Store."
+          };
+        }
+        
+        throw purchaseError; // Re-lanzar para que se maneje en el catch general
+      }
+    }
+    
+    // ✅ Invalidar caché después de cualquier compra exitosa para asegurar datos frescos
+    try {
+      await Purchases.invalidateCustomerInfoCache();
+      console.log("[RevenueCat] 🔄 Caché invalidado exitosamente");
+    } catch (cacheError) {
+      console.warn("[RevenueCat] ⚠️ No se pudo invalidar caché:", cacheError);
     }
 
     // ✅ PASO 4: Verificar entitlements después de la compra
@@ -452,7 +615,9 @@ export async function purchaseProduct(): Promise<{ success: boolean; error?: str
       await new Promise(resolve => setTimeout(resolve, 1000));
       
       try {
-        finalCustomerInfo = await Purchases.getCustomerInfo();
+        // ✅ El SDK v12 retorna { customerInfo }, hay que desestructurar
+        const retryResult = await Purchases.getCustomerInfo();
+        finalCustomerInfo = retryResult.customerInfo;
         console.log("[RevenueCat] ✅ CustomerInfo obtenido después del retry");
       } catch (retryError: any) {
         console.error("[RevenueCat] ❌ Error en retry de getCustomerInfo:", retryError);
@@ -479,14 +644,14 @@ export async function purchaseProduct(): Promise<{ success: boolean; error?: str
       hasEntitlements: !!finalCustomerInfo?.entitlements,
     });
 
-    // ✅ PASO 5: Verificar si la compra fue exitosa verificando el entitlement "pro"
-    const hasProAccess = finalCustomerInfo?.entitlements?.active?.["pro"] !== undefined;
+    // ✅ PASO 5: Verificar si la compra fue exitosa verificando el entitlement
+    const hasProAccess = finalCustomerInfo?.entitlements?.active?.[PREMIUM_ENTITLEMENT_ID] !== undefined;
 
     if (hasProAccess) {
-      console.log("[RevenueCat] ✅ Compra exitosa, entitlement 'pro' activo inmediatamente");
+      console.log(`[RevenueCat] ✅ Compra exitosa, entitlement '${PREMIUM_ENTITLEMENT_ID}' activo inmediatamente`);
       return { success: true };
     } else {
-      console.warn("[RevenueCat] ⚠️ Compra completada pero entitlement 'pro' no activo aún");
+      console.warn(`[RevenueCat] ⚠️ Compra completada pero entitlement '${PREMIUM_ENTITLEMENT_ID}' no activo aún`);
       // ✅ DEFENSIVO: Object.keys solo si active existe
       const availableEntitlements = Object.keys(finalCustomerInfo?.entitlements?.active ?? {});
       console.warn("[RevenueCat] Entitlements disponibles:", availableEntitlements);
@@ -565,7 +730,22 @@ export async function purchaseProduct(): Promise<{ success: boolean; error?: str
       };
     }
     
-    // 5. Error desconocido del backend
+    // 5. DEVELOPER_ERROR - "Account identifiers don't match"
+    // Ocurre cuando se intenta usar la misma cuenta de Google Play en distintas cuentas de la app
+    if (error?.code === "DEVELOPER_ERROR" ||
+        error?.readableErrorCode === "DEVELOPER_ERROR" ||
+        error?.underlyingErrorMessage?.includes("Account identifiers don't match") ||
+        error?.underlyingErrorMessage?.includes("account identifiers") ||
+        error?.message?.includes("Account identifiers don't match")) {
+      console.error("[RevenueCat] ❌ DEVELOPER_ERROR: Account identifiers don't match");
+      console.error("[RevenueCat] Esta cuenta de Google Play ya tiene una suscripción vinculada a otro usuario.");
+      return {
+        success: false,
+        error: "Esta cuenta de Google Play ya tiene una suscripción vinculada a otro usuario. Por favor, usa la cuenta original o cambia de cuenta en la Play Store."
+      };
+    }
+    
+    // 6. Error desconocido del backend
     if (error?.code === "UnknownBackendError") {
       const detailedError = error?.underlyingErrorMessage || error?.message || "Error desconocido del servidor";
       console.error("[RevenueCat] ❓ ERROR DESCONOCIDO DEL BACKEND");
@@ -576,7 +756,7 @@ export async function purchaseProduct(): Promise<{ success: boolean; error?: str
       };
     }
 
-    // 6. Error genérico
+    // 7. Error genérico
     return { 
       success: false, 
       error: error?.underlyingErrorMessage || error?.message || "Error al procesar la compra. Por favor, intenta de nuevo." 

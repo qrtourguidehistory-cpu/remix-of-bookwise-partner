@@ -69,9 +69,9 @@ export function useSubscriptionStatus(): UseSubscriptionStatusResult {
           const oldestDate = new Date(Math.min(...createdDates.map(d => new Date(d).getTime())));
           const daysSinceCreation = (new Date().getTime() - oldestDate.getTime()) / (1000 * 60 * 60 * 24);
           
-          // Si el usuario tiene menos de 10 días, dar período de gracia
-          if (daysSinceCreation < 10) {
-            const remainingDays = Math.ceil(10 - daysSinceCreation);
+          // Si el usuario tiene menos de 7 días, dar período de gracia
+          if (daysSinceCreation < 7) {
+            const remainingDays = Math.ceil(7 - daysSinceCreation);
             console.log(`[useSubscriptionStatus] Usuario nuevo detectado. Días restantes de gracia: ${remainingDays}`);
             
             setSubscription({
