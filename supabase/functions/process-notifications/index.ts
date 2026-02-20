@@ -6,6 +6,29 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+/**
+ * Formatea una fecha desde string (YYYY-MM-DD) a formato legible en español
+ * Evita problemas de zona horaria al no convertir a Date
+ */
+function formatDateFromString(dateStr: string): string {
+  // dateStr viene como "2026-02-23" desde PostgreSQL DATE
+  const [year, month, day] = dateStr.split('-');
+  const months = [
+    'enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio',
+    'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'
+  ];
+  return `${parseInt(day)} de ${months[parseInt(month) - 1]}`;
+}
+
+/**
+ * Formatea una fecha desde string (YYYY-MM-DD) a formato corto (DD/MM/YYYY)
+ * Para uso en notificaciones que requieren formato corto
+ */
+function formatDateShort(dateStr: string): string {
+  const [year, month, day] = dateStr.split('-');
+  return `${day}/${month}/${year}`;
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
@@ -112,11 +135,12 @@ serve(async (req) => {
         }
 
         const appointmentDate = apt.appointment_date;
+        // ✅ CORREGIDO: Formatear fecha directamente desde string para evitar problemas de zona horaria
         const message = generateNotificationMessage(
           notification.meta?.type || 'reminder',
           {
             clientName: clientName || 'Cliente',
-            appointmentDate: appointmentDate ? new Date(appointmentDate).toLocaleDateString('es-ES') : undefined,
+            appointmentDate: appointmentDate ? formatDateShort(appointmentDate) : undefined,
             appointmentTime: apt.start_time,
           }
         );

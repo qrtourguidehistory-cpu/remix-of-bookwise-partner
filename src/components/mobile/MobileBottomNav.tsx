@@ -9,6 +9,7 @@ import { TutorialTip } from "./TutorialTip";
 import { useTutorialTips } from "@/hooks/useTutorialTips";
 import { useSafeArea } from "@/hooks/useSafeArea";
 import { useLanguage } from "@/contexts/LanguageContext";
+import ManualAppointmentFlow from "@/pages/mobile/ManualAppointmentFlow";
 
 export function MobileBottomNav() {
   // Initialize safe area calculation for Android
@@ -20,6 +21,7 @@ export function MobileBottomNav() {
   const { canShowTip, markTipAsSeen, setActiveTip } = useTutorialTips();
   const [addSheetOpen, setAddSheetOpen] = useState(false);
   const [settingsSheetOpen, setSettingsSheetOpen] = useState(false);
+  const [manualAppointmentOpen, setManualAppointmentOpen] = useState(false);
   const [showAddTip, setShowAddTip] = useState(false);
   const [showFooterText, setShowFooterText] = useState(() => {
     return localStorage.getItem("show-footer-text") !== "false";
@@ -112,8 +114,23 @@ export function MobileBottomNav() {
         </div>
       </nav>
 
-      <AddActionSheet open={addSheetOpen} onOpenChange={setAddSheetOpen} />
+      <AddActionSheet 
+        open={addSheetOpen} 
+        onOpenChange={setAddSheetOpen}
+        onAppointmentClick={() => {
+          setAddSheetOpen(false);
+          setManualAppointmentOpen(true);
+        }}
+      />
       <SettingsSheet open={settingsSheetOpen} onOpenChange={setSettingsSheetOpen} />
+      <ManualAppointmentFlow 
+        open={manualAppointmentOpen} 
+        onOpenChange={setManualAppointmentOpen}
+        onSuccess={() => {
+          // Disparar evento para refrescar citas en tiempo real
+          window.dispatchEvent(new CustomEvent('appointment-created'));
+        }}
+      />
 
       {/* Tutorial tip for add button */}
       <TutorialTip

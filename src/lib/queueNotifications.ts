@@ -3,6 +3,27 @@ import { supabase } from "@/integrations/supabase/client";
 type Language = "es" | "en";
 
 /**
+ * Formatea una fecha desde string (YYYY-MM-DD) a formato legible
+ * Evita problemas de zona horaria al no convertir a Date
+ */
+function formatDateFromString(dateStr: string, language: Language = "es"): string {
+  const [year, month, day] = dateStr.split('-');
+  if (language === "es") {
+    const months = [
+      'enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio',
+      'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'
+    ];
+    return `${parseInt(day)} de ${months[parseInt(month) - 1]}`;
+  } else {
+    const months = [
+      'January', 'February', 'March', 'April', 'May', 'June',
+      'July', 'August', 'September', 'October', 'November', 'December'
+    ];
+    return `${months[parseInt(month) - 1]} ${parseInt(day)}`;
+  }
+}
+
+/**
  * Función genérica para notificar al siguiente cliente en la cola.
  * Busca la siguiente cita y envía una push notification con mensajes personalizados.
  */
@@ -169,9 +190,10 @@ export async function notifyNextClientWhenAppointmentStarted(params: {
       : `Staff started an appointment and you're next in line. Please start heading to the establishment.`;
 
   // Message for SMS (softer, more detailed)
+  // ✅ CORREGIDO: Formatear fecha directamente desde string para evitar problemas de zona horaria
   const dateText = (() => {
     try {
-      return new Date(appointmentDate).toLocaleDateString(language === "es" ? "es-ES" : "en-US");
+      return formatDateFromString(appointmentDate, language);
     } catch {
       return appointmentDate;
     }

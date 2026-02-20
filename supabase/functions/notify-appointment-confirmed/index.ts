@@ -19,6 +19,20 @@ interface Device {
 }
 
 /**
+ * Formatea una fecha desde string (YYYY-MM-DD) a formato legible en español
+ * Evita problemas de zona horaria al no convertir a Date
+ */
+function formatDateFromString(dateStr: string): string {
+  // dateStr viene como "2026-02-23" desde PostgreSQL DATE
+  const [year, month, day] = dateStr.split('-');
+  const months = [
+    'enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio',
+    'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'
+  ];
+  return `${parseInt(day)} de ${months[parseInt(month) - 1]}`;
+}
+
+/**
  * Inicializa o recupera la app Firebase para cliente
  */
 function getFirebaseApp(serviceAccount: admin.ServiceAccount): admin.app.App {
@@ -247,8 +261,9 @@ serve(async (req: Request) => {
     console.log("✅ [notify-appointment-confirmed] Firebase Admin inicializado exitosamente");
 
     // ✅ PASO 7: Preparar mensaje
+    // ✅ CORREGIDO: Formatear fecha directamente desde string para evitar problemas de zona horaria
     const appointmentDate = appointment.appointment_date 
-      ? new Date(appointment.appointment_date).toLocaleDateString('es-ES', { day: 'numeric', month: 'long' })
+      ? formatDateFromString(appointment.appointment_date)
       : 'próximamente';
     const appointmentTime = appointment.start_time || '';
 

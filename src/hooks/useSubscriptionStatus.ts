@@ -36,6 +36,23 @@ export function useSubscriptionStatus(): UseSubscriptionStatusResult {
 
       if (profileError) {
         console.error("[useSubscriptionStatus] Error fetching profile:", profileError);
+        // ✅ Si hay error de RLS, intentar usar el profile del contexto (puede tener is_premium en caché)
+        if (profileError.code === '42501' || profileError.message?.includes('permission') || profileError.message?.includes('policy')) {
+          console.warn("[useSubscriptionStatus] RLS error - trying to use cached profile data");
+          // Si el profile del contexto tiene is_premium, usarlo como fallback
+          if (profile?.is_premium === true) {
+            console.log("[useSubscriptionStatus] ✅ Usando is_premium del contexto (fallback)");
+            setSubscription({
+              id: 'revenuecat_premium',
+              status: 'active',
+              source: 'revenuecat',
+              is_premium: true,
+            });
+            setStatus('active');
+            setIsLoading(false);
+            return;
+          }
+        }
       }
 
       // ✅ Si is_premium es true, el usuario es Premium (Google Play/RevenueCat)

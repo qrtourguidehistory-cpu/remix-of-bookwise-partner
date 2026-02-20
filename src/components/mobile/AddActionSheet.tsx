@@ -9,9 +9,10 @@ import { cn } from "@/lib/utils";
 interface AddActionSheetProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  onAppointmentClick?: () => void; // Callback para abrir el flujo de citas manuales
 }
 
-export function AddActionSheet({ open, onOpenChange }: AddActionSheetProps) {
+export function AddActionSheet({ open, onOpenChange, onAppointmentClick }: AddActionSheetProps) {
   const navigate = useNavigate();
   const { language } = useLanguage();
   const [viewMode, setViewMode] = useState<"list" | "grid">(() => {
@@ -25,16 +26,22 @@ export function AddActionSheet({ open, onOpenChange }: AddActionSheetProps) {
 
   const actions = [
     { icon: DollarSign, label: language === "es" ? "Venta" : "Sale", color: "text-green-500", path: "/admin/sales/new" },
-    { icon: Calendar, label: language === "es" ? "Cita" : "Appointment", color: "text-blue-500", path: "/admin/appointments/new" },
+    { icon: Calendar, label: language === "es" ? "Cita" : "Appointment", color: "text-blue-500", path: "/admin/appointments/new", isAppointment: true },
     { icon: Briefcase, label: language === "es" ? "Servicio" : "Service", color: "text-purple-500", path: "/admin/services/new" },
     { icon: Clock, label: language === "es" ? "Horarios" : "Schedules", color: "text-orange-500", path: "/admin/schedules" },
     { icon: Users, label: language === "es" ? "Personal" : "Staff", color: "text-pink-500", path: "/admin/staff/new" },
     { icon: Image, label: language === "es" ? "Galería" : "Gallery", color: "text-cyan-500", path: "/admin/gallery" },
   ];
 
-  const handleAction = (path: string) => {
+  const handleAction = (action: typeof actions[0]) => {
     onOpenChange(false);
-    navigate(path);
+    
+    // Si es "Cita" y hay callback, usar el callback en lugar de navegar
+    if (action.isAppointment && onAppointmentClick) {
+      onAppointmentClick();
+    } else {
+      navigate(action.path);
+    }
   };
 
   return (
@@ -79,7 +86,7 @@ export function AddActionSheet({ open, onOpenChange }: AddActionSheetProps) {
                 <Button
                   key={action.label}
                   variant="ghost"
-                  onClick={() => handleAction(action.path)}
+                  onClick={() => handleAction(action)}
                   className="justify-start gap-3 h-12"
                 >
                   <div className={cn("p-2 rounded-full bg-muted", action.color)}>
@@ -98,7 +105,7 @@ export function AddActionSheet({ open, onOpenChange }: AddActionSheetProps) {
                 <Button
                   key={action.label}
                   variant="ghost"
-                  onClick={() => handleAction(action.path)}
+                  onClick={() => handleAction(action)}
                   className="flex flex-col items-center gap-1.5 h-auto min-h-[90px] py-3"
                 >
                   <div className={cn("p-2.5 rounded-full bg-muted", action.color)}>

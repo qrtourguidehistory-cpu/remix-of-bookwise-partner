@@ -2,6 +2,15 @@ import { supabase } from './supabaseClient';
 import { sendNotificationToClient } from './notificationService';
 
 /**
+ * Formatea una fecha desde string (YYYY-MM-DD) a formato corto (DD/MM/YYYY)
+ * Evita problemas de zona horaria al no convertir a Date
+ */
+function formatDateShort(dateStr: string): string {
+  const [year, month, day] = dateStr.split('-');
+  return `${day}/${month}/${year}`;
+}
+
+/**
  * Process scheduled notifications that are due to be sent
  * This should be called periodically (e.g., every minute via cron job or Edge Function)
  */
@@ -66,6 +75,7 @@ export async function processScheduledNotifications(): Promise<void> {
 
         // Send the notification
         const appointmentDate = apt.appointment_date;
+        // ✅ CORREGIDO: Formatear fecha directamente desde string para evitar problemas de zona horaria
         const success = await sendNotificationToClient({
           appointmentId: apt.id,
           clientId: apt.client_id,
@@ -73,7 +83,7 @@ export async function processScheduledNotifications(): Promise<void> {
           clientPhone: apt.clients?.phone,
           clientName: apt.clients?.full_name,
           type: notif.meta?.type || 'reminder',
-          appointmentDate: appointmentDate ? new Date(appointmentDate).toLocaleDateString('es-ES') : undefined,
+          appointmentDate: appointmentDate ? formatDateShort(appointmentDate) : undefined,
           appointmentTime: apt.start_time,
           businessId: apt.business_id,
         });
